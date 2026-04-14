@@ -8,7 +8,12 @@ import time
 
 import config
 
-from cogs.youtube import YTDLSource, FFMPEG_OPTIONS, YTDL_FORMAT_OPTIONS
+from cogs.youtube import (
+    YTDLSource,
+    PlaceholderTrack,
+    FFMPEG_OPTIONS,
+    YTDL_FORMAT_OPTIONS,
+)
 from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
     EDGE_TTS_AVAILABLE,
@@ -357,28 +362,17 @@ class Music(commands.Cog):
         try:
             try:
                 async with ctx.typing():
-                    logging.info(
-                        f"Attempting to get YTDLSource from playlist URL: {url}"
-                    )
+                    logging.info(f"Fast-extracting playlist from URL: {url}")
 
-                    # Custom options for playlist loading
-                    playlist_opts = YTDL_FORMAT_OPTIONS.copy()
-                    playlist_opts["noplaylist"] = False
-                    playlist_opts["playlist_items"] = (
-                        "1-25"  # Load exactly 1 to 25 songs
+                    # Fast two-pass extraction:
+                    # Pass 1: extract_flat=True — instant metadata only (title, ID)
+                    # Pass 2: happens in play_next — resolve stream URL per-song
+                    result = await PlaceholderTrack.from_playlist_url(
+                        url, loop=self.bot.loop, playlist_items="1-25"
                     )
+                    logging.info(f"Playlist extraction returned {len(result)} entries")
 
-                    result = await YTDLSource.from_url(
-                        url, loop=self.bot.loop, ytdl_opts=playlist_opts
-                    )
-                    logging.info(
-                        f"YTDLSource.from_url returned type for playlist: {type(result)}, content: {result}"
-                    )
-
-                    if not result or not isinstance(result, list):
-                        logging.warning(
-                            "Could not find any playable playlist content or it's not a playlist."
-                        )
+                    if not result:
                         return await ctx.send(
                             embed=self.create_embed(
                                 "No Playlist Found",
@@ -452,29 +446,16 @@ class Music(commands.Cog):
         try:
             try:
                 async with ctx.typing():
-                    logging.info(
-                        f"Attempting to get YTDLSource for radio from URL: {url}"
-                    )
+                    logging.info(f"Fast-extracting radio playlist from URL: {url}")
 
-                    # Custom options for radio loading (more songs)
-                    radio_opts = YTDL_FORMAT_OPTIONS.copy()
-                    radio_opts["noplaylist"] = False
-                    radio_opts["playlist_items"] = (
-                        "1-100"  # Load up to 100 songs for radio
+                    # Fast two-pass extraction (same as ?playlist but more songs)
+                    result = await PlaceholderTrack.from_playlist_url(
+                        url, loop=self.bot.loop, playlist_items="1-100"
                     )
+                    logging.info(f"Radio extraction returned {len(result)} entries")
 
-                    result = await YTDLSource.from_url(
-                        url, loop=self.bot.loop, ytdl_opts=radio_opts
-                    )
-                    logging.info(
-                        f"YTDLSource.from_url returned {len(result) if isinstance(result, list) else 'single'} entries for radio."
-                    )
-
-                    if not result or not isinstance(result, list):
+                    if not result:
                         await loading_msg.delete()
-                        logging.warning(
-                            "Could not find any playable content or it's not a playlist."
-                        )
                         return await ctx.send(
                             embed=self.create_embed(
                                 "No Radio Content",
@@ -533,6 +514,41 @@ class Music(commands.Cog):
         if not queue.empty() and ctx.voice_client:
             data = await queue.get()
             guild_id = ctx.guild.id
+
+            # ── Resolve PlaceholderTracks lazily ────────────────────
+            # Playlist/radio entries are fetched as PlaceholderTracks
+            # (fast, metadata-only). We resolve the actual stream URL
+            # right now, right before playback. This keeps playlist
+            # loading instant while ensuring reliable playback.
+            if isinstance(data, PlaceholderTrack):
+                resolve_url = data.webpage_url
+                if not resolve_url:
+                    logging.error(
+                        f"play_next: PlaceholderTrack has no webpage_url, skipping. Title: {data.title}"
+                    )
+                    # Skip this broken entry and try the next one
+                    await self.play_next(ctx)
+                    return
+
+                logging.info(
+                    f"play_next: Resolving PlaceholderTrack '{data.title}' → {resolve_url}"
+                )
+                try:
+                    resolved = await YTDLSource.resolve(resolve_url, loop=self.bot.loop)
+                    data = resolved
+                    logging.info(
+                        f"play_next: Resolved PlaceholderTrack to '{data.title}' "
+                        f"(url={data.url[:80]}…)"
+                        if data.url
+                        else f"play_next: Resolved but no URL for '{data.title}'"
+                    )
+                except Exception as e:
+                    logging.error(
+                        f"play_next: Failed to resolve PlaceholderTrack '{data.title}': {e}"
+                    )
+                    # Skip this broken entry and try the next one
+                    await self.play_next(ctx)
+                    return
 
             # ── DJ Mode: Speak an intro before the song ────────────
             if (
@@ -664,11 +680,15 @@ class Music(commands.Cog):
             queue = await self.get_queue(guild_id)  # Pass guild_id directly
 
             current_time = int(time.time() - self.song_start_time[guild_id])
-            progress_bar = self._get_progress_bar(current_time, data.duration)
+            duration = (
+                data.duration or 0
+            )  # Safety: None → 0 (shows live/unknown indicator)
+            progress_bar = self._get_progress_bar(current_time, duration)
 
+            duration_str = f"{duration // 60}:{duration % 60:02d}" if duration else "∞"
             embed = self.create_embed(
                 f"{config.PLAY_EMOJI} Now Playing",
-                f"[{data.title}]({data.webpage_url})\n\n{progress_bar} {current_time // 60}:{current_time % 60:02d} / {data.duration // 60}:{data.duration % 60:02d}",
+                f"[{data.title}]({data.webpage_url})\n\n{progress_bar} {current_time // 60}:{current_time % 60:02d} / {duration_str}",
                 Queue=f"{queue.qsize()} songs remaining",
             )
             embed.set_thumbnail(url=data.thumbnail)
@@ -926,10 +946,14 @@ class Music(commands.Cog):
                 data = self.current_song[guild_id]
                 queue = await self.get_queue(ctx.guild.id)
                 current_time = int(time.time() - self.song_start_time[guild_id])
-                progress_bar = self._get_progress_bar(current_time, data.duration)
+                duration = data.duration or 0
+                progress_bar = self._get_progress_bar(current_time, duration)
+                duration_str = (
+                    f"{duration // 60}:{duration % 60:02d}" if duration else "∞"
+                )
                 embed = self.create_embed(
                     f"{config.PLAY_EMOJI} Now Playing",
-                    f"[{data.title}]({data.webpage_url})\n\n{progress_bar} {current_time // 60}:{current_time % 60:02d} / {data.duration // 60}:{data.duration % 60:02d}",
+                    f"[{data.title}]({data.webpage_url})\n\n{progress_bar} {current_time // 60}:{current_time % 60:02d} / {duration_str}",
                     Queue=f"{queue.qsize()} songs remaining",
                 )
                 embed.set_thumbnail(url=data.thumbnail)

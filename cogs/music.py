@@ -514,6 +514,10 @@ class Music(commands.Cog):
         if not queue.empty() and ctx.voice_client:
             data = await queue.get()
             guild_id = ctx.guild.id
+            logging.info(
+                f"play_next: Dequeued {type(data).__name__} — "
+                f"title={data.title}, url={str(data.url)[:60] if data.url else 'None'}"
+            )
 
             # ── Resolve PlaceholderTracks lazily ────────────────────
             # Playlist/radio entries are fetched as PlaceholderTracks
@@ -874,17 +878,28 @@ class Music(commands.Cog):
                     )
 
     async def _after_playback(self, ctx, error):
+        guild_id = ctx.guild.id
         if error:
             logging.error(f"Player error in {ctx.guild.name}: {error}", exc_info=True)
-            # Optionally, send an error message to the channel
-            # await ctx.send(embed=self.create_embed("Playback Error", f"An error occurred during playback: {error}", discord.Color.red()))
+            channel = self.bot.get_channel(ctx.channel.id)
+            if channel:
+                try:
+                    await channel.send(
+                        embed=self.create_embed(
+                            "Playback Error",
+                            f"{config.ERROR_EMOJI} Playback error: {error}",
+                            discord.Color.red(),
+                        )
+                    )
+                except Exception:
+                    pass  # Don't crash trying to report a crash
 
-        queue = await self.get_queue(ctx.guild.id)
+        queue = await self.get_queue(guild_id)
 
         # Check if looping is enabled
-        if self.looping.get(ctx.guild.id):
+        if self.looping.get(guild_id):
             # If looping, re-add the current song to the queue
-            current_song_data = self.current_song.get(ctx.guild.id)
+            current_song_data = self.current_song.get(guild_id)
             if current_song_data:
                 await queue.put(current_song_data)
                 logging.info(
@@ -1694,7 +1709,11 @@ class Music(commands.Cog):
             return
 
         try:
-            logging.info(f"Playing {data.title} in {ctx.guild.name}")
+            logging.info(
+                f"Playing {data.title} in {ctx.guild.name} (url={data.url[:80]}…)"
+                if data.url
+                else f"Playing {data.title} — NO URL!"
+            )
 
             current_speed = self.playback_speed.get(guild_id, 1.0)
             player_options = FFMPEG_OPTIONS.copy()

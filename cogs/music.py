@@ -13,6 +13,7 @@ from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
     EDGE_TTS_AVAILABLE,
     generate_intro,
+    generate_song_intro,
     generate_outro,
     generate_tts,
     cleanup_tts_file,
@@ -541,27 +542,22 @@ class Music(commands.Cog):
             ):
                 # Build the DJ intro text
                 prev_song = self.current_song.get(guild_id)
-                next_song = data
-                has_next_in_queue = not queue.empty()
 
                 if prev_song:
-                    # Transition from a previous track
-                    next_title = None
-                    if has_next_in_queue:
-                        # Peek at the next item without removing it
-                        next_title = (
-                            queue._queue[0].title if queue.qsize() > 0 else None
-                        )
+                    # Transition from a previous track — outro the old,
+                    # intro the new, all in one spoken line
+                    peek_title = None
+                    if not queue.empty() and queue.qsize() > 0:
+                        peek_title = queue._queue[0].title
                     intro_text = generate_outro(
                         prev_song.title,
-                        has_next=has_next_in_queue
-                        or True,  # we'reabout to play something
-                        next_title=next_title if next_title else data.title,
+                        has_next=True,
+                        next_title=data.title,
                         queue_size=queue.qsize(),
                     )
                 else:
-                    # First song in the session — just intro it
-                    intro_text = generate_intro(data.title)
+                    # First song in the session — full intro with greeting
+                    intro_text = generate_intro(data.title, queue_size=queue.qsize())
 
                 # Store the pending song so _on_tts_done can pick it up
                 if not hasattr(self, "_dj_pending"):

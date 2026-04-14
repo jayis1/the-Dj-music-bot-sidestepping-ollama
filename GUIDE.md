@@ -1184,11 +1184,29 @@ Queue empty?
 
 | Category | Count | Example |
 |---|---|---|
-| **Intros** | 12 | "Up next, {title}!", "Let's go with {title}.", "This one's a great track, {title}." |
-| **Outros** | 5 | "That was {title}.", "Great track, {title}." |
-| **Transitions** | 7 | "That was {prev_title}. Coming up next, {next_title}.", "Moving on from {prev_title}. Next up, {next_title}!" |
-| **Final Outros** | 5 | "That was {title}, and that's all for now!", "That wraps things up with {title}. See you next time!" |
-| **Station IDs** | 5 | "You're listening to M Bot Radio.", "This is M Bot, keeping the music alive." |
+| **Session Intros** | 12 | "Good evening, everyone! Let's kick things off with {title}.", "Rise and shine, everyone! Our opening track is {title}." |
+| **Hype Intros** | 14 | "Up next, {title}!", "Oh, this is a good one. Here's {title}.", "Turn it up for {title}!" |
+| **Hype Intros (loud)** | 9 | "Oh yeah! It's time for {title}!", "This next one goes hard. {title}!", "Here. We. Go. {title}!" |
+| **Outros** | 8 | "That was {title}.", "Love that one. {title}.", "Mm, {title}. That hit the spot." |
+| **Transitions** | 15 | "That was {prev_title}. And up next, {next_title}.", "{prev_title} in the books. Up next, {next_title}!" |
+| **Hype Transitions** | 5 | "That was {prev_title} — and the next one is even better. {next_title}!" |
+| **Mellow Transitions** | 5 | "That was {prev_title}. Taking it easy with {next_title}.", "Lovely track. Here's {next_title} to keep the vibe going." |
+| **Final Outros** | 10 | "The queue's empty, but the radio stays on. I'll be right here.", "{title} — and that's a wrap on tonight's set." |
+| **Station IDs** | 10 | "You're tuned in to MBot Radio.", "This is your DJ on MBot Radio." |
+| **Listener Callouts** | 10 | "Shoutout to everyone listening right now.", "The vibes are immaculate right now." |
+| **Queue Banter** | 10+ | "One more left in the queue.", "We are in it for the long haul tonight, folks. 20 more tracks!" |
+
+### Time-Aware Behavior
+
+The DJ adjusts its personality based on the time of day:
+
+| Time | Greeting Style | Transition Style |
+|---|---|---|
+| **Morning** (5–12) | "Rise and shine!", "Top of the morning to ya!" | Normal energy |
+| **Afternoon** (12–17) | "Good afternoon!", "Hope your afternoon's going well!" | Normal energy |
+| **Evening** (17–21) | "Good evening, everyone!", "Perfect time for some tunes." | Normal energy |
+| **Night** (21–23) | "Evening, night owls!", "Night crew, you're in the right place." | 35% chance of mellow transitions |
+| **Late Night** (23–5) | "Late night crew, I see you!", "Burning the midnight oil?" | 40% chance of mellow transitions |
 
 ### Available Voices
 

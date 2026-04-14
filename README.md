@@ -74,33 +74,70 @@ MBot includes a unique **Radio DJ Mode**. When activated, the bot utilizes a Tex
 ---
 
 ## 🛠️ Prerequisites
-- **Python 3.9+**
-- System packages: `ffmpeg`, `libopus-dev`, `screen`, `git`
-- Target OS: Recommended on Debian/Ubuntu Linux
 
-## 🚀 Installation & Setup
+Before you start, you'll need a computer or server (like a Raspberry Pi or a cloud server) running a Linux operating system (like Ubuntu or Debian). Our setup script will try to install everything else you need automatically!
 
-We recommend using the interactive `start.sh` launcher script as it handles all dependencies, sets up a Python virtual environment, and helps you create your configuration automatically.
+## 🚀 Step-by-Step Installation & Setup
 
-1. **Clone the repository:**
+Don't worry if you aren't super technical! We have created an interactive setup wizard that does all the heavy lifting for you. It automatically downloads the required software (like Python and audio tools) and prepares your bot.
+
+**Step 1: Download the Bot's Code**
+Open your terminal (command line) and type the following commands. Press `Enter` after each line:
+```bash
+git clone https://github.com/jayis1/the-Dj-music-bot.git
+cd the-Dj-music-bot
+```
+*(This tells your computer to copy the bot's code onto your machine and open the bot's folder.)*
+
+**Step 2: Get Your Discord Bot Token**
+Before we can run the setup, you need to create a bot account on Discord.
+1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) and sign in.
+2. Click **"New Application"** in the top right, give it a name, and hit create.
+3. On the left sidebar, click **"Bot"**.
+4. Scroll down to the **"Privileged Gateway Intents"** section and ensure **Message Content Intent** and **Voice State Intent** (if available) are turned on.
+5. Look for the **"Token"** section. Click **"Reset Token"** and copy the long string of letters and numbers it gives you. Keep this secret! You'll need it in a moment.
+6. Still in the Developer portal, go to **OAuth2 -> URL Generator**. Check `bot` and `applications.commands`. Then check giving it the necessary permissions (Administrator is easiest). Copy the generated URL and paste it in your browser to invite the bot to your server!
+
+**Step 3: Run the Setup Wizard**
+Now, go back to your terminal where you typed the commands in Step 1, and run our magic script:
+```bash
+bash start.sh
+```
+This script will start installing things. It might take a minute! Eventually, it will pause and ask you some questions:
+
+1. **DISCORD_TOKEN**: Paste the long string of letters and numbers you copied in Step 2. This is the only required piece of information!
+2. **YOUTUBE_API_KEY**: You can just press `Enter` to skip this. (It's only needed if you want to use the `?search` command later).
+3. **LOG_CHANNEL_ID**: You can just press `Enter` to skip this.
+4. **BOT_OWNER_ID**: You can just press `Enter` to skip this.
+
+That's it! Your bot should now connect to your Discord server and be ready to play music.
+
+## 🚑 Alternative Setup & Troubleshooting
+
+If you run into issues with the interactive wizard (`start.sh`), or prefer to do things manually, you can use the minimalistic launcher:
+
+1. **Manual Setup**:
+   Instead of `start.sh`, run this command to install the required system and Python dependencies:
    ```bash
-   git clone https://github.com/jayis1/the-Dj-music-bot.git
-   cd the-Dj-music-bot
+   chmod +x launch.sh
+   ./launch.sh setup
    ```
-
-2. **Run the interactive setup:**
+2. **Create Configuration Manually**:
+   Since there's no wizard here, you will have to create your `.env` file yourself:
    ```bash
-   bash start.sh
+   cp .env.example .env
    ```
+   *Now, open the `.env` file in your favorite text editor (e.g., `nano .env`) and paste your `DISCORD_TOKEN` there.*
+3. **Start the Bot in the Background**:
+   Once configured, start the bot like this:
+   ```bash
+   ./launch.sh start
+   ```
+   *(This launches the bot silently in the background inside a "screen" session named 'musicbot'.)*
 
-### ⚙️ Required Configuration Variables
-The interactive setup will ask you for these, storing them securely in a `.env` file:
-| Variable | Description | Required |
-| --- | --- | --- |
-| `DISCORD_TOKEN` | Connecting token from the Discord Developer Portal. | **Yes** |
-| `YOUTUBE_API_KEY` | Needed if you want to use the `?search` command. | No |
-| `LOG_CHANNEL_ID` | A Discord Channel ID where the bot will send logs. | No |
-| `BOT_OWNER_ID` | The developer's Discord User ID (to run admin commands). | No |
+**Troubleshooting Commands:**
+- **Bot online but won't play audio?** You might be missing dependencies. Run `./launch.sh doctor` which runs self-diagnostic tests to uncover the problem.
+- **Can't figure out why it crashed?** If you started it entirely in the background, you can run `./launch.sh attach` to peek at the live background process and grab error logs. Press `Ctrl+A` followed by `D` to safely detach when you're done looking!
 
 ## 📚 Further Documentation
 For detailed insights regarding architecture, cog layout, creating your own modules, or managing yt-dlp cached metadata, please refer directly to the comprehensive [GUIDE.md](GUIDE.md).

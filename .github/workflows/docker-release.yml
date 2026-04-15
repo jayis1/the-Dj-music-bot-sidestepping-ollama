@@ -18,6 +18,9 @@ permissions:
   contents: write      # For creating GitHub Releases
   packages: write      # For pushing to ghcr.io
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true   # Opt into Node.js 24 ahead of June 2026 deadline
+
 jobs:
   build-and-release:
     name: Build, Push & Release

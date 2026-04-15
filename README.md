@@ -27,7 +27,30 @@ MBot includes a unique **Radio DJ Mode**. When activated, the bot utilizes a Tex
 - Use `?dj` to toggle DJ Mode on or off for your server.
 - The default voice is a female American voice (`en-US-AriaNeural`). 
 - Change the DJ's voice anytime using `?djvoice <voice_name>`.
-- Use `?djvoices` to browse the extensive list of available AI voices.
+---
+
+## 🌐 Web Dashboard & Custom DJ Lines
+*(Available at `http://your-server:8080/`)*
+
+MBot features a built-in web dashboard (powered by Flask) that starts automatically in the background alongside the Discord bot.
+
+**Dashboard Features:**
+- **Live Status:** View the now playing song, queue size, volume, playback speed, and DJ mode status for every server the bot is in.
+- **Mission Control Theme:** A sleek, dark-themed UI that auto-refreshes every 30 seconds to keep you updated.
+
+**Custom DJ Lines (`/dj-lines`):**
+- **10 Categories:** Customize Intros, Song Intros, Hype Intros (Loud), Outros, Transitions, Hype Transitions, Mellow Transitions, Final Outros, Station IDs, and Listener Callouts.
+- **Built-in vs Custom:** Mixes your custom lines (purple tags) with the built-in lines (gray tags) randomly so the DJ stays fresh.
+- **Dynamic Variables:** Add placeholders like `{title}`, `{prev_title}`, `{next_title}`, and `{greeting}` right into your custom lines!
+- Custom lines are saved instantly to `dj_custom_lines.json` and persist across reboots.
+
+**Configuration:**
+In your `.env` file, you can customize the host and port:
+```env
+WEB_HOST=0.0.0.0
+WEB_PORT=8080
+```
+*(If Flask isn't installed, the bot will log a warning and continue running normally without the dashboard).*
 
 ---
 

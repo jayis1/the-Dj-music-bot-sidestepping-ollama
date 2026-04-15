@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}DJ Lines{% endblock %}
+{% block content %}
+<h1 style="margin-bottom: 8px;">🎙️ Custom DJ Lines</h1>
+<p style="color: var(--text-muted); margin-bottom: 24px;">
+    Add your own lines for the DJ to say. Use placeholders like
+    <code>{title}</code>, <code>{prev_title}</code>, <code>{next_title}</code>, and <code>{greeting}</code>.
+    Custom lines are mixed in with the built-in ones.
+</p>
+
+<div class="card">
+    <h2 style="margin-bottom: 16px;">➕ Add New Line</h2>
+    <form class="add-line-form" method="POST" action="{{ url_for('dj_lines_add') }}">
+        <select name="category">
+            {% for cat in categories %}
+            <option value="{{ cat.key }}">{{ cat.label }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="line" placeholder="That was {prev_title}. But wait — {next_title} is even better!" required>
+        <button type="submit" class="btn btn-primary">Add Line</button>
+    </form>
+    <div class="placeholders-hint">
+        <strong>Available placeholders:</strong>
+        <code>{title}</code> = current song ·
+        <code>{prev_title}</code> = last song ·
+        <code>{next_title}</code> = next song ·
+        <code>{greeting}</code> = time-based greeting (intros only)
+    </div>
+</div>
+
+{% for cat in categories %}
+<div class="category-section">
+    <h3>
+        {{ cat.label }}
+        <span class="count">{{ cat.builtin_count }} built-in · {{ cat.custom_count }} custom</span>
+    </h3>
+
+    <ul class="line-list">
+        {% for line in cat.builtin %}
+        <li>
+            <span class="line-text">{{ line }}</span>
+            <span class="line-badge builtin">built-in</span>
+        </li>
+        {% endfor %}
+        {% for line in cat.custom %}
+        <li>
+            <span class="line-text">{{ line }}</span>
+            <span class="line-badge custom">custom</span>
+            <div class="actions">
+                <form method="POST" action="{{ url_for('dj_lines_remove') }}" style="display:inline;">
+                    <input type="hidden" name="category" value="{{ cat.key }}">
+                    <input type="hidden" name="index" value="{{ loop.index0 }}">
+                    <button type="submit" class="btn btn-danger btn-icon" title="Delete" onclick="return confirm('Delete this line?')">✕</button>
+                </form>
+            </div>
+        </li>
+        {% endfor %}
+        {% if cat.total == 0 %}
+        <li style="color: var(--text-muted); font-style: italic;">No lines yet</li>
+        {% endif %}
+    </ul>
+</div>
+{% endfor %}
+{% endblock %}

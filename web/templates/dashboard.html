@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1 style="margin-bottom: 8px;">📡 Mission Control</h1>
+<p style="color: var(--text-muted); margin-bottom: 32px;">Live status for your MBot instance</p>
+
+<div class="status-bar">
+    <div class="status-indicator">
+        <div class="status-dot {% if bot_user != 'Not connected' %}{% else %}offline{% endif %}"></div>
+        <span>{{ bot_user }}</span>
+    </div>
+    <div style="color: var(--text-muted); font-size: 13px;">{{ guild_count }} server{{ guild_count != 1 }}</div>
+</div>
+
+<div class="guild-grid">
+{% for g in guilds %}
+    <div class="card guild-card">
+        <div class="guild-header">
+            <div class="guild-icon">{{ g.name[0] }}</div>
+            <div class="guild-info">
+                <h3>{{ g.name }}</h3>
+                <div class="meta">
+                    {{ g.member_count }} members
+                    {% if g.in_voice %} · 🔊 {{ g.voice_channel }}{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat">
+                <div class="value">{% if g.playing %}▶️{% elif g.paused %}⏸️{% elif g.in_voice %}⏹️{% else %}—{% endif %}</div>
+                <div class="label">{% if g.playing %}Playing{% elif g.paused %}Paused{% elif g.in_voice %}Idle{% else %}Offline{% endif %}</div>
+            </div>
+            <div class="stat">
+                <div class="value">{{ g.queue_size }}</div>
+                <div class="label">Queue</div>
+            </div>
+            <div class="stat">
+                <div class="value">{{ g.volume }}%</div>
+                <div class="label">Volume</div>
+            </div>
+            <div class="stat">
+                <div class="value">{{ "%.1f"|format(g.speed) }}x</div>
+                <div class="label">Speed</div>
+            </div>
+        </div>
+
+        {% if g.dj_enabled %}
+        <div style="margin-bottom: 12px;">
+            <span class="badge badge-dj">🎙️ DJ Mode ON</span>
+            <span style="font-size: 12px; color: var(--text-muted); margin-left: 8px;">Voice: {{ g.dj_voice }}</span>
+        </div>
+        {% endif %}
+
+        {% if g.looping %}
+        <div style="margin-bottom: 12px;">
+            <span class="badge badge-paused">🔁 Loop</span>
+        </div>
+        {% endif %}
+
+        {% if g.current_song %}
+        <div class="card now-playing" style="margin-bottom: 0; margin-top: 4px;">
+            <div class="song-title">
+                {% if g.current_song_url %}<a href="{{ g.current_song_url }}" target="_blank">{% endif %}
+                {{ g.current_song }}
+                {% if g.current_song_url %}</a>{% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+{% endfor %}
+</div>
+
+<p style="color: var(--text-muted); font-size: 12px; margin-top: 24px; text-align: center;">
+    Auto-refreshes every 30 seconds ·
+    <a href="{{ url_for('dashboard') }}">Refresh now</a>
+</p>
+{% endblock %}

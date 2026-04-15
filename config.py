@@ -38,3 +38,7 @@ DJ_VOICE = "en-US-AriaNeural"
 
 # Emojis for DJ mode
 DJ_EMOJI = "🎙️"
+
+# Web Dashboard
+WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
+WEB_PORT = int(os.environ.get("WEB_PORT", 8080))

@@ -6,6 +6,7 @@ python-dotenv
 audioop-lts; python_version >= "3.13"
 aiohttp
 edge-tts
+flask
 pytest
 pytest-asyncio
 aioresponses

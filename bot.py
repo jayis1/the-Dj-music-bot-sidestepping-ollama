@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import os
+import threading
 import discord
 from discord.ext import commands
 import config
@@ -10,11 +11,11 @@ from utils.discord_log_handler import DiscordLogHandler
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s:%(levelname)s:%(name)s: %(message)s',
+    format="%(asctime)s:%(levelname)s:%(name)s: %(message)s",
     handlers=[
         logging.FileHandler("bot_activity.log"),
-        logging.StreamHandler() # Keep StreamHandler for console output
-    ]
+        logging.StreamHandler(),  # Keep StreamHandler for console output
+    ],
 )
 
 intents = discord.Intents.default()
@@ -23,14 +24,15 @@ intents.voice_states = True
 
 bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=intents)
 
-discord_log_handler = None # Initialize as None, will be set in on_ready
+discord_log_handler = None  # Initialize as None, will be set in on_ready
+
 
 @bot.event
 async def on_ready():
     global discord_log_handler
-    logging.info(f'Logged in as {bot.user} (ID: {bot.user.id})')
+    logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logging.info(f"Intents: {bot.intents}")
-    logging.info('------')
+    logging.info("------")
 
     # Clean up any stale voice sessions left over from a previous crash/restart.
     # Without this, Discord rejects new connections with 4006 "Session no longer valid".
@@ -42,10 +44,15 @@ async def on_ready():
     # Initialize and add DiscordLogHandler after bot is ready
     if config.LOG_CHANNEL_ID and config.LOG_CHANNEL_ID != "YOUR_LOG_CHANNEL_ID":
         discord_log_handler = DiscordLogHandler(bot, config.LOG_CHANNEL_ID)
-        logging.getLogger().addHandler(discord_log_handler) # Add to root logger
-        logging.info(f"Discord log handler added for channel ID: {config.LOG_CHANNEL_ID}")
+        logging.getLogger().addHandler(discord_log_handler)  # Add to root logger
+        logging.info(
+            f"Discord log handler added for channel ID: {config.LOG_CHANNEL_ID}"
+        )
     else:
-        logging.warning("LOG_CHANNEL_ID is not set in config.py. Discord logging will be disabled.")
+        logging.warning(
+            "LOG_CHANNEL_ID is not set in config.py. Discord logging will be disabled."
+        )
+
 
 async def main():
     # The yt_dlp_cache directory is no longer strictly necessary for streaming,
@@ -59,22 +66,65 @@ async def main():
         logging.info(f"yt-dlp cache directory already exists: {cache_dir}")
 
     async with bot:
-        for filename in os.listdir('./cogs'):
-            if filename.endswith('.py') and filename != '__init__.py' and filename != 'youtube.py' and filename != 'logging.py':
+        for filename in os.listdir("./cogs"):
+            if (
+                filename.endswith(".py")
+                and filename != "__init__.py"
+                and filename != "youtube.py"
+                and filename != "logging.py"
+            ):
                 try:
-                    await bot.load_extension(f'cogs.{filename[:-3]}')
-                    logging.info(f'Successfully loaded extension: {filename}')
+                    await bot.load_extension(f"cogs.{filename[:-3]}")
+                    logging.info(f"Successfully loaded extension: {filename}")
                 except Exception as e:
-                    logging.error(f'Failed to load extension {filename}: {e}')
-        
+                    logging.error(f"Failed to load extension {filename}: {e}")
+
         try:
             await bot.start(config.DISCORD_TOKEN)
         except discord.errors.LoginFailure:
-            logging.error("Error: Invalid Discord Token. Please check your DISCORD_TOKEN in config.py.")
+            logging.error(
+                "Error: Invalid Discord Token. Please check your DISCORD_TOKEN in config.py."
+            )
         except Exception as e:
             logging.error(f"Error when starting bot: {e}")
 
+        try:
+            await bot.start(config.DISCORD_TOKEN)
+        except discord.errors.LoginFailure:
+            logging.error(
+                "Error: Invalid Discord Token. Please check your DISCORD_TOKEN in config.py."
+            )
+        except Exception as e:
+            logging.error(f"Error when starting bot: {e}")
+
+
+def run_web_server():
+    """Start the Flask web dashboard in a separate thread."""
+    try:
+        from web.app import app, init_dashboard
+
+        init_dashboard(bot)
+        log = logging.getLogger("werkzeug")
+        log.setLevel(logging.WARNING)
+        logging.info(
+            f"Web dashboard starting on http://{config.WEB_HOST}:{config.WEB_PORT}"
+        )
+        app.run(
+            host=config.WEB_HOST, port=config.WEB_PORT, debug=False, use_reloader=False
+        )
+    except ImportError as e:
+        logging.warning(
+            f"Flask not installed — web dashboard unavailable. Install with: pip install flask ({e})"
+        )
+    except Exception as e:
+        logging.error(f"Web dashboard failed to start: {e}")
+
+
 if __name__ == "__main__":
+    # Start web dashboard in a background thread
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

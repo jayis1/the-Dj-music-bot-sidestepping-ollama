@@ -273,14 +273,42 @@ CALLOUTS = [
 # ── Message Generation ─────────────────────────────────────────────
 
 
+def _pool(category: str) -> list[str]:
+    """Return built-in + custom lines for a category, deduplicated."""
+    from utils.custom_lines import load_custom_lines
+
+    builtin = {
+        "intros": INTROS,
+        "hype_intros": HYPE_INTROS,
+        "hype_intros_loud": HYPE_INTROS_LOUD,
+        "outros": OUTROS,
+        "transitions": TRANSITIONS,
+        "transitions_hype": TRANSITIONS_HYPE,
+        "transitions_mellow": TRANSITIONS_MELLOW,
+        "outros_final": OUTROS_FINAL,
+        "station_ids": STATION_IDS,
+        "callouts": CALLOUTS,
+    }.get(category, [])
+    custom = load_custom_lines().get(category, [])
+    combined = list(builtin) + custom
+    # Deduplicate while preserving order
+    seen = set()
+    result = []
+    for line in combined:
+        if line not in seen:
+            seen.add(line)
+            result.append(line)
+    return result
+
+
 def generate_intro(title: str, queue_size: int = 0) -> str:
     """Generate a DJ intro message before the first song of a session."""
     greeting = _time_greeting()
-    msg = random.choice(INTROS).format(greeting=greeting, title=title)
+    msg = random.choice(_pool("intros")).format(greeting=greeting, title=title)
 
     # 30% chance to prepend a station ID
     if random.random() < 0.30:
-        msg = random.choice(STATION_IDS) + " " + msg
+        msg = random.choice(_pool("station_ids")) + " " + msg
 
     return msg
 
@@ -291,16 +319,16 @@ def generate_song_intro(title: str, queue_size: int = 0) -> str:
 
     # Late night? Go mellow 40% of the time
     if tod in ("night", "late night") and random.random() < 0.40:
-        msg = random.choice(HYPE_INTROS).format(title=title)
+        msg = random.choice(_pool("hype_intros")).format(title=title)
     # 20% chance of a loud/hype intro
     elif random.random() < 0.20:
-        msg = random.choice(HYPE_INTROS_LOUD).format(title=title)
+        msg = random.choice(_pool("hype_intros_loud")).format(title=title)
     else:
-        msg = random.choice(HYPE_INTROS).format(title=title)
+        msg = random.choice(_pool("hype_intros")).format(title=title)
 
     # 15% chance to tack on a listener callout
     if random.random() < 0.15:
-        msg += " " + random.choice(CALLOUTS)
+        msg += " " + random.choice(_pool("callouts"))
 
     # Add queue banter if songs are lined up
     banter = _queue_banter(queue_size)
@@ -320,16 +348,16 @@ def generate_outro(
         # We know both songs — use a transition
         # Late night? Go mellow sometimes
         if tod in ("night", "late night") and random.random() < 0.35:
-            msg = random.choice(TRANSITIONS_MELLOW).format(
+            msg = random.choice(_pool("transitions_mellow")).format(
                 prev_title=title, next_title=next_title
             )
         # 20% chance of a hype transition
         elif random.random() < 0.20:
-            msg = random.choice(TRANSITIONS_HYPE).format(
+            msg = random.choice(_pool("transitions_hype")).format(
                 prev_title=title, next_title=next_title
             )
         else:
-            msg = random.choice(TRANSITIONS).format(
+            msg = random.choice(_pool("transitions")).format(
                 prev_title=title, next_title=next_title
             )
 
@@ -341,18 +369,18 @@ def generate_outro(
 
     elif has_next:
         # Next track exists but we don't know its title
-        msg = random.choice(OUTROS).format(title=title)
+        msg = random.choice(_pool("outros")).format(title=title)
         banter = _queue_banter(queue_size)
         if banter:
             msg += " " + banter
 
     else:
         # Last song — queue is empty after this
-        msg = random.choice(OUTROS_FINAL).format(title=title)
+        msg = random.choice(_pool("outros_final")).format(title=title)
 
     # 20% chance to prepend a station ID on the outro too
     if random.random() < 0.20:
-        msg = random.choice(STATION_IDS) + " " + msg
+        msg = random.choice(_pool("station_ids")) + " " + msg
 
     return msg
 

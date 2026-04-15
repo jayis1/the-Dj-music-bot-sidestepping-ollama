@@ -109,7 +109,7 @@
     {% endif %}
     {% endif %}
 
-    <!-- Now playing with thumbnail -->
+    <!-- Now playing with thumbnail + progress bar -->
     {% if g.current_song %}
     <div class="now-playing" style="display: flex; gap: 16px; align-items: flex-start;">
         {% if g.current_thumbnail %}
@@ -123,13 +123,41 @@
                 {{ g.current_song }}
                 {% if g.current_song_url %}</a>{% endif %}
             </div>
-            <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
-                {% if g.current_duration %}
-                    {{ g.current_duration // 60 }}:{{ "%02d"|format(g.current_duration % 60) }}
-                {% else %}
-                    ∞
+
+            <!-- Progress bar -->
+            {% if g.current_duration and g.current_duration > 0 %}
+            <div style="margin-top: 8px;">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="progress-fill-{{ g.id }}" style="width: {{ [0, (g.current_elapsed / g.current_duration * 100)|int]|min(100) }}%;"></div>
+                </div>
+                <div class="progress-bar-time">
+                    <span id="elapsed-{{ g.id }}">{{ (g.current_elapsed // 60) }}:{{ "%02d"|format(g.current_elapsed % 60) }}</span>
+                    <span> / </span>
+                    <span>{{ (g.current_duration // 60) }}:{{ "%02d"|format(g.current_duration % 60) }}</span>
+                </div>
+            </div>
+            {% elif g.playing or g.paused %}
+            <div style="margin-top: 8px;">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" style="width: {% if g.playing %}8%{% elif g.paused %}4%{% else %}0%{% endif %}; animation: {% if g.playing %}pulse-bar 2s ease-in-out infinite{% endif %};"></div>
+                </div>
+                <div class="progress-bar-time">
+                    <span id="elapsed-{{ g.id }}">{{ (g.current_elapsed // 60) if g.current_elapsed else "∞" }}{% if g.current_elapsed %}:{{ "%02d"|format(g.current_elapsed % 60) }}{% endif %}</span>
+                    <span> / ∞</span>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Queue total duration -->
+            {% if g.queue_duration and g.queue_duration > 0 %}
+            <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+                📋 Queue total: {{ (g.queue_duration // 3600) }}h {{ ((g.queue_duration % 3600) // 60) }}m {{ (g.queue_duration % 60) }}s
+                {% if g.current_duration and g.current_duration > 0 %}
+                · Session total: {{ ((g.current_duration + g.queue_duration) // 3600) }}h {{ (((g.current_duration + g.queue_duration) % 3600) // 60) }}m {{ ((g.current_duration + g.queue_duration) % 60) }}s
                 {% endif %}
             </div>
+            {% endif %}
+
             <!-- Lyrics toggle button -->
             <button class="btn" style="margin-top: 8px; font-size: 12px;" onclick="toggleLyrics('{{ g.id }}')">🎤 Lyrics</button>
         </div>
@@ -153,7 +181,7 @@
     {% if g.queue_size > 0 %}
     <div style="margin-top: 16px;">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
-            <h4 style="font-size: 14px; color: var(--text-secondary);">📋 Up Next ({{ g.queue_size }})</h4>
+            <h4 style="font-size: 14px; color: var(--text-secondary);">📋 Up Next ({{ g.queue_size }}{% if g.queue_duration and g.queue_duration > 0 %} · {{ (g.queue_duration // 3600) }}h {{ ((g.queue_duration % 3600) // 60) }}m{% endif %})</h4>
             <div style="display: flex; gap: 4px;">
                 <!-- Save as preset button -->
                 <button class="btn" style="font-size: 11px;" onclick="savePreset('{{ g.id }}')">💾 Save</button>
@@ -473,6 +501,36 @@
     background: rgba(34,197,94,0.15);
     color: var(--success);
 }
+
+/* Song progress bar */
+.progress-bar-track {
+    width: 100%;
+    height: 8px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), #a855f7);
+    border-radius: 4px;
+    transition: width 1s linear;
+    min-width: 2px;
+}
+.progress-bar-time {
+    display: flex;
+    justify-content: flex-start;
+    gap: 0;
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+}
+@keyframes pulse-bar {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
 </style>
 
 <!-- ==================== SCRIPTS ==================== -->
@@ -791,5 +849,43 @@ async function addToQueue() {
 document.getElementById('search-input')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addToQueue();
 });
+
+// ── Live Progress Bar Ticker ──────────────────────────────────
+// Each guild card gets a live timer that ticks the progress bar forward
+// every second, so the user sees real-time song progression between page refreshes.
+(function() {
+    // Gather all guild data for progress bars
+    const guildProgress = {
+    {% for g in guilds %}
+    {% if g.playing and g.current_song and g.current_duration and g.current_duration > 0 %}
+        '{{ g.id }}': { elapsed: {{ g.current_elapsed }}, duration: {{ g.current_duration }}, speed: {{ g.speed }} },
+    {% endif %}
+    {% endfor %}
+    };
+
+    function formatTime(sec) {
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return m + ':' + (s < 10 ? '0' : '') + s;
+    }
+
+    setInterval(function() {
+        for (const [gid, data] of Object.entries(guildProgress)) {
+            data.elapsed += data.speed;  // account for playback speed
+            if (data.elapsed >= data.duration) data.elapsed = data.duration;
+
+            const fill = document.getElementById('progress-fill-' + gid);
+            if (fill) {
+                const pct = Math.min(100, (data.elapsed / data.duration) * 100);
+                fill.style.width = pct + '%';
+            }
+
+            const elapsedEl = document.getElementById('elapsed-' + gid);
+            if (elapsedEl) {
+                elapsedEl.textContent = formatTime(data.elapsed);
+            }
+        }
+    }, 1000);
+})();
 </script>
 {% endblock %}

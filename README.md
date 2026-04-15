@@ -50,6 +50,8 @@ The radio dj music bot features a built-in web dashboard (powered by Flask) that
 - **🔁 Auto-DJ / Radio Autoplay:** When the queue empties, the bot automatically refills it from a YouTube playlist URL, a saved preset (`preset:Name`), or randomly from your recently played history.
 - **🎧 Listener List:** Avatar pills showing exactly who is in the voice channel — live.
 - **📊 Live Audio Visualizer:** A 48-bar animated frequency canvas that pulses while music plays. Toggle it on/off anytime.
+- **⏱️ Live Song Progress Bar:** A gradient-filled progress bar with a real-time JavaScript ticker that updates every second (respecting playback speed). Shows elapsed/total time (e.g. `1:23 / 3:45`). Unknown-duration songs get a smooth pulsing animation instead.
+- **📋 Queue & Session Duration:** The queue header shows total remaining playtime. Below the progress bar, a summary displays queue total and session total (current song + queue) so you always know how long the party lasts.
 - **Web-based "Add to Queue":** A built-in search bar allows you to paste YouTube links or search queries directly from the dashboard to instantly queue songs.
 - **Live Lyrics Panel:** Automatically fetches and displays lyrics for the currently playing track via `syncedlyrics`.
 - **Save / Load Custom Playlists (Presets):** Save your perfectly crafted queues directly into a preset JSON, and reload them with one click later.

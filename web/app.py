@@ -15,6 +15,7 @@ and modify bot state directly via the Music cog.
 import asyncio
 import logging
 import re
+import time
 import urllib.parse
 
 from flask import (
@@ -152,7 +153,17 @@ def dashboard():
                     "current_song_url": current.webpage_url if current else None,
                     "current_thumbnail": current.thumbnail if current else None,
                     "current_duration": current.duration if current else None,
+                    "current_elapsed": (
+                        int(time.time() - music.song_start_time[guild_id])
+                        if music
+                        and guild_id in music.song_start_time
+                        and (voice and (voice.is_playing() or voice.is_paused()))
+                        else 0
+                    ),
                     "queue_size": queue_size,
+                    "queue_duration": sum(
+                        getattr(item, "duration", 0) or 0 for item in queue_items
+                    ),
                     "queue_items": [
                         {
                             "title": item.title,

@@ -146,6 +146,9 @@ INTROS = [
     "{greeting} Let me start you off with something good. {title}.",
     "Here we go, {greeting} Our first song is {title}.",
     "{greeting} You picked a great one to start with. Here's {title}.",
+    "{greeting} We're live and we're starting with {title}.",
+    "{greeting} First track of the session. {title}.",
+    "{greeting} Let's not waste any time. {title} to start us off.",
     # ── With sound tags ──
     "{greeting} We are LIVE! Let's kick it off with {title}. {sound:airhorn}",
     "{greeting} The station is on the air! First up, {title}. {sound:dj_turn_it_up}",
@@ -154,10 +157,22 @@ INTROS = [
     "{greeting} Good vibes only. Kicking off with {title}. {sound:dj_stop}",
     "{greeting} You tuned in at the right time. {title} to start us off! {sound:airhorn}",
     "{greeting} The DJ is in the house! Opening with {title}. {sound:dj_turn_it_up}",
-    "{greeting} Ladies and gentlemen, let's begin with {title}! {sound:applause}",
+    "{greeting} Ladies and gentlemen, let's begin with {title}! {sound:rave_cheer}",
     "{greeting} Radio is live and we're starting strong. {title}! {sound:air_raid}",
     "{greeting} This is your captain speaking. Taking off with {title}. {sound:dj_scratch}",
     "{greeting} Music, music, music! First track — {title}. {sound:mustard_drop}",
+    "{greeting} And we're back! Starting the session with {title}. {sound:another_one}",
+    "{greeting} The one and only {title} to open the show! {sound:mega_airhorn}",
+    "Welcome to the show! I'm your DJ and this is {title}. {sound:im_your_dj}",
+    "{greeting} Let me hear you make some noise for {title}! {sound:rave_cheer}",
+    "{greeting} Dropping the needle on {title}. {sound:sick_scratch}",
+    "{greeting} Rewind! Let's start from the top with {title}. {sound:dj_rewind}",
+    "{greeting} This one goes out to everyone listening. {title}! {sound:cool_dj_drop}",
+    "{greeting} Big tune alert! Starting with {title}. {sound:uyuuui}",
+    "{greeting} Let the Django drop! Opening with {title}. {sound:django}",
+    "{greeting} Sound system activated. First track: {title}. {sound:dj_scratch}",
+    "{greeting} Are you ready? I said, ARE YOU READY? {title}! {sound:mega_airhorn}",
+    "{greeting} We're turning it up to eleven. {title} to start! {sound:dj_turn_it_up}",
 ]
 
 # Song-specific hype intros (used instead of intros for 2nd+ songs)
@@ -176,12 +191,26 @@ HYPE_INTROS = [
     "Alright, here's {title}.",
     "Coming up now, {title}.",
     "Get ready for {title}.",
+    "And the next one is {title}.",
+    "Here's what's next — {title}.",
+    "Moving right along to {title}.",
     # ── With sound tags ──
     "{title} is next! {sound:mustard_drop}",
     "Incoming! {title}! {sound:airhorn}",
     "Next up, {title}. {sound:dj_scratch}",
     "Watch this. {title}! {sound:combo_hit}",
     "Here comes {title}. {sound:dj_stop}",
+    "Let's rewind it back. {title}! {sound:dj_rewind}",
+    "Another one! {title}! {sound:another_one}",
+    "{title} coming atcha! {sound:sick_scratch}",
+    "Dropping {title} right now! {sound:cool_dj_drop}",
+    "Make some noise for {title}! {sound:rave_cheer}",
+    "Big tune alert: {title}! {sound:mega_airhorn}",
+    "Here's {title}! {sound:uyuuui}",
+    "I'm your DJ and this is {title}! {sound:im_your_dj}",
+    "The Django selects {title}! {sound:django}",
+    "Turntables are spinning for {title}. {sound:dj_turn_it_up}",
+    "{title} — you already know! {sound:button_press}",
 ]
 
 # Enthusiastic intros (randomly picked ~25% of the time for extra energy)
@@ -198,13 +227,25 @@ HYPE_INTROS_LOUD = [
     # ── With sound tags ──
     "THIS is the one! {title}! {sound:airhorn} Let's go!",
     "Are you ready?! {title}! {sound:air_raid}",
-    "Oh yeah! Let me hear it for {title}! {sound:applause}",
+    "Oh yeah! Let me hear it for {title}! {sound:rave_cheer}",
     "THIS IS IT! {title}! {sound:combo_hit}",
     "Buckle up! {title} is about to blow your mind! {sound:dj_turn_it_up}",
     "Turn it ALL the way up! {title}! {sound:airhorn}",
-    "The moment you've been waiting for! {title}! {sound:applause}",
+    "The moment you've been waiting for! {title}! {sound:rave_cheer}",
     "DJ drop incoming! It's {title}! {sound:dj_turn_it_up}",
     "Loud and proud! {title}! {sound:airhorn}",
+    "MEGA tune incoming! {title}! {sound:mega_airhorn}",
+    "We're going crazy for {title}! {sound:rave_cheer}",
+    "Rewind that! {title} is too good! {sound:dj_rewind}",
+    "Another absolute banger — {title}! {sound:another_one}",
+    "The crowd goes WILD for {title}! {sound:rave_cheer}",
+    "This one's gonna tear the roof off! {title}! {sound:cool_dj_drop}",
+    "SICK DROP ALERT! {title}! {sound:sick_scratch}",
+    "I am YOUR DJ and I say we play {title}! {sound:im_your_dj}",
+    "Maximum volume! {title}! {sound:mega_airhorn}",
+    "Unhinged mode ACTIVATED! {title}! {sound:uyuuui}",
+    "Django UNCHAINED! {title}! {sound:django}",
+    "Let the DJ turn it up for {title}! {sound:dj_turn_it_up}",
 ]
 
 # Outros — after a song when the next track is UNKNOWN
@@ -217,12 +258,19 @@ OUTROS = [
     "That was {title}. Good stuff.",
     "Mm, {title}. That hit the spot.",
     "And that's {title}. Nicely done.",
+    "Beautiful. {title}.",
+    "{title} — what a ride.",
     # ── With sound tags ──
-    "That was {title}. {sound:applause}",
+    "That was {title}. {sound:rave_cheer}",
     "And that's a wrap on {title}. {sound:record_scratch}",
-    "{title}. What a track! {sound:applause}",
+    "{title}. What a track! {sound:rave_cheer}",
     "And that was {title}. Not bad, right? {sound:mustard_drop}",
-    "{title} — done and dusted. {sound:mustard_drop}",
+    "{title} — done and dusted. {sound:button_press}",
+    "{title}. I'll let that one sink in. {sound:cool_dj_drop}",
+    "That was {title}. Give it up! {sound:rave_cheer}",
+    "Rewind moment! What a tune — {title}. {sound:dj_rewind}",
+    "{title}. Django-approved. {sound:django}",
+    "And that was {title}. {sound:sick_scratch}",
 ]
 
 # Transitions — outro + intro combined (when we know both titles)
@@ -242,6 +290,8 @@ TRANSITIONS = [
     "Alright, {prev_title} in the books. Up next, we've got {next_title}!",
     "From {prev_title}, to {next_title}. Let's keep this going.",
     "That was {prev_title}. And we have absolutely no time to waste. Here's {next_title}!",
+    "{prev_title} is over. {next_title} is next. Let's go.",
+    "That was {prev_title}. Changing gears to {next_title}.",
     # ── With sound tags ──
     "That was {prev_title}. Now, {next_title}! {sound:dj_scratch}",
     "{prev_title}? Great stuff. But wait — {next_title} is next! {sound:airhorn}",
@@ -251,6 +301,17 @@ TRANSITIONS = [
     "{prev_title} is over. But {next_title} is just getting started! {sound:dj_turn_it_up}",
     "Moving right along! {prev_title} → {next_title}! {sound:dj_scratch}",
     "And that was {prev_title}. Hold on — {next_title} is up! {sound:airhorn}",
+    "Rewind! {prev_title} was that good. Now {next_title}! {sound:dj_rewind}",
+    "Another one! From {prev_title} to {next_title}! {sound:another_one}",
+    "{prev_title} → {next_title}. Smooth transition! {sound:cool_dj_drop}",
+    "The DJ selects {next_title} after that {prev_title}! {sound:im_your_dj}",
+    "Going from {prev_title} right into {next_title}! {sound:dj_turn_it_up}",
+    "{prev_title}, and now {next_title}. The Django demands it. {sound:django}",
+    "Switching it up! {prev_title} done, {next_title} coming! {sound:sick_scratch}",
+    "Make some noise! {prev_title} → {next_title}! {sound:rave_cheer}",
+    "{prev_title} out. {next_title} in. Let's go! {sound:mega_airhorn}",
+    "That was {prev_title}. But {next_title} is something special. {sound:uyuuui}",
+    "The crowd wants {next_title}! After {prev_title}! {sound:rave_cheer}",
 ]
 
 # Energetic transitions (~25% chance, replaces regular transition for hype moments)

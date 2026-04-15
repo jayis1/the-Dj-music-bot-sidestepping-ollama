@@ -146,10 +146,14 @@ setup_env() {
   read -rp "$(echo -e "${BOLD}  Log Channel ID (press Enter to skip):${RESET} ")" LOG_CHANNEL_ID
   LOG_CHANNEL_ID="${LOG_CHANNEL_ID:-0}"
 
+  read -rp "$(echo -e "${BOLD}  Radio Station Name (press Enter for MBot):${RESET} ")" STATION_NAME
+  STATION_NAME="${STATION_NAME:-MBot}"
+
   cat > .env <<EOF
 DISCORD_TOKEN="${DISCORD_TOKEN}"
 YOUTUBE_API_KEY="${YOUTUBE_API_KEY}"
 LOG_CHANNEL_ID="${LOG_CHANNEL_ID}"
+STATION_NAME="${STATION_NAME}"
 EOF
 
   success ".env file created successfully!"

@@ -17,6 +17,9 @@ YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 # You can change the bot's command prefix here
 COMMAND_PREFIX = "?"
 
+# Radio DJ mode station name
+STATION_NAME = os.environ.get("STATION_NAME", "MBot")
+
 # Emojis for UI
 PLAY_EMOJI = "▶️"
 PAUSE_EMOJI = "⏸️"

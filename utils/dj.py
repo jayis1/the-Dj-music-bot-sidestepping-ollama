@@ -15,6 +15,8 @@ import random
 import tempfile
 from datetime import datetime
 
+import config
+
 try:
     import edge_tts
 
@@ -241,16 +243,16 @@ OUTROS_FINAL = [
 
 # Station IDs — randomly sprinkled in front of intros
 STATION_IDS = [
-    "You're tuned in to MBot Radio.",
-    "This is MBot Radio, your non-stop music station.",
-    "MBot Radio — all music, all the time.",
-    "Welcome to MBot Radio.",
-    "This is your DJ on MBot Radio.",
-    "You're listening to MBot. Let's keep it going.",
-    "MBot Radio. The only station that never stops.",
-    "This is MBot, keeping the music alive, 24 7.",
-    "You're on MBot Radio, where the tunes never end.",
-    "From the MBot Radio studios, this is your DJ.",
+    f"You're tuned in to {config.STATION_NAME} Radio.",
+    f"This is {config.STATION_NAME} Radio, your non-stop music station.",
+    f"{config.STATION_NAME} Radio — all music, all the time.",
+    f"Welcome to {config.STATION_NAME} Radio.",
+    f"This is your DJ on {config.STATION_NAME} Radio.",
+    f"You're listening to {config.STATION_NAME}. Let's keep it going.",
+    f"{config.STATION_NAME} Radio. The only station that never stops.",
+    f"This is {config.STATION_NAME}, keeping the music alive, 24 7.",
+    f"You're on {config.STATION_NAME} Radio, where the tunes never end.",
+    f"From the {config.STATION_NAME} Radio studios, this is your DJ.",
 ]
 
 # Listener callouts — randomly sprinkled for community feel

@@ -32,6 +32,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    Response,
     session,
     url_for,
 )
@@ -1413,6 +1414,63 @@ def api_lyrics(guild_id):
 
     lyrics = _run_async(get_lyrics(current.title))
     return jsonify({"lyrics": lyrics, "title": current.title})
+
+
+# ── Activity Log (SSE) ──────────────────────────────────────────────
+
+
+@app.route("/api/logs/recent")
+def api_logs_recent():
+    """Return the last N log entries from the in-memory ring buffer."""
+    from utils.discord_log_handler import log_buffer
+
+    count = request.args.get("count", 100, type=int)
+    count = min(count, 200)
+    entries = list(log_buffer)[-count:]
+    return jsonify({"entries": entries, "total": len(log_buffer)})
+
+
+@app.route("/api/logs/stream")
+def api_logs_stream():
+    """Server-Sent Events endpoint for real-time log streaming."""
+    from utils.discord_log_handler import log_buffer
+
+    def generate():
+        import json
+        import time as _time
+
+        last_index = len(log_buffer)
+        idle_count = 0
+
+        while True:
+            current_len = len(log_buffer)
+            if current_len > last_index:
+                # New entries available — send them
+                # Convert deque to list to slice by index
+                all_entries = list(log_buffer)
+                new_entries = all_entries[last_index:]
+                for entry in new_entries:
+                    yield f"data: {json.dumps(entry)}\n\n"
+                last_index = current_len
+                idle_count = 0
+            else:
+                idle_count += 1
+
+            # Send a heartbeat every ~5 seconds to keep the connection alive
+            if idle_count >= 10:
+                yield ": heartbeat\n\n"
+                idle_count = 0
+
+            _time.sleep(0.5)
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 # ── Presets (Save/Load Playlists) ─────────────────────────────────

@@ -29,6 +29,9 @@
                 <a href="{{ url_for('queue_manager') }}" class="nav-item {% if request.endpoint == 'queue_manager' %}active{% endif %}">
                     <span class="icon">📋</span> Queue
                 </a>
+                <a href="#" class="nav-item" onclick="toggleLogPanel(); return false;">
+                    <span class="icon">📋</span> Log
+                </a>
                 <a href="{{ url_for('settings_page') }}" class="nav-item {% if request.endpoint == 'settings_page' %}active{% endif %}">
                     <span class="icon">⚙️</span> Settings
                 </a>
@@ -52,7 +55,192 @@
             {% endif %}
             {% endwith %}
             {% block content %}{% endblock %}
+        <!-- Activity Log Slide-out Panel -->
+        <div id="log-panel" class="log-panel">
+            <div class="log-panel-header">
+                <h3><span class="icon">📋</span> Bot Activity Log</h3>
+                <div class="log-panel-controls">
+                    <div class="log-filter-btns">
+                        <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL', this)">All</button>
+                        <button class="log-filter-btn" data-level="INFO" onclick="setLogFilter('INFO', this)">Info</button>
+                        <button class="log-filter-btn" data-level="WARNING" onclick="setLogFilter('WARNING', this)">Warn</button>
+                        <button class="log-filter-btn" data-level="ERROR" onclick="setLogFilter('ERROR', this)">Error</button>
+                    </div>
+                    <button class="btn btn-icon" onclick="toggleLogPanel()" title="Close">✕</button>
+                </div>
+            </div>
+            <div id="log-entries" class="log-entries">
+                <div class="log-empty">Connecting to log stream...</div>
+            </div>
+        </div>
+        <!-- Log panel backdrop -->
+        <div id="log-panel-backdrop" class="log-panel-backdrop" onclick="toggleLogPanel()"></div>
         </main>
     </div>
+    <script>
+    // ── Activity Log Panel ──────────────────────────────────────────
+    (function() {
+        let logEventSource = null;
+        let logFilter = 'ALL';
+        let logEntries = [];
+
+        // Expose to global scope for onclick handlers
+        window.toggleLogPanel = function() {
+            const panel = document.getElementById('log-panel');
+            const backdrop = document.getElementById('log-panel-backdrop');
+            if (panel.classList.contains('open')) {
+                panel.classList.remove('open');
+                backdrop.classList.remove('open');
+            } else {
+                panel.classList.add('open');
+                backdrop.classList.add('open');
+                // Load recent history on first open, then start SSE
+                if (!logEventSource) {
+                    loadRecentLogs();
+                    startLogStream();
+                }
+                scrollLogToBottom();
+            }
+        };
+
+        window.setLogFilter = function(level, btn) {
+            logFilter = level;
+            // Update active button
+            document.querySelectorAll('.log-filter-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            renderLogs();
+        };
+
+        function loadRecentLogs() {
+            fetch('/api/logs/recent?count=100')
+                .then(r => r.json())
+                .then(data => {
+                    if (data.entries && data.entries.length > 0) {
+                        logEntries = data.entries;
+                        renderLogs();
+                    } else {
+                        document.getElementById('log-entries').innerHTML =
+                            '<div class="log-empty">No log entries yet.</div>';
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('log-entries').innerHTML =
+                        '<div class="log-empty">Could not load logs.</div>';
+                });
+        }
+
+        function startLogStream() {
+            if (logEventSource) {
+                logEventSource.close();
+            }
+            try {
+                logEventSource = new EventSource('/api/logs/stream');
+                logEventSource.onmessage = function(event) {
+                    try {
+                        const entry = JSON.parse(event.data);
+                        logEntries.push(entry);
+                        // Keep only last 200 in client memory
+                        if (logEntries.length > 200) {
+                            logEntries = logEntries.slice(-200);
+                        }
+                        renderNewEntry(entry);
+                    } catch(e) {}
+                };
+                logEventSource.onerror = function() {
+                    // Auto-reconnect is handled by EventSource
+                    // Show a reconnecting message
+                    const container = document.getElementById('log-entries');
+                    if (container && !container.querySelector('.log-reconnecting')) {
+                        const msg = document.createElement('div');
+                        msg.className = 'log-entry log-reconnecting';
+                        msg.innerHTML = '<span class="log-msg">Reconnecting to log stream...</span>';
+                        container.appendChild(msg);
+                        scrollLogToBottom();
+                    }
+                };
+            } catch(e) {
+                // EventSource not supported — fall back to polling
+                setInterval(function() {
+                    loadRecentLogs();
+                }, 5000);
+            }
+        }
+
+        function renderLogs() {
+            const container = document.getElementById('log-entries');
+            if (!container) return;
+
+            let filtered = logEntries;
+            if (logFilter !== 'ALL') {
+                filtered = logEntries.filter(e => e.level === logFilter || (logFilter === 'WARNING' && e.level === 'WARN') || (logFilter === 'INFO' && e.level === 'INFO'));
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = '<div class="log-empty">No log entries match the current filter.</div>';
+                return;
+            }
+
+            let html = '';
+            for (const entry of filtered) {
+                html += buildLogEntryHTML(entry);
+            }
+            container.innerHTML = html;
+            scrollLogToBottom();
+        }
+
+        function renderNewEntry(entry) {
+            const container = document.getElementById('log-entries');
+            if (!container) return;
+
+            // Check filter
+            if (logFilter !== 'ALL' && entry.level !== logFilter) {
+                if (!(logFilter === 'WARNING' && entry.level === 'WARN')) {
+                    return; // Skip — doesn't match filter
+                }
+            }
+
+            // Remove "empty" and "reconnecting" messages
+            const emptyMsg = container.querySelector('.log-empty');
+            if (emptyMsg) emptyMsg.remove();
+            const reconnMsg = container.querySelector('.log-reconnecting');
+            if (reconnMsg) reconnMsg.remove();
+
+            const div = document.createElement('div');
+            div.innerHTML = buildLogEntryHTML(entry);
+            container.appendChild(div.firstChild);
+            scrollLogToBottom();
+        }
+
+        function buildLogEntryHTML(entry) {
+            const level = (entry.level || 'INFO').toUpperCase();
+            let severity = 'info';
+            if (level === 'ERROR' || level === 'CRITICAL') severity = 'error';
+            else if (level === 'WARNING' || level === 'WARN') severity = 'warning';
+            else if (level === 'DEBUG') severity = 'debug';
+
+            const ts = entry.timestamp || '';
+            const msg = escapeHTML(entry.message || '');
+
+            return `<div class="log-entry log-severity-${severity}">
+                <span class="log-time">${ts}</span>
+                <span class="log-level log-level-${severity}">${level}</span>
+                <span class="log-msg">${msg}</span>
+            </div>`;
+        }
+
+        function escapeHTML(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function scrollLogToBottom() {
+            const container = document.getElementById('log-entries');
+            if (container) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+    })();
+    </script>
 </body>
 </html>

@@ -661,10 +661,13 @@ class Music(commands.Cog):
 
                 spoke = await self._dj_speak(ctx.voice_client, intro_text, guild_id)
                 if spoke:
-                    # Start bed music under the DJ voice
-                    await self._start_bed_music(ctx.voice_client, guild_id)
                     # TTS started — song will play after the intro finishes
                     # (via _on_tts_done → _play_song_after_dj → _start_song_playback)
+                    # Note: We don't start bed music here because Discord's voice
+                    # client can only play one audio source at a time. The TTS is
+                    # already playing, so bed music would fail with "Already playing
+                    # audio". Bed music is started in _on_tts_done if there's a gap
+                    # (e.g. sound effects) between TTS and the song.
                     return
                 else:
                     # TTS failed — fall through to play the song directly
@@ -1920,6 +1923,17 @@ class Music(commands.Cog):
         pending_sounds = self._dj_pending_sounds.pop(guild_id, [])
 
         if pending_sounds:
+            # Start bed music for the gap between TTS and song start.
+            # We couldn't start it earlier because TTS was using the voice client.
+            # Now TTS is done, so bed music can play under the sound effects.
+            # It'll be stopped by _stop_bed_music() in _start_song_playback.
+            guild = self.bot.get_guild(guild_id)
+            if guild and guild.voice_client:
+                asyncio.ensure_future(
+                    self._start_bed_music(guild.voice_client, guild_id),
+                    loop=self.bot.loop,
+                )
+
             logging.info(
                 f"DJ: Playing {len(pending_sounds)} sound effects for guild {guild_id}"
             )
@@ -2499,6 +2513,14 @@ class Music(commands.Cog):
 
         try:
             import discord
+
+            # Can't play two sources at once on Discord's voice client.
+            # If something is already playing (e.g. TTS, sound effect), skip.
+            if voice_client.is_playing():
+                logging.debug(
+                    f"DJ Bed: Voice client busy in guild {guild_id}, skipping bed music"
+                )
+                return False
 
             source = discord.FFmpegPCMAudio(
                 bed_path,

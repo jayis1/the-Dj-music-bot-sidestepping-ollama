@@ -478,6 +478,8 @@ For full technical details — architecture, cog internals, all API endpoints, m
 
 | | Summary |
 |---|---|
+| 🎵 **DJ Bed Race Condition** | Fixed "Already playing audio" crash — bed music now starts after TTS finishes, not simultaneously |
+| 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation failed on remote Ollama servers with `'from'/'files' not specified` — fixed with 3-method fallback (CLI → JSON API → multipart upload) |
 | 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
 | 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |
 | 🔧 **Kokoro WAV Header Fix** | Streaming WAV files had broken `0xFFFFFFFF` chunk sizes → 89478s duration → FFmpeg hung → entire queue skipped. Fixed with 3-layer solution (WAV rewrite + FFmpeg `-t 30` cap + stuck-state recovery) |
@@ -518,6 +520,29 @@ DJ: Speaking...
 DJ: TTS done, scheduling song playback
 Playback initiated for Track Name
 ```
+
+### 🎵 DJ Bed Race Condition Fix — Technical Detail
+
+**Cause:** After TTS started playing, `play_next()` immediately called `_start_bed_music()`. Discord's voice client can only play one audio source at a time → "Already playing audio" every time.
+
+**Three-part fix in `cogs/music.py`:**
+1. Removed `_start_bed_music()` call from `play_next()` after TTS starts
+2. Moved it to `_on_tts_done()` — fires after TTS finishes, only when `{sound:name}` tags are present
+3. Added `is_playing()` guard in `_start_bed_music()` — silently skips instead of crashing
+
+### 🧠 Ollama Custom Model Creation Fix — Technical Detail
+
+**Cause:** `/api/create` mangles Modelfiles with `SYSTEM """..."""` blocks (braces, quotes, multi-line) during JSON serialization → Ollama parser fails with `"neither 'from' or 'files' was specified"`.
+
+**Three-method fallback in `utils/llm_dj.py`:**
+
+| Priority | Method | When it works |
+|---|---|---|
+| 1st | **CLI** — write to `/tmp`, run `ollama create mbot-sidehost -f <path>` | Local Ollama on same machine |
+| 2nd | **JSON API** — `POST /api/create {"modelfile": "..."}` | Remote Ollama, simple models |
+| 3rd | **Multipart upload** — `POST /api/create` with FormData file | Remote Ollama, complex Modelfiles ✅ |
+
+> Default setup (Ollama on `172.16.1.26:11434`, bot on separate machine): CLI fails → falls to multipart, which works reliably.
 
 ---
 

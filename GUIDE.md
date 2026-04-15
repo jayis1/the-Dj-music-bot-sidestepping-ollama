@@ -98,7 +98,12 @@ A live, Discord-channel-style activity log panel now slides out from the right s
 - The browser uses `EventSource` (SSE) to receive new entries as they're emitted, with auto-reconnect and heartbeat keep-alive.
 - **Filter buttons** (All / Info / Warn / Error) let you narrow what's visible — client-side only.
 - Each entry shows a timestamp, color-coded severity badge (INFO=blue, WARNING=amber, ERROR=red, DEBUG=gray), and the message in monospace.
-- The panel is a 420px slide-out on desktop, 100% width on mobile.
+- The panel is now **640px wide** (up from 420px) with `max-width: 90vw` for responsive sizing, giving much more room to read log messages.
+- **📋 Copy button** — Copies all currently visible log entries to clipboard. Respects the active filter (All/Info/Warn/Error), so if you're filtering to errors only, only errors get copied. Output format is plain text, one line per entry — ready to paste into Discord, a bug report, or a support ticket.
+- **Three-tier copy strategy** (works on HTTP and HTTPS):
+  1. `document.execCommand('copy')` with a nearly-invisible textarea (primary — works on HTTP)
+  2. `navigator.clipboard.writeText()` (secondary — HTTPS/localhost only)
+  3. **Copy modal** (last resort) — full-screen popup with a readonly textarea pre-selected. User just does Ctrl+A → Ctrl+C. Closes with ✕, Escape, or clicking outside.
 - No new dependencies — SSE is native browser API.
 
 ### 🎙️ Voice Dropdown Fixes (Radio Page)
@@ -110,18 +115,33 @@ The "DJ Voice" and "AI Side Host Voice" dropdowns on the Radio page were permane
 
 ### 🃏 AI Side Host — Auto-Created Custom Ollama Model
 
-The AI side host now **auto-creates a custom Ollama model** (`mbot-sidehost`) on startup that bakes the DJ personality into the model itself. Instead of sending the full system prompt on every API call, the personality is built into the model via an Ollama Modelfile:
+The AI side host now **auto-creates a custom Ollama model** (`mbot-sidehost` by default) on startup that bakes the DJ personality into the model itself. Instead of sending the full system prompt on every API call, the personality is built into the model via an Ollama Modelfile:
 
 ```
 FROM gemma4:latest
 SYSTEM """You are the AI side host on MBot Radio — the studio joker..."""
 ```
 
-**How it works:**
-1. Bot starts → calls `ensure_custom_model()`
+**Startup flow:**
+1. Bot starts → calls `ensure_custom_model()` in `on_ready()`
 2. Checks if `mbot-sidehost` exists in Ollama (`GET /api/tags`)
-3. If not → creates it from the base model + Modelfile (`POST /api/create`)
-4. All subsequent API calls use `mbot-sidehost` — system prompt is baked in, so only the user prompt (context) is sent per call
+3. If not → checks if the base model (e.g. `phi3:latest`) is pulled
+4. If base model exists → creates the custom model
+5. All subsequent API calls use `mbot-sidehost` — system prompt is baked in, so only the user prompt (context) is sent per call
+
+**Three-method model creation (bug workaround):**
+
+Ollama's `/api/create` JSON endpoint has a known bug where complex Modelfiles with triple-quoted `SYSTEM """..."""` blocks containing braces (`{sound:name}`), quotes, and multi-line text cause `"neither 'from' or 'files' was specified"`. The bot works around this with three methods tried in order:
+
+| Priority | Method | How | When Used |
+|----------|--------|-----|-----------|
+| **1st** | **CLI** (preferred) | Write Modelfile to `/tmp`, run `ollama create <name> -f <path>` via subprocess | Ollama on same machine as bot |
+| **2nd** | **API (JSON)** | POST `/api/create` with `{"modelfile": "..."}` | Remote Ollama, simple Modelfiles |
+| **3rd** | **API (multipart)** | POST `/api/create` with `FormData` file upload | Remote Ollama, complex Modelfiles (fallback) |
+
+For local Ollama: Method 1 works perfectly because it uses the exact same file parser as the CLI `ollama create -f Modelfile`.
+
+For remote Ollama (e.g. Ollama at `172.16.1.26:11434`, bot on a different machine): Method 1 fails with `FileNotFoundError` (no `ollama` binary), then Methods 2 and 3 are tried.
 
 **Benefits:**
 - Faster inference (smaller payload per call — no ~2KB system prompt sent every time)
@@ -129,7 +149,9 @@ SYSTEM """You are the AI side host on MBot Radio — the studio joker..."""
 - You can interact with the model directly: `ollama run mbot-sidehost "Drop a hot take about 80s music"`
 - To recreate after a personality update: `ollama rm mbot-sidehost` and restart the bot
 
-**Fallback:** If the custom model can't be created (Ollama down, base model not pulled), the bot falls back to the base model + system prompt on every call — zero functionality loss.
+**Config name:** `OLLAMA_CUSTOM_MODEL` (default: `mbot-sidehost`) — change it in `.env` if you want a different name.
+
+**Fallback:** If the custom model can't be created (Ollama down, base model not pulled, API bugs), the bot falls back to the base model + system prompt on every call — zero functionality loss.
 
 The AI side host now **knows what the main DJ just said** and can react to it. Instead of generating blind banter, the side host receives the main DJ's spoken line as context when calling Ollama, enabling two-host chemistry like a real radio show.
 
@@ -141,7 +163,41 @@ The AI side host now **knows what the main DJ just said** and can react to it. I
 - **Smart category selection:** When a DJ line is provided, 60% chance of a reactive category, 40% chance of independent banter (for variety).
 - The system prompt now includes a "REACTING TO THE MAIN DJ" section teaching the model to respond to the DJ's line without repeating it.
 
-### 🔧 Ollama Error Handling Improvements
+### 🎵 DJ Bed Music Fix: "Already playing audio"
+
+The DJ bed music (ambient track played under the DJ's voice during intros) was trying to start **while the TTS was still playing**, causing `voice_client.play()` to raise "Already playing audio" because Discord's voice client can only play one source at a time.
+
+**Fix:**
+1. Removed the `_start_bed_music()` call from `play_next()` after TTS starts — it's impossible to play bed music and TTS simultaneously on a single voice connection.
+2. Moved bed music start to `_on_tts_done()` — it now starts **after** TTS finishes, only when there are sound effects (e.g. `{sound:dj_turn_it_up}`) to fill the gap between the DJ speech and the song. If there are no sounds, the song starts immediately and bed music isn't needed.
+3. Added an `is_playing()` guard in `_start_bed_music()` so it gracefully skips (with a `DEBUG` log) instead of crashing when something else is already using the voice client.
+
+**Before (broken flow):**
+```
+TTS starts playing → _start_bed_music() → "Already playing audio" ERROR
+TTS finishes → sound effects → song
+```
+
+**After (fixed flow):**
+```
+TTS starts playing
+TTS finishes → _start_bed_music() → bed under sound effects → song starts → bed stops
+```
+
+### 🔧 Stuck-State Recovery (Voice Client)
+
+Even with the WAV header fix, there's a possibility of a previous playback getting stuck (e.g. a corrupted file, an FFmpeg crash, or an OS-level audio issue). Before this fix, any stuck playback would cause **every subsequent `play()` call** to fail with "Already playing audio", silently skipping the entire queue with no audio output — the bot would just cycle through songs forever with no sound.
+
+**Fix:** Before every `voice_client.play()` call — both in `_dj_speak()` (TTS) and `_start_song_playback()` (songs) — the code now checks `is_playing()`. If True, it force-stops the voice client with `voice_client.stop()`, waits 300ms for the old FFmpeg process to terminate, then proceeds. This prevents the cascade failure:
+
+```python
+if voice_client.is_playing():
+    logging.warning("Voice client still playing — force-stopping stuck source")
+    voice_client.stop()
+    await asyncio.sleep(0.3)  # Let FFmpeg terminate
+# Now safe to play
+voice_client.play(new_source, after=callback)
+```
 
 The 404 error from Ollama when a model isn't pulled now shows an actionable message:
 - **Before:** `AI Side Host: Ollama returned status 404`

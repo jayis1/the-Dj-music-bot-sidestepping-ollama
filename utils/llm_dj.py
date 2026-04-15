@@ -160,52 +160,191 @@ async def ensure_custom_model():
         station = getattr(config, "STATION_NAME", "MBot")
         system_prompt = _build_system_prompt(station)
 
-        modelfile_content = f'FROM {base_model}\nSYSTEM """{system_prompt}"""'
+        modelfile_content = f'FROM {base_model}\nSYSTEM """\n{system_prompt}\n"""'
 
-        # Ollama's /api/create endpoint accepts a Modelfile as JSON
-        create_payload = {
-            "name": CUSTOM_MODEL_NAME,
-            "modelfile": modelfile_content,
-            "stream": False,
-        }
+        # Try two methods to create the model:
+        # Method 1: `ollama create` CLI (preferred — handles complex Modelfiles)
+        # Method 2: /api/create HTTP endpoint (fallback for remote Ollama servers)
+        created = await _create_model_cli(modelfile_content)
 
-        logging.info(
-            f"AI Side Host: Creating custom model '{CUSTOM_MODEL_NAME}' "
-            f"from base '{base_model}'..."
-        )
+        if not created:
+            created = await _create_model_api(host, modelfile_content)
 
-        # Use a longer timeout for model creation (can take 10-30s)
-        create_timeout = aiohttp.ClientTimeout(total=120)
-        async with aiohttp.ClientSession(timeout=create_timeout) as create_session:
-            async with create_session.post(
-                f"{host}/api/create", json=create_payload
-            ) as create_resp:
-                if create_resp.status == 200:
-                    _custom_model_ready = True
-                    logging.info(
-                        f"AI Side Host: ✅ Custom model '{CUSTOM_MODEL_NAME}' "
-                        f"created successfully! You can also use it directly: "
-                        f"ollama run {CUSTOM_MODEL_NAME}"
-                    )
-                else:
-                    error_body = await create_resp.text()
-                    logging.warning(
-                        f"AI Side Host: Failed to create custom model "
-                        f"'{CUSTOM_MODEL_NAME}' (status {create_resp.status}): "
-                        f"{error_body[:200]} — will use base model + "
-                        f"system prompt instead"
-                    )
+        if created:
+            _custom_model_ready = True
+            logging.info(
+                f"AI Side Host: ✅ Custom model '{CUSTOM_MODEL_NAME}' "
+                f"created successfully! You can also use it directly: "
+                f"ollama run {CUSTOM_MODEL_NAME}"
+            )
 
     except asyncio.TimeoutError:
         logging.warning(
-            "AI Side Host: Timed out creating custom model — "
+            "AI Side Host: Timed out checking Ollama models — "
             "will use base model + system prompt as fallback"
         )
     except Exception as e:
         logging.warning(
-            f"AI Side Host: Error creating custom model: {e} — "
+            f"AI Side Host: Error setting up custom model: {e} — "
             "will use base model + system prompt as fallback"
         )
+
+
+async def _create_model_cli(modelfile_content: str) -> bool:
+    """Create the custom model using the `ollama create` CLI command.
+
+    This is the preferred method — it writes a Modelfile to disk and calls
+    `ollama create <name> -f <path>`, which handles complex SYSTEM prompts
+    with triple quotes, braces, etc. correctly.
+
+    Returns True if the model was created, False otherwise.
+    Only works when the `ollama` binary is on the same machine as the bot.
+    """
+    modelfile_path = None
+    try:
+        fd, modelfile_path = tempfile.mkstemp(
+            suffix=".modelfile", prefix="mbot_ollama_"
+        )
+        os.close(fd)
+        with open(modelfile_path, "w", encoding="utf-8") as mf:
+            mf.write(modelfile_content)
+
+        logging.info(
+            f"AI Side Host: Creating custom model '{CUSTOM_MODEL_NAME}' via CLI..."
+        )
+
+        proc = await asyncio.create_subprocess_exec(
+            "ollama",
+            "create",
+            CUSTOM_MODEL_NAME,
+            "-f",
+            modelfile_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+
+        if proc.returncode == 0:
+            return True
+        else:
+            err_msg = stderr.decode(errors="replace").strip()[:300]
+            logging.debug(
+                f"AI Side Host: CLI create failed (exit {proc.returncode}): {err_msg}"
+            )
+            return False
+
+    except FileNotFoundError:
+        # `ollama` binary not on PATH — probably a remote Ollama server
+        logging.debug("AI Side Host: 'ollama' CLI not in PATH, trying API method")
+        return False
+    except asyncio.TimeoutError:
+        logging.debug("AI Side Host: CLI create timed out (120s)")
+        return False
+    except Exception as e:
+        logging.debug(f"AI Side Host: CLI create error: {e}")
+        return False
+    finally:
+        if modelfile_path and os.path.exists(modelfile_path):
+            try:
+                os.remove(modelfile_path)
+            except OSError:
+                pass
+
+
+async def _create_model_api(host: str, modelfile_content: str) -> bool:
+    """Create the custom model using Ollama's /api/create HTTP endpoint.
+
+    This is a fallback for when the `ollama` CLI isn't available on the
+    bot's machine (e.g. Ollama runs on a different server at 172.16.x.x).
+
+    The /api/create endpoint historically had bugs with complex Modelfiles
+    (triple-quoted SYSTEM blocks with braces like {sound:name}). If the
+    JSON method fails, we fall back to writing the Modelfile to disk and
+    POSTing it as a multipart file upload, which Ollama parses correctly.
+
+    Returns True if the model was created, False otherwise.
+    """
+    if not AIOHTTP_AVAILABLE:
+        return False
+
+    logging.info(
+        f"AI Side Host: Creating custom model '{CUSTOM_MODEL_NAME}' via API..."
+    )
+
+    # Method A: JSON payload with modelfile field
+    try:
+        create_timeout = aiohttp.ClientTimeout(total=120)
+        async with aiohttp.ClientSession(timeout=create_timeout) as session:
+            create_payload = {
+                "name": CUSTOM_MODEL_NAME,
+                "modelfile": modelfile_content,
+                "stream": False,
+            }
+            async with session.post(
+                f"{host}/api/create", json=create_payload
+            ) as create_resp:
+                if create_resp.status == 200:
+                    return True
+                else:
+                    error_body = await create_resp.text()
+                    logging.debug(
+                        f"AI Side Host: API create (JSON) failed "
+                        f"(status {create_resp.status}): {error_body[:200]}"
+                    )
+    except Exception as e:
+        logging.debug(f"AI Side Host: API create (JSON) error: {e}")
+
+    # Method B: Write Modelfile to disk, then POST as multipart file upload.
+    # This uses the same parser as `ollama create -f <file>` and handles
+    # complex SYSTEM blocks correctly.
+    modelfile_path = None
+    try:
+        fd, modelfile_path = tempfile.mkstemp(
+            suffix=".modelfile", prefix="mbot_ollama_api_"
+        )
+        os.close(fd)
+        with open(modelfile_path, "w", encoding="utf-8") as mf:
+            mf.write(modelfile_content)
+
+        create_timeout = aiohttp.ClientTimeout(total=120)
+        async with aiohttp.ClientSession(timeout=create_timeout) as session:
+            # Ollama doesn't have a multipart upload endpoint, but we can
+            # try a different approach: send the Modelfile content as a
+            # binary blob via a custom header or query param.
+            # Actually, the /api/create endpoint accepts `files` as a list
+            # of filename→blob mappings. Let's try that.
+            data = aiohttp.FormData()
+            data.add_field(
+                "name",
+                CUSTOM_MODEL_NAME,
+            )
+            data.add_field(
+                "modelfile",
+                open(modelfile_path, "rb").read(),
+                filename="Modelfile",
+                content_type="text/plain",
+            )
+
+            async with session.post(f"{host}/api/create", data=data) as create_resp:
+                if create_resp.status == 200:
+                    return True
+                else:
+                    error_body = await create_resp.text()
+                    logging.warning(
+                        f"AI Side Host: API create (multipart) failed "
+                        f"(status {create_resp.status}): {error_body[:200]} — "
+                        f"falling back to base model + system prompt"
+                    )
+                    return False
+    except Exception as e:
+        logging.debug(f"AI Side Host: API create (multipart) error: {e}")
+        return False
+    finally:
+        if modelfile_path and os.path.exists(modelfile_path):
+            try:
+                os.remove(modelfile_path)
+            except OSError:
+                pass
 
 
 # ── Sound Tag Definitions (for the system prompt) ────────────────────

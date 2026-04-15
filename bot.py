@@ -53,6 +53,17 @@ async def on_ready():
             "LOG_CHANNEL_ID is not set in config.py. Discord logging will be disabled."
         )
 
+    # Auto-create the custom Ollama model for the AI Side Host.
+    # This bakes the DJ personality into a custom model (e.g. "mbot-sidehost")
+    # so the system prompt doesn't need to be sent on every API call.
+    if getattr(config, "OLLAMA_DJ_ENABLED", False):
+        try:
+            from utils.llm_dj import ensure_custom_model
+
+            await ensure_custom_model()
+        except Exception as e:
+            logging.debug(f"AI Side Host: Custom model check skipped ({e})")
+
 
 async def main():
     # The yt_dlp_cache directory is no longer strictly necessary for streaming,

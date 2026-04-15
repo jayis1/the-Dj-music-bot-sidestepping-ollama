@@ -184,6 +184,29 @@ The AI side host is a **second radio personality** that chimes in alongside the 
 | `react_one_up` | Escalates the DJ's joke |
 | `react_tangent` | Takes the DJ's line somewhere unexpected |
 
+### 🧠 Custom Ollama Model (Auto-Created on Startup)
+
+Instead of sending a large system prompt on every API call, the bot automatically creates a custom Ollama model called `mbot-sidehost` with the DJ personality **baked in**:
+
+```
+FROM gemma4:latest
+SYSTEM """You are the AI side host on MBot Radio — the studio joker..."""
+```
+
+**Startup flow:** On `on_ready`, the bot checks if `mbot-sidehost` exists in Ollama. If not, it creates it from the base model automatically. If the base model isn't pulled yet, it logs a warning with the exact `ollama pull` command needed.
+
+| Scenario | Behavior |
+|---|---|
+| Custom model created ✅ | Calls `mbot-sidehost` directly — no prompt on every request |
+| Custom model missing ⚠️ | Falls back to base model + inline system prompt |
+
+**Useful manual commands:**
+```bash
+ollama run mbot-sidehost "Drop a hot take about 80s music"  # Chat directly
+ollama rm mbot-sidehost    # Delete — bot recreates on next startup
+ollama list                # Confirm mbot-sidehost appears
+```
+
 ### Quick Start
 ```bash
 # 1. Install Ollama
@@ -455,6 +478,7 @@ For full technical details — architecture, cog internals, all API endpoints, m
 
 | | Summary |
 |---|---|
+| 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
 | 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |
 | 🔧 **Kokoro WAV Header Fix** | Streaming WAV files had broken `0xFFFFFFFF` chunk sizes → 89478s duration → FFmpeg hung → entire queue skipped. Fixed with 3-layer solution (WAV rewrite + FFmpeg `-t 30` cap + stuck-state recovery) |
 | 🔄 **Dashboard 30s Soft Refresh** | Dashboard now refreshes guild state every 30s without touching the progress bar — smooth, jitter-free |

@@ -121,7 +121,15 @@ OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 # Ollama model to use for side host lines (default: gemma4:latest)
 # Make sure you've pulled the model: ollama pull <model>
+# The bot automatically creates a custom model from this base model
+# with the DJ personality baked in (named "mbot-sidehost" by default).
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest")
+
+# Custom Ollama model name — the bot will auto-create this from the base
+# model + a Modelfile that bakes in the DJ personality. Once created, it
+# persists in Ollama until manually deleted (ollama rm mbot-sidehost).
+# You can also chat with it directly: ollama run mbot-sidehost
+OLLAMA_CUSTOM_MODEL = os.environ.get("OLLAMA_CUSTOM_MODEL", "mbot-sidehost")
 
 # How often the side host chimes in (0.0–1.0).
 # 0.25 = ~25% chance after each template DJ line.

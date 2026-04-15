@@ -16,20 +16,38 @@ How it works:
   banter — random shoutouts, commentary on the music, hot takes, station
   trivia, listener observations, etc.
 
+Custom Model (Auto-Created):
+  Instead of using a raw base model (like gemma4:latest) and sending the
+  full system prompt on every call, the bot creates a CUSTOM Ollama model
+  (e.g. "mbot-sidehost") that bakes the DJ personality into the model
+  itself via an Ollama Modelfile. This is done automatically on startup:
+
+  1. Bot starts → checks if "mbot-sidehost" model exists in Ollama
+  2. If not → creates it from the base model + Modelfile (ollama create)
+  3. All API calls use the custom model — no system prompt needed per call
+
+  Benefits:
+  - Faster inference (smaller payload per call)
+  - Personality is persistent — even raw API calls get the DJ persona
+  - Works like any other Ollama model (ollama run mbot-sidehost)
+  - You can edit the Modelfile and recreate: ollama rm mbot-sidehost
+
 Flow:
   1. Template DJ picks a structured line (intro/transition/outro) as usual
   2. AI side host has a random chance to ALSO speak (a banter line)
      - OR replace the template line entirely with an AI-generated one
   3. Both lines go through the same TTS → sound effects → playback pipeline
 
-Requires: A running Ollama server (https://ollama.com) with a pulled model.
+Requires: A running Ollama server (https://ollama.com) with a pulled base model.
 Configure via .env: OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_DJ_ENABLED
 """
 
 import asyncio
 import json
 import logging
+import os
 import random
+import tempfile
 
 import config
 
@@ -41,14 +59,21 @@ except ImportError:
     AIOHTTP_AVAILABLE = False
 
 
-# ── Availability Check ────────────────────────────────────────────────
+# ── Availability Check & Custom Model ─────────────────────────────────
 
 OLLAMA_DJ_AVAILABLE = False
 
+# The custom model name — this is what Ollama will see when you run
+# `ollama list`. The base model (e.g. gemma4:latest) is the parent.
+CUSTOM_MODEL_NAME = getattr(config, "OLLAMA_CUSTOM_MODEL", "") or os.environ.get(
+    "OLLAMA_CUSTOM_MODEL", "mbot-sidehost"
+)
+
 if AIOHTTP_AVAILABLE and getattr(config, "OLLAMA_DJ_ENABLED", False):
     OLLAMA_DJ_AVAILABLE = True
+    base_model = getattr(config, "OLLAMA_MODEL", "gemma4:latest")
     logging.info(
-        f"AI Side Host: Enabled (model={getattr(config, 'OLLAMA_MODEL', 'gemma4:latest')}, "
+        f"AI Side Host: Enabled (base={base_model}, custom={CUSTOM_MODEL_NAME}, "
         f"host={getattr(config, 'OLLAMA_HOST', 'http://localhost:11434')})"
     )
 else:
@@ -58,6 +83,129 @@ else:
         else "OLLAMA_DJ_ENABLED is false"
     )
     logging.debug(f"AI Side Host: Disabled ({reason})")
+
+
+# ── Custom Model Auto-Creation ──────────────────────────────────────────
+#
+# On bot startup, we check if the custom Ollama model "mbot-sidehost" exists.
+# If it doesn't, we create it from the base model + a Modelfile that bakes
+# in the DJ personality as the SYSTEM prompt. This way, every API call
+# automatically gets the DJ persona — no need to send a system prompt.
+#
+# The Modelfile looks like:
+#   FROM gemma4:latest
+#   SYSTEM """You are the AI side host on MBot Radio..."""
+#
+# Then: ollama create mbot-sidehost -f /tmp/mbot_modelfile
+#
+# To recreate after editing the personality: ollama rm mbot-sidehost
+
+_custom_model_ready = False  # Set True once model is confirmed created
+
+
+async def ensure_custom_model():
+    """Check if the custom Ollama model exists, create it if not.
+
+    Called once at bot startup. This is a one-time setup — once the model
+    is created in Ollama, it persists until manually deleted.
+    """
+    global _custom_model_ready
+
+    if not OLLAMA_DJ_AVAILABLE or not AIOHTTP_AVAILABLE:
+        return
+
+    host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
+    base_model = getattr(config, "OLLAMA_MODEL", "gemma4:latest")
+
+    try:
+        session = await _get_session()
+
+        # Step 1: Check if the custom model already exists
+        async with session.get(f"{host}/api/tags") as resp:
+            if resp.status != 200:
+                logging.warning(
+                    "AI Side Host: Cannot reach Ollama to check models — "
+                    "will use base model as fallback"
+                )
+                return
+
+            data = await resp.json(content_type=None)
+            models = [m.get("name", "") for m in data.get("models", [])]
+
+            # Check if our custom model exists (Ollama tags with :latest)
+            model_exists = any(
+                m == CUSTOM_MODEL_NAME or m == f"{CUSTOM_MODEL_NAME}:latest"
+                for m in models
+            )
+
+            if model_exists:
+                _custom_model_ready = True
+                logging.info(
+                    f"AI Side Host: Custom model '{CUSTOM_MODEL_NAME}' "
+                    f"already exists in Ollama"
+                )
+                return
+
+            # Also check if the base model is pulled
+            base_exists = any(m.startswith(base_model.split(":")[0]) for m in models)
+
+            if not base_exists:
+                logging.warning(
+                    f"AI Side Host: Base model '{base_model}' not found in "
+                    f"Ollama. Pull it first: ollama pull {base_model}"
+                )
+                return
+
+        # Step 2: Create the custom model via Modelfile
+        station = getattr(config, "STATION_NAME", "MBot")
+        system_prompt = _build_system_prompt(station)
+
+        modelfile_content = f'FROM {base_model}\nSYSTEM """{system_prompt}"""'
+
+        # Ollama's /api/create endpoint accepts a Modelfile as JSON
+        create_payload = {
+            "name": CUSTOM_MODEL_NAME,
+            "modelfile": modelfile_content,
+            "stream": False,
+        }
+
+        logging.info(
+            f"AI Side Host: Creating custom model '{CUSTOM_MODEL_NAME}' "
+            f"from base '{base_model}'..."
+        )
+
+        # Use a longer timeout for model creation (can take 10-30s)
+        create_timeout = aiohttp.ClientTimeout(total=120)
+        async with aiohttp.ClientSession(timeout=create_timeout) as create_session:
+            async with create_session.post(
+                f"{host}/api/create", json=create_payload
+            ) as create_resp:
+                if create_resp.status == 200:
+                    _custom_model_ready = True
+                    logging.info(
+                        f"AI Side Host: ✅ Custom model '{CUSTOM_MODEL_NAME}' "
+                        f"created successfully! You can also use it directly: "
+                        f"ollama run {CUSTOM_MODEL_NAME}"
+                    )
+                else:
+                    error_body = await create_resp.text()
+                    logging.warning(
+                        f"AI Side Host: Failed to create custom model "
+                        f"'{CUSTOM_MODEL_NAME}' (status {create_resp.status}): "
+                        f"{error_body[:200]} — will use base model + "
+                        f"system prompt instead"
+                    )
+
+    except asyncio.TimeoutError:
+        logging.warning(
+            "AI Side Host: Timed out creating custom model — "
+            "will use base model + system prompt as fallback"
+        )
+    except Exception as e:
+        logging.warning(
+            f"AI Side Host: Error creating custom model: {e} — "
+            "will use base model + system prompt as fallback"
+        )
 
 
 # ── Sound Tag Definitions (for the system prompt) ────────────────────
@@ -318,21 +466,37 @@ async def call_ollama(
     temperature: float = 0.9,
     max_tokens: int = 80,
 ) -> str | None:
-    """Call the Ollama /api/chat endpoint. Returns the model text or None."""
+    """Call the Ollama /api/chat endpoint. Returns the model text or None.
+
+    If the custom model (mbot-sidehost) has been created, uses it directly
+    without sending a system prompt (the personality is baked in). Otherwise,
+    falls back to the base model + system prompt on every call.
+    """
     if not OLLAMA_DJ_AVAILABLE:
         return None
 
     host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
-    model = model or getattr(config, "OLLAMA_MODEL", "gemma4:latest")
+    base_model = model or getattr(config, "OLLAMA_MODEL", "gemma4:latest")
+
+    # Use custom model if it was created, otherwise base model + system prompt
+    if _custom_model_ready:
+        use_model = CUSTOM_MODEL_NAME
+        # Custom model has system prompt baked in — no need to send it.
+        # We still send the user prompt with context.
+        messages = [{"role": "user", "content": prompt}]
+    else:
+        use_model = base_model
+        # Base model — send system prompt on every call
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": prompt},
+        ]
 
     try:
         session = await _get_session()
         payload = {
-            "model": model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": prompt},
-            ],
+            "model": use_model,
+            "messages": messages,
             "stream": False,
             "options": {
                 "temperature": temperature,
@@ -343,7 +507,7 @@ async def call_ollama(
         async with session.post(f"{host}/api/chat", json=payload) as resp:
             if resp.status != 200:
                 # Provide a clear, actionable error message.
-                # 404 = model not found (not pulled yet).
+                # 404 = model not found (not pulled yet / custom model not created).
                 # 400 = bad request (e.g., invalid model name).
                 # Anything else = server/transport issue.
                 if resp.status == 404:
@@ -351,21 +515,21 @@ async def call_ollama(
                     available = await _get_available_models(host, session)
                     if available:
                         logging.warning(
-                            f"AI Side Host: Model '{model}' not found (Ollama 404). "
-                            f"Run: ollama pull {model} | Available models: {', '.join(available[:5])}"
+                            f"AI Side Host: Model '{use_model}' not found (Ollama 404). "
+                            f"Run: ollama pull {base_model} | Available models: {', '.join(available[:5])}"
                         )
                     else:
                         logging.warning(
-                            f"AI Side Host: Model '{model}' not found (Ollama 404). "
-                            f"Run: ollama pull {model}"
+                            f"AI Side Host: Model '{use_model}' not found (Ollama 404). "
+                            f"Run: ollama pull {base_model}"
                         )
                 elif resp.status == 400:
                     logging.warning(
-                        f"AI Side Host: Bad request to Ollama (400) — model '{model}' may be invalid"
+                        f"AI Side Host: Bad request to Ollama (400) — model '{use_model}' may be invalid"
                     )
                 else:
                     logging.warning(
-                        f"AI Side Host: Ollama returned status {resp.status} (model={model})"
+                        f"AI Side Host: Ollama returned status {resp.status} (model={use_model})"
                     )
                 return None
 
@@ -553,9 +717,10 @@ def should_side_host_speak(chance: float | None = None) -> bool:
 
 
 async def check_ollama_available() -> dict:
-    """Check if Ollama is reachable and the configured model is available.
+    """Check if Ollama is reachable and the custom model is available.
 
-    Returns a dict: {available: bool, model: str, models: list, error: str|None}
+    Returns a dict: {available: bool, model: str, custom_model: str,
+                    models: list, error: str|None, custom_created: bool}
     Used by the dashboard and the ?aidj command.
     """
     host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
@@ -565,8 +730,10 @@ async def check_ollama_available() -> dict:
         return {
             "available": False,
             "model": model,
+            "custom_model": CUSTOM_MODEL_NAME,
             "models": [],
             "error": "aiohttp not installed",
+            "custom_created": False,
         }
 
     try:
@@ -576,16 +743,24 @@ async def check_ollama_available() -> dict:
                 return {
                     "available": False,
                     "model": model,
+                    "custom_model": CUSTOM_MODEL_NAME,
                     "models": [],
                     "error": f"Ollama returned HTTP {resp.status}",
+                    "custom_created": False,
                 }
             data = await resp.json(content_type=None)
             models = [m.get("name", "") for m in data.get("models", [])]
             model_available = any(m.startswith(model) or m == model for m in models)
+            custom_available = any(
+                m == CUSTOM_MODEL_NAME or m == f"{CUSTOM_MODEL_NAME}:latest"
+                for m in models
+            )
             return {
                 "available": model_available,
                 "model": model,
+                "custom_model": CUSTOM_MODEL_NAME,
                 "models": models,
+                "custom_created": custom_available,
                 "error": (
                     None
                     if model_available
@@ -596,8 +771,17 @@ async def check_ollama_available() -> dict:
         return {
             "available": False,
             "model": model,
+            "custom_model": CUSTOM_MODEL_NAME,
             "models": [],
             "error": "Connection timed out",
+            "custom_created": False,
         }
     except Exception as e:
-        return {"available": False, "model": model, "models": [], "error": str(e)}
+        return {
+            "available": False,
+            "model": model,
+            "custom_model": CUSTOM_MODEL_NAME,
+            "models": [],
+            "error": str(e),
+            "custom_created": False,
+        }

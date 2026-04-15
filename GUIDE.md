@@ -108,7 +108,28 @@ The "DJ Voice" and "AI Side Host Voice" dropdowns on the Radio page were permane
 1. **Script ordering** — Inline `<script>` tags called `loadVoices()` before the function was defined (the definitions were at the bottom of the page). Fixed: functions are now called via `DOMContentLoaded` after all scripts load. The current voice is stored in a `data-current` attribute on the `<select>` element.
 2. **No voice caching** — Every dropdown open called `edge_tts.list_voices()` which makes a live HTTP request to Microsoft's TTS API (5–15 seconds). Fixed: server-side cache with 30-minute TTL; first call fetches from Microsoft, all subsequent calls return the cached list instantly. If the API times out, stale cache is returned (graceful degradation). Descriptive error messages now appear in the dropdown when `edge-tts` isn't installed or the API is unreachable.
 
-### 🃏 AI Side Host — Reactive Banter (DJ Context Awareness)
+### 🃏 AI Side Host — Auto-Created Custom Ollama Model
+
+The AI side host now **auto-creates a custom Ollama model** (`mbot-sidehost`) on startup that bakes the DJ personality into the model itself. Instead of sending the full system prompt on every API call, the personality is built into the model via an Ollama Modelfile:
+
+```
+FROM gemma4:latest
+SYSTEM """You are the AI side host on MBot Radio — the studio joker..."""
+```
+
+**How it works:**
+1. Bot starts → calls `ensure_custom_model()`
+2. Checks if `mbot-sidehost` exists in Ollama (`GET /api/tags`)
+3. If not → creates it from the base model + Modelfile (`POST /api/create`)
+4. All subsequent API calls use `mbot-sidehost` — system prompt is baked in, so only the user prompt (context) is sent per call
+
+**Benefits:**
+- Faster inference (smaller payload per call — no ~2KB system prompt sent every time)
+- Personality is persistent — even raw `ollama run mbot-sidehost` in the terminal gets the DJ persona
+- You can interact with the model directly: `ollama run mbot-sidehost "Drop a hot take about 80s music"`
+- To recreate after a personality update: `ollama rm mbot-sidehost` and restart the bot
+
+**Fallback:** If the custom model can't be created (Ollama down, base model not pulled), the bot falls back to the base model + system prompt on every call — zero functionality loss.
 
 The AI side host now **knows what the main DJ just said** and can react to it. Instead of generating blind banter, the side host receives the main DJ's spoken line as context when calling Ollama, enabling two-host chemistry like a real radio show.
 
@@ -520,6 +541,7 @@ VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
 | `OLLAMA_DJ_CHANCE` | `0.25` | Side host chime-in probability (0.0–1.0) |
 | `OLLAMA_DJ_VOICE` | `am_adam` | TTS voice for the AI side host (separate from main DJ, Kokoro `am_adam` by default) |
 | `OLLAMA_DJ_TIMEOUT` | `15` | Ollama API call timeout in seconds |
+| `OLLAMA_CUSTOM_MODEL` | `mbot-sidehost` | Custom Ollama model name — auto-created from base model + Modelfile with DJ personality |
 | `TTS_MODE` | `kokoro` | TTS engine: `"kokoro"` (local Docker), `"vibevoice"` (WebSocket), or `"edge-tts"` (cloud) |
 | `KOKORO_TTS_URL` | `http://localhost:8880` | Kokoro-FastAPI Docker server URL |
 | `KOKORO_VOICE` | `af_heart` | Default Kokoro voice |

@@ -139,7 +139,20 @@ OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
 # TTS voice for the AI side host (separate from the main DJ voice).
 # This makes the two hosts sound like different people.
 # Use ?djvoices in Discord to see available voices.
-OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "en-US-GuyNeural")
+# NOTE: The default is determined by the active TTS engine at startup:
+#   Kokoro:    am_adam (male, contrasts with the default female DJ voice)
+#   VibeVoice: en-Carter_man
+#   Edge TTS:  en-US-GuyNeural
+# You can override this in .env with any valid voice name for your TTS engine.
+_OLLAMA_DJ_VOICE_DEFAULTS = {
+    "kokoro": "am_adam",
+    "vibevoice": "en-Carter_man",
+    "edge-tts": "en-US-GuyNeural",
+}
+_ollama_dj_voice_fallback = _OLLAMA_DJ_VOICE_DEFAULTS.get(
+    os.environ.get("TTS_MODE", "kokoro").lower(), "en-US-GuyNeural"
+)
+OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", _ollama_dj_voice_fallback)
 
 # Timeout in seconds for Ollama API calls. If the LLM doesn't respond
 # in this time, the side host is skipped (no dead air).

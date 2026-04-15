@@ -1894,7 +1894,7 @@ OLLAMA_DJ_ENABLED=true       # Enable the AI side host
 OLLAMA_HOST=http://localhost:11434  # Ollama server URL
 OLLAMA_MODEL=gemma4:latest    # Model to use (must be pulled first)
 OLLAMA_DJ_CHANCE=0.25         # 25% chance to chime in after each DJ line
-OLLAMA_DJ_VOICE=en-US-GuyNeural  # Separate TTS voice for the side host
+OLLAMA_DJ_VOICE=am_adam  # Separate TTS voice for the side host (TTS-engine-aware default)
 OLLAMA_DJ_TIMEOUT=15          # Timeout in seconds (larger models need more time)
 ```
 
@@ -1904,7 +1904,7 @@ OLLAMA_DJ_TIMEOUT=15          # Timeout in seconds (larger models need more time
 | `OLLAMA_HOST` | `http://localhost:11434` | Any URL | Ollama server address |
 | `OLLAMA_MODEL` | `gemma4:latest` | Any pulled model | LLM model for generation |
 | `OLLAMA_DJ_CHANCE` | `0.25` | `0.0`–`1.0` | How often the side host chimes in |
-| `OLLAMA_DJ_VOICE` | `en-US-GuyNeural` | Edge TTS voice name | Separate voice so 2 hosts sound different |
+| `OLLAMA_DJ_VOICE` | `am_adam` (kokoro) / `en-Carter_man` (vibevoice) / `en-US-GuyNeural` (edge-tts) | TTS voice name | Separate voice so 2 hosts sound different |
 | `OLLAMA_DJ_TIMEOUT` | `15` | Seconds | Max wait before falling back |
 
 ### Voice Configuration
@@ -1913,10 +1913,12 @@ The main DJ and AI side host have **separate TTS voices** to create two distinct
 
 | Host | Default Voice | Config Key | Discord Command | Web Dashboard |
 |---|---|---|---|---|
-| Main DJ | `en-US-AriaNeural` (female) | `DJ_VOICE` | `?djvoice <name>` | Radio page → "🗣️ DJ Voice" |
-| AI Side Host | `en-US-GuyNeural` (male) | `OLLAMA_DJ_VOICE` | `?aidjvoice <name>` | Radio page → "🃏 AI Side Host Voice" |
+| Main DJ | `af_heart` (kokoro) / `en-US-AriaNeural` (edge-tts) | `DJ_VOICE` | `?djvoice <name>` | Radio page → "🗣️ DJ Voice" |
+| AI Side Host | `am_adam` (kokoro) / `en-US-GuyNeural` (edge-tts) | `OLLAMA_DJ_VOICE` | `?aidjvoice <name>` | Radio page → "🃏 AI Side Host Voice" |
 
-Use `?djvoices` to see all available voices.
+Use `?djvoices` to see all available voices for the active TTS engine.
+
+> **Note:** When you change a voice in the web dropdown, the change takes effect immediately for the *next* DJ or AI side host line — no restart needed. If the primary TTS engine is down and falls back to edge-tts, voices from other engines (Kokoro, VibeVoice) are automatically swapped to the closest compatible default so audio still plays. The dropdown shows a warning when the current voice isn't available in the active TTS engine.
 
 ### Discord Commands
 
@@ -2824,6 +2826,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 | Bug | Root Cause | Fix |
 |---|---|---|
+| **Voice dropdown changes don't affect TTS output** | Multiple issues: (1) `data-current` on dropdowns was empty string when no guild voice was set, so the dropdown never showed the actual current voice; (2) `OLLAMA_DJ_VOICE` defaulted to `en-US-GuyNeural` (edge-tts) regardless of active TTS engine — if using Kokoro, that voice name got silently swapped to `af_heart` by `_resolve_voice()`; (3) when Kokoro/VibeVoice fell back to edge-tts, the selected voice was swapped to the engine default with no logging; (4) `_resolve_voice()` used fragile heuristic patterns instead of identifying which engine a voice belongs to | (1) `dj_voice`/`ai_dj_voice` template vars now fall back to `config.DJ_VOICE`/`config.OLLAMA_DJ_VOICE` when no guild voice is set; (2) `OLLAMA_DJ_VOICE` default is now TTS-engine-aware (`am_adam` for kokoro, `en-Carter_man` for vibevoice, `en-US-GuyNeural` for edge-tts); (3) `_resolve_voice()` logs all cross-engine swaps with the reason; (4) new helper functions `_is_edge_voice()`, `_is_kokoro_voice()`, `_is_vibevoice_voice()`, `_engine_for_voice()` provide reliable engine detection; (5) dropdown shows "(current — not available in kokoro)" warning when the saved voice doesn't exist in the active TTS engine |
 | **Voice dropdowns permanently stuck at "Loading voices..."** | Inline `<script>` tags called `loadVoices()`/`loadAiVoices()` before they were defined (definitions were at the bottom of the page). Also no server-side caching — every dropdown fetch called `edge_tts.list_voices()` which makes a live HTTP request to Microsoft (5–15s). | Functions now called via `DOMContentLoaded`; current voice stored in `data-current` attribute; voice list cached server-side for 30 minutes with stale-cache fallback on timeout |
 | **"Ollama returned status 404" with no actionable info** | `call_ollama()` logged only the HTTP status code (404) without model name, pull command, or available alternatives | On 404, handler now queries `/api/tags` for available models and logs: `Model 'X' not found. Run: ollama pull X \| Available: Y,Z` |
 | **Wrong default Ollama model** | `config.py`, `llm_dj.py`, `app.py`, `music.py` all hardcoded `llama3.2` as fallback — but that model wasn't pulled | Changed default to `gemma4:latest` across all files; created `.env` file with correct model |

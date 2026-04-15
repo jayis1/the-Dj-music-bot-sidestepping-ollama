@@ -532,6 +532,7 @@ For full technical details — architecture, cog internals, all API endpoints, m
 | 🎛️ **Multi Sound Effects** | AI side host can now use multiple `{sound:name}` tags per line (char limit raised 150→200) — the pipeline already supported it, only the prompt restricted it |
 | 🔀 **Reverse Proxy Support** | Settings panel now has an Nginx/NPM config card — one-click toggle for `ProxyFix` middleware (real IPs, HTTPS awareness, subpath support) |
 | 🔤 **Ollama Model Name Sanitization** | Bot's Discord name (e.g. `Bad Music inc.`) caused `invalid model name` — now auto-sanitized to `bad-music-inc` |
+| 🎤 **Voice Dropdown 4-Bug Fix** | Four interconnected bugs caused DJ/AI voice dropdowns to show wrong voice, silently swap engines, and never update TTS — all fixed |
 | 📋 **Log Panel Layout Fix** | `#log-panel` moved outside `<main>` so `position: fixed` works correctly; `min-height: 0` added to `.log-entries` so `overflow-y: auto` actually scrolls |
 | 👤 **Bot Name as Station Name** | AI side host now uses the bot's actual Discord display name (e.g. `musicBOT2`) instead of the generic `STATION_NAME` config value |
 | 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
@@ -635,6 +636,17 @@ CUSTOM_MODEL_NAME = re.sub(r"-+", "-", CUSTOM_MODEL_NAME).strip("-")
 /* After: entries scroll correctly */
 .log-entries { flex: 1; overflow-y: auto; min-height: 0; }
 ```
+
+### 🎤 Voice Dropdown — 4-Bug Root Cause Analysis
+
+Four interconnected bugs caused the DJ and AI side host voice dropdowns to malfunction:
+
+| # | Bug | Fix |
+|---|---|---|
+| 1 | `data-current` was `""` when no guild-specific voice set — dropdown showed wrong voice | Template variables now fall back to `config.DJ_VOICE` / `config.OLLAMA_DJ_VOICE` so dropdown always reflects the active voice |
+| 2 | `OLLAMA_DJ_VOICE` hardcoded to `en-US-GuyNeural` (edge-tts) regardless of active engine — silently swapped to `af_heart` by `_resolve_voice()` | `config.py` now picks default by `TTS_MODE`: `kokoro→am_adam`, `vibevoice→en-Carter_man`, `edge-tts→en-US-GuyNeural` |
+| 3 | `_resolve_voice()` silently swapped cross-engine voices with no logging | New helpers `_is_edge_voice()`, `_is_kokoro_voice()`, `_is_vibevoice_voice()`, `_engine_for_voice()` + logging on every swap |
+| 4 | When saved voice was from wrong engine, dropdown showed nothing selected | `loadVoices()` / `loadAiVoices()` now add a `"voice_name (current — not available in kokoro)"` option so user knows to repick |
 
 ### 🧠 Ollama Modelfile JSON Serialization Fix
 

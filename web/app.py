@@ -292,7 +292,10 @@ def dashboard():
                     "dj_enabled": music.dj_enabled.get(guild_id, False)
                     if music
                     else False,
-                    "dj_voice": music.dj_voice.get(guild_id, "") if music else "",
+                    "dj_voice": music.dj_voice.get(guild_id, "")
+                    or getattr(config, "DJ_VOICE", "af_heart")
+                    if music
+                    else getattr(config, "DJ_VOICE", "af_heart"),
                     "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
                     if music
                     else 100,
@@ -307,7 +310,10 @@ def dashboard():
                     "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
                     if music
                     else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") if music else "",
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "am_adam")
+                    if music
+                    else getattr(config, "OLLAMA_DJ_VOICE", "am_adam"),
                     "recently_played": music.recently_played.get(guild_id, [])[:15]
                     if music
                     else [],
@@ -391,7 +397,10 @@ def radio():
                     "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
                     if music
                     else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") if music else "",
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "am_adam")
+                    if music
+                    else getattr(config, "OLLAMA_DJ_VOICE", "am_adam"),
                     "recently_played": music.recently_played.get(guild_id, [])[:30]
                     if music
                     else [],
@@ -470,7 +479,10 @@ def queue_manager():
                     "dj_enabled": music.dj_enabled.get(guild_id, False)
                     if music
                     else False,
-                    "dj_voice": music.dj_voice.get(guild_id, "") if music else "",
+                    "dj_voice": music.dj_voice.get(guild_id, "")
+                    or getattr(config, "DJ_VOICE", "af_heart")
+                    if music
+                    else getattr(config, "DJ_VOICE", "af_heart"),
                     "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
                     if music
                     else 100,
@@ -485,7 +497,10 @@ def queue_manager():
                     "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
                     if music
                     else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") if music else "",
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "am_adam")
+                    if music
+                    else getattr(config, "OLLAMA_DJ_VOICE", "am_adam"),
                 }
             )
 
@@ -628,9 +643,8 @@ def api_ai_dj_status(guild_id):
     return jsonify(
         {
             "enabled": music.ai_dj_enabled.get(guild_id, False),
-            "voice": music.ai_dj_voice.get(
-                guild_id, getattr(cfg, "OLLAMA_DJ_VOICE", "en-US-GuyNeural")
-            ),
+            "voice": music.ai_dj_voice.get(guild_id, "")
+            or getattr(cfg, "OLLAMA_DJ_VOICE", "am_adam"),
             "model": getattr(cfg, "OLLAMA_MODEL", "gemma4:latest"),
             "chance": getattr(cfg, "OLLAMA_DJ_CHANCE", 0.25),
             "ollama_available": OLLAMA_DJ_AVAILABLE,

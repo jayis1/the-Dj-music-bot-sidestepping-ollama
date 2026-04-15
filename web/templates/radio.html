@@ -338,15 +338,31 @@ async function loadVoices(guildId, currentVoice) {
                 if (b.default) return 1;
                 return a.name.localeCompare(b.name);
             });
+            let matchFound = false;
             sorted.forEach(v => {
                 const opt = document.createElement('option');
                 opt.value = v.name;
                 const gender = v.gender || '?';
                 const locale = v.locale || '?';
-                opt.textContent = v.name + ' (' + gender + ', ' + locale + ')' + (v.default ? ' ★' : '');
-                if (v.name === currentVoice) opt.selected = true;
+                const desc = v.description ? ' — ' + v.description : '';
+                opt.textContent = v.name + ' (' + gender + ', ' + locale + ')' + desc + (v.default ? ' ★' : '');
+                if (v.name === currentVoice) {
+                    opt.selected = true;
+                    matchFound = true;
+                }
                 select.appendChild(opt);
             });
+            // If the current voice wasn't found in the list (e.g. it's from a
+            // different TTS engine), add it as a custom option at the top so
+            // the user can see what's set, and also select the engine's default.
+            if (!matchFound && currentVoice) {
+                const defaultVoice = sorted.find(v => v.default);
+                const customOpt = document.createElement('option');
+                customOpt.value = currentVoice;
+                customOpt.textContent = currentVoice + ' (current — not available in ' + ttsMode + ')';
+                customOpt.selected = true;
+                select.insertBefore(customOpt, select.firstChild);
+            }
         } else if (data.error) {
             const prefix = ttsMode === 'local' ? 'Local TTS error: ' : '';
             select.innerHTML = '<option value="">' + prefix + data.error + '</option>';
@@ -390,15 +406,30 @@ async function loadAiVoices(guildId, currentVoice) {
                 if (b.default) return 1;
                 return a.name.localeCompare(b.name);
             });
+            let matchFound = false;
             sorted.forEach(v => {
                 const opt = document.createElement('option');
                 opt.value = v.name;
                 const gender = v.gender || '?';
                 const locale = v.locale || '?';
-                opt.textContent = v.name + ' (' + gender + ', ' + locale + ')' + (v.default ? ' ★' : '');
-                if (v.name === currentVoice) opt.selected = true;
+                const desc = v.description ? ' — ' + v.description : '';
+                opt.textContent = v.name + ' (' + gender + ', ' + locale + ')' + desc + (v.default ? ' ★' : '');
+                if (v.name === currentVoice) {
+                    opt.selected = true;
+                    matchFound = true;
+                }
                 select.appendChild(opt);
             });
+            // If the current voice wasn't found in the list (e.g. it's from a
+            // different TTS engine), add it as a custom option at the top so
+            // the user can see what's set, and also select the engine's default.
+            if (!matchFound && currentVoice) {
+                const customOpt = document.createElement('option');
+                customOpt.value = currentVoice;
+                customOpt.textContent = currentVoice + ' (current — not available in ' + ttsMode + ')';
+                customOpt.selected = true;
+                select.insertBefore(customOpt, select.firstChild);
+            }
         } else if (data.error) {
             const prefix = ttsMode === 'local' ? 'Local TTS error: ' : '';
             select.innerHTML = '<option value="">' + prefix + data.error + '</option>';

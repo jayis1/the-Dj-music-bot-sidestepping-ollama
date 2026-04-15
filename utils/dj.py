@@ -699,27 +699,89 @@ KOKORO_VOICE_CATALOG: dict[str, str] = {
 }
 
 
+def _is_edge_voice(voice: str) -> bool:
+    """Return True if a voice name looks like a Microsoft Edge TTS voice."""
+    return "-" in voice and "Neural" in voice
+
+
+def _is_kokoro_voice(voice: str) -> bool:
+    """Return True if a voice name looks like a Kokoro TTS voice."""
+    return "_" in voice and "Neural" not in voice and "-" not in voice.replace("_", "")
+
+
+def _is_vibevoice_voice(voice: str) -> bool:
+    """Return True if a voice name looks like a VibeVoice TTS voice.
+
+    VibeVoice names have both '-' and '_' like 'en-Carter_man'.
+    """
+    return "-" in voice and "_" in voice and "Neural" not in voice
+
+
+def _engine_for_voice(voice: str) -> str | None:
+    """Guess which TTS engine a voice name belongs to.
+
+    Returns 'kokoro', 'vibevoice', 'edge-tts', or None if unclear.
+    """
+    if _is_kokoro_voice(voice):
+        return "kokoro"
+    if _is_edge_voice(voice):
+        return "edge-tts"
+    if _is_vibevoice_voice(voice):
+        return "vibevoice"
+    return None
+
+
 def _resolve_voice(voice: str, engine: str = "") -> str:
     """Resolve a voice name for the given engine.
 
     If the voice looks like it belongs to a different engine (e.g. passing an
     Edge TTS voice name like 'en-US-AriaNeural' when using Kokoro), swap it
     for that engine's default instead of silently producing incompatible audio.
+
+    Logs a warning when a cross-engine swap happens so the user knows why
+    their selected voice wasn't used.
     """
     if not engine:
         engine = TTS_MODE
 
-    # Heuristic: Edge TTS voice names contain '-' (e.g. en-US-AriaNeural)
-    # Kokoro voice names use '_' (e.g. af_heart, am_adam)
-    # VibeVoice voice names use '-' and '_' (e.g. en-Carter_man)
+    voice_engine = _engine_for_voice(voice)
+
+    # If we can identify the voice's engine and it doesn't match the target,
+    # swap to the target engine's default.
+    if voice_engine and voice_engine != engine:
+        defaults = {
+            "kokoro": DEFAULT_VOICE_KOKORO,
+            "vibevoice": DEFAULT_VOICE_VIBEVOICE,
+            "edge-tts": DEFAULT_VOICE_EDGE,
+        }
+        new_voice = defaults.get(engine, voice)
+        logging.info(
+            f"DJ: Voice '{voice}' is a {voice_engine} voice but TTS engine is "
+            f"{engine} — resolved to {engine} default '{new_voice}'"
+        )
+        return new_voice
+
+    # Heuristic fallback: if we couldn't identify the engine, use pattern matching
     if engine == "kokoro":
         if "_" not in voice and "-" in voice and "Neural" in voice:
+            logging.info(
+                f"DJ: Voice '{voice}' looks like an edge-tts voice but TTS is "
+                f"kokoro — resolved to kokoro default '{DEFAULT_VOICE_KOKORO}'"
+            )
             return DEFAULT_VOICE_KOKORO
     elif engine == "vibevoice":
         if "Neural" in voice:
+            logging.info(
+                f"DJ: Voice '{voice}' looks like an edge-tts voice but TTS is "
+                f"vibevoice — resolved to vibevoice default '{DEFAULT_VOICE_VIBEVOICE}'"
+            )
             return DEFAULT_VOICE_VIBEVOICE
     elif engine == "edge-tts":
         if "_" in voice and "Neural" not in voice:
+            logging.info(
+                f"DJ: Voice '{voice}' looks like a local TTS voice but TTS is "
+                f"edge-tts — resolved to edge-tts default '{DEFAULT_VOICE_EDGE}'"
+            )
             return DEFAULT_VOICE_EDGE
 
     return voice
@@ -1013,7 +1075,12 @@ async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str 
                 "ghcr.io/remsky/kokoro-fastapi-gpu:latest"
             )
         # Re-resolve voice for edge-tts (Kokoro voice names won't work there)
-        edge_voice = _resolve_voice(voice, "edge-tts")
+        fallback_voice = _resolve_voice(voice, "edge-tts")
+        if fallback_voice != voice:
+            logging.info(
+                f"{source}: Voice '{voice}' won't work with edge-tts fallback, "
+                f"using '{fallback_voice}' instead"
+            )
 
     elif TTS_MODE == "vibevoice":
         resolved = _resolve_voice(voice, "vibevoice")
@@ -1021,11 +1088,16 @@ async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str 
         if result is not None:
             return result
         logging.warning(f"{source}: VibeVoice TTS failed, falling back to edge-tts")
-        edge_voice = _resolve_voice(voice, "edge-tts")
+        fallback_voice = _resolve_voice(voice, "edge-tts")
+        if fallback_voice != voice:
+            logging.info(
+                f"{source}: Voice '{voice}' won't work with edge-tts fallback, "
+                f"using '{fallback_voice}' instead"
+            )
 
     else:
         # TTS_MODE == "edge-tts" — use directly
-        edge_voice = _resolve_voice(voice, "edge-tts")
+        fallback_voice = _resolve_voice(voice, "edge-tts")
 
     # Final fallback: edge-tts
     if not EDGE_TTS_AVAILABLE:
@@ -1035,8 +1107,8 @@ async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str 
         )
         return None
 
-    logging.info(f"{source}: Using edge-tts fallback (voice={edge_voice})")
-    return await _generate_tts_edge(text, edge_voice, source=source)
+    logging.info(f"{source}: Using edge-tts fallback (voice={fallback_voice})")
+    return await _generate_tts_edge(text, fallback_voice, source=source)
 
 
 async def _generate_tts_kokoro(

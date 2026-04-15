@@ -2,7 +2,7 @@
   <img src="assets/logo.png" alt="The Radio DJ Music Bot" width="420"/>
 </p>
 
-# 🎵 The Radio DJ Music Bot — v6.3.0
+# 🎵 The Radio DJ Music Bot — v6.4.0
 
 > *🎙️ "LADIES AND GENTLEMEN, boys and girls, Discord users of ALL ages — put your hands together, because tonight — TONIGHT — we have something truly, genuinely, historically SPECIAL for you.*
 >
@@ -267,7 +267,7 @@ Available at `http://your-server:8080/`
 | **DJ Lines** | `/dj-lines` | Custom DJ line CRUD with visual `{sound:name}` badges |
 | **Settings** | `/settings` | System info, Ollama status, Restart/Shutdown |
 
-### 📋 Activity Log Panel *(new in v6.3.0)*
+### 📋 Activity Log Panel *(new in v6.4.0)*
 Click **📋 Log** in the sidebar to open a live slide-out log panel:
 - Streams the same logs sent to your Discord log channel — **in real-time via SSE**
 - **Width:** 640px (responsive, max 90vw on small screens)
@@ -502,12 +502,12 @@ nano .env           # Paste your DISCORD_TOKEN
 | Problem | Solution |
 |---|---|
 | Bot won't play audio | Run `./launch.sh doctor` — likely missing `ffmpeg` or `libopus-dev` |
-| DJ voice dropdown stuck on "Loading..." | Fixed in v6.3.0 — update to latest. First load fetches from Microsoft TTS API (~5s), then cached for 30 min |
+| DJ voice dropdown stuck on "Loading..." | Fixed in v6.4.0 — update to latest. First load fetches from Microsoft TTS API (~5s), then cached for 30 min |
 | `?aidj` says Ollama not running | Install Ollama: `curl https://ollama.ai/install.sh \| sh` and pull a model: `ollama pull phi3:mini` |
 | Ollama 404 error in logs | Model not pulled yet — the log now shows the exact `ollama pull <model>` command to run |
 | Speed slider doesn't apply | Set speed only after the song has started playing; setting at 1.0× before queuing avoids the race |
 | Kokoro TTS not working | Ensure kokoro-fastapi is running: `curl http://your-server:8880/health` — Settings page shows live status |
-| Songs being skipped silently | Kokoro WAV header bug — update to latest (fixed in v6.3.0) |
+| Songs being skipped silently | Kokoro WAV header bug — update to latest (fixed in v6.4.0) |
 | DJ speaks for 89478 seconds | Same WAV header bug — update to latest |
 | VibeVoice voice not found | Use voices like `en-Carter_man` (not Edge TTS names like `en-US-AriaNeural`) when `TTS_MODE=vibevoice` |
 | Dashboard 500 error | Check Jinja template `{% if %}`/`{% endif %}` balance — run `./launch.sh doctor` |
@@ -522,7 +522,7 @@ For full technical details — architecture, cog internals, all API endpoints, m
 
 ---
 
-## 🐛 Bugs Fixed & Features Added in v6.3.0
+## 🐛 Bugs Fixed & Features Added in v6.4.0
 
 | | Summary |
 |---|---|

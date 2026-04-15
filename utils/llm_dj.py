@@ -65,9 +65,17 @@ OLLAMA_DJ_AVAILABLE = False
 
 # The custom model name — this is what Ollama will see when you run
 # `ollama list`. The base model (e.g. gemma4:latest) is the parent.
-CUSTOM_MODEL_NAME = getattr(config, "OLLAMA_CUSTOM_MODEL", "") or os.environ.get(
+# Ollama model names must be lowercase, with no spaces. Allowed chars:
+# a-z, 0-9, -, :, and .
+# We sanitize the name automatically: lowercased, spaces → dashes,
+# stripped of special characters.
+_raw_custom_model = getattr(config, "OLLAMA_CUSTOM_MODEL", "") or os.environ.get(
     "OLLAMA_CUSTOM_MODEL", "mbot-sidehost"
 )
+# Sanitize: lowercase, replace non-alphanumeric with dashes, collapse
+# consecutive dashes, strip edges. Ollama allows a-z, 0-9, - and :
+CUSTOM_MODEL_NAME = re.sub(r"[^a-z0-9\-]", "-", _raw_custom_model.lower())
+CUSTOM_MODEL_NAME = re.sub(r"-+", "-", CUSTOM_MODEL_NAME).strip("-")
 
 if AIOHTTP_AVAILABLE and getattr(config, "OLLAMA_DJ_ENABLED", False):
     OLLAMA_DJ_AVAILABLE = True

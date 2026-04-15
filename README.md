@@ -527,6 +527,8 @@ For full technical details — architecture, cog internals, all API endpoints, m
 | 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation via JSON API failed — fixed by switching `SYSTEM """..."""` to `MESSAGE system` format which survives JSON serialization |
 | 🎛️ **Multi Sound Effects** | AI side host can now use multiple `{sound:name}` tags per line (char limit raised 150→200) — the pipeline already supported it, only the prompt restricted it |
 | 🔀 **Reverse Proxy Support** | Settings panel now has an Nginx/NPM config card — one-click toggle for `ProxyFix` middleware (real IPs, HTTPS awareness, subpath support) |
+| 🔤 **Ollama Model Name Sanitization** | Bot's Discord name (e.g. `Bad Music inc.`) caused `invalid model name` — now auto-sanitized to `bad-music-inc` |
+| 📋 **Log Panel Layout Fix** | `#log-panel` moved outside `<main>` so `position: fixed` works correctly; `min-height: 0` added to `.log-entries` so `overflow-y: auto` actually scrolls |
 | 👤 **Bot Name as Station Name** | AI side host now uses the bot's actual Discord display name (e.g. `musicBOT2`) instead of the generic `STATION_NAME` config value |
 | 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
 | 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |
@@ -597,6 +599,38 @@ Playback initiated for Track Name
 **Cause:** `settings_page()` in `web/app.py` used `EDGE_TTS_AVAILABLE` as a template variable but never imported it → `NameError` on every `/settings` visit.
 
 **Fix:** Added `from utils.dj import EDGE_TTS_AVAILABLE` inside `settings_page()`, matching the pattern used by `api_voices` and `api_ollama_check`.
+
+### 🔤 Ollama Model Name Sanitization
+
+**Cause:** The bot's Discord name (`Bad Music inc.`) was used verbatim as the Ollama model name. Ollama requires lowercase alphanumeric + dashes only.
+
+**Fix:** Auto-sanitization in `utils/llm_dj.py` using regex:
+```python
+CUSTOM_MODEL_NAME = re.sub(r"[^a-z0-9\-]", "-", raw_name.lower())
+CUSTOM_MODEL_NAME = re.sub(r"-+", "-", CUSTOM_MODEL_NAME).strip("-")
+```
+
+| Input | Sanitized |
+|---|---|
+| `Bad Music Bot` | `bad-music-bot` |
+| `Bad Music inc.` | `bad-music-inc` |
+| `  spaces  everywhere  ` | `spaces-everywhere` |
+| `mbot-sidehost` | `mbot-sidehost` *(unchanged)* |
+
+### 📋 Activity Log Panel Layout Fix
+
+**Two CSS/HTML bugs:**
+
+1. **Wrong DOM position** — `#log-panel` was inside `<main class="main">`. `position: fixed` elements inside a container can behave inconsistently across browsers. Fixed by moving `#log-panel` and its backdrop outside `<main>` as direct siblings of `<nav>` and `<main>` under `.layout`.
+
+2. **Missing `min-height: 0`** — Without this on `.log-entries` (a flex child), the container grows infinitely instead of scrolling. This is a critical CSS flexbox rule: flex children can't shrink below their content size unless `min-height: 0` is set, which is what allows `overflow-y: auto` to actually create a scrollbar.
+```css
+/* Before: entries just grew taller, no scroll */
+.log-entries { flex: 1; overflow-y: auto; }
+
+/* After: entries scroll correctly */
+.log-entries { flex: 1; overflow-y: auto; min-height: 0; }
+```
 
 ### 🧠 Ollama Modelfile JSON Serialization Fix
 

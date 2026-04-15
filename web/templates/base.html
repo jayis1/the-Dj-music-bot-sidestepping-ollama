@@ -55,7 +55,8 @@
             {% endif %}
             {% endwith %}
             {% block content %}{% endblock %}
-        <!-- Activity Log Slide-out Panel -->
+        </main>
+        <!-- Activity Log Slide-out Panel (outside main for proper fixed positioning) -->
         <div id="log-panel" class="log-panel">
             <div class="log-panel-header">
                 <h3><span class="icon">📋</span> Bot Activity Log</h3>
@@ -74,9 +75,8 @@
                 <div class="log-empty">Connecting to log stream...</div>
             </div>
         </div>
-        <!-- Log panel backdrop -->
+        <!-- Log panel backdrop (outside main for proper overlay) -->
         <div id="log-panel-backdrop" class="log-panel-backdrop" onclick="toggleLogPanel()"></div>
-        </main>
     </div>
     <script>
     // ── Activity Log Panel ──────────────────────────────────────────

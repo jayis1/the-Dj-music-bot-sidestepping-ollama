@@ -680,6 +680,7 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .log-entries {
     flex: 1;
     overflow-y: auto;
+    min-height: 0;  /* Critical: allows flex child to shrink and scroll */
     padding: 8px 0;
     font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
     font-size: 12px;

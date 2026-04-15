@@ -1158,6 +1158,8 @@ def settings_page():
     except ImportError:
         pass
 
+    from utils.dj import EDGE_TTS_AVAILABLE
+
     return render_template(
         "settings.html",
         bot_user=bot_user,

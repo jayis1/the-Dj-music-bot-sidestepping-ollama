@@ -478,8 +478,10 @@ For full technical details — architecture, cog internals, all API endpoints, m
 
 | | Summary |
 |---|---|
+| ⚙️ **Settings Page Crash** | `NameError: EDGE_TTS_AVAILABLE` on `/settings` — fixed by importing from `utils.dj` |
 | 🎵 **DJ Bed Race Condition** | Fixed "Already playing audio" crash — bed music now starts after TTS finishes, not simultaneously |
-| 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation failed on remote Ollama servers with `'from'/'files' not specified` — fixed with 3-method fallback (CLI → JSON API → multipart upload) |
+| 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation via JSON API failed — fixed by switching `SYSTEM """..."""` to `MESSAGE system` format which survives JSON serialization |
+| 🎛️ **Multi Sound Effects** | AI side host can now use multiple `{sound:name}` tags per line (char limit raised 150→200) — the pipeline already supported it, only the prompt restricted it |
 | 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
 | 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |
 | 🔧 **Kokoro WAV Header Fix** | Streaming WAV files had broken `0xFFFFFFFF` chunk sizes → 89478s duration → FFmpeg hung → entire queue skipped. Fixed with 3-layer solution (WAV rewrite + FFmpeg `-t 30` cap + stuck-state recovery) |
@@ -543,6 +545,49 @@ Playback initiated for Track Name
 | 3rd | **Multipart upload** — `POST /api/create` with FormData file | Remote Ollama, complex Modelfiles ✅ |
 
 > Default setup (Ollama on `172.16.1.26:11434`, bot on separate machine): CLI fails → falls to multipart, which works reliably.
+
+### ⚙️ Settings Page Crash Fix
+
+**Cause:** `settings_page()` in `web/app.py` used `EDGE_TTS_AVAILABLE` as a template variable but never imported it → `NameError` on every `/settings` visit.
+
+**Fix:** Added `from utils.dj import EDGE_TTS_AVAILABLE` inside `settings_page()`, matching the pattern used by `api_voices` and `api_ollama_check`.
+
+### 🧠 Ollama Modelfile JSON Serialization Fix
+
+**Cause:** `SYSTEM """..."""` in the Modelfile uses triple-quoted blocks. `json.dumps()` escapes `"""` → `\"\"\"` which Ollama's parser can't read, failing with `"neither 'from' or 'files' was specified"`.
+
+**Fix:** Switched to `MESSAGE system <line>` format — no triple quotes, survives JSON perfectly, supports all special characters (`{sound:airhorn}`, apostrophes, etc.). Ollama concatenates multiple `MESSAGE system` lines into the same system prompt.
+
+```
+# Before (broken via JSON):
+FROM phi3:latest
+SYSTEM """
+You are the AI side host...
+"""
+
+# After (works via JSON):
+FROM phi3:latest
+MESSAGE system You are the AI side host...
+MESSAGE system You're funny and chaotic...
+```
+
+### 🎛️ AI Side Host — Multiple Sound Effects Per Line
+
+The AI can now use multiple `{sound:name}` tags per line — the pipeline already handled them; only the system prompt restricted it to one.
+
+| Layer | Before | After | Code change? |
+|---|---|---|---|
+| System prompt | "ONE sound effect tag at the very end" | "tags anywhere, use as many as fit" | ✅ |
+| `extract_sound_tags()` | Already returns all tags | No change | ❌ |
+| `_play_dj_sounds_then_song()` | Already loops all sounds sequentially | No change | ❌ |
+| Character limit | 150 chars | 200 chars | ✅ |
+
+**Example output:**
+```
+Before: Coming up next, brace yourselves! {sound:airhorn}
+After:  {sound:dj_scratch} Wait for it... {sound:airhorn} THIS one goes HARD! {sound:rave_cheer}
+```
+Each sound plays sequentially after TTS finishes, then the song starts.
 
 ---
 

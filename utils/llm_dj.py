@@ -160,7 +160,19 @@ async def ensure_custom_model():
         station = getattr(config, "STATION_NAME", "MBot")
         system_prompt = _build_system_prompt(station)
 
-        modelfile_content = f'FROM {base_model}\nSYSTEM """\n{system_prompt}\n"""'
+        # Build Modelfile content. We use MESSAGE system instead of
+        # SYSTEM """...""" because the /api/create JSON endpoint mangles
+        # triple-quoted blocks — json.dumps() escapes """ as \\"\\"
+        # which Ollama's Modelfile parser can't read, causing
+        # "neither 'from' or 'files' was specified".
+        # MESSAGE system <text> works for single lines — we split
+        # the multi-line prompt into multiple MESSAGE lines.
+        modelfile_lines = [f"FROM {base_model}"]
+        for line in system_prompt.strip().split("\n"):
+            line = line.strip()
+            if line:
+                modelfile_lines.append(f"MESSAGE system {line}")
+        modelfile_content = "\n".join(modelfile_lines)
 
         # Try two methods to create the model:
         # Method 1: `ollama create` CLI (preferred — handles complex Modelfiles)
@@ -197,8 +209,10 @@ async def _create_model_cli(modelfile_content: str) -> bool:
     `ollama create <name> -f <path>`, which handles complex SYSTEM prompts
     with triple quotes, braces, etc. correctly.
 
+    The `ollama` CLI respects the OLLAMA_HOST environment variable, so this
+    works even when Ollama runs on a different server (e.g. 172.16.1.26).
+
     Returns True if the model was created, False otherwise.
-    Only works when the `ollama` binary is on the same machine as the bot.
     """
     modelfile_path = None
     try:
@@ -213,6 +227,13 @@ async def _create_model_cli(modelfile_content: str) -> bool:
             f"AI Side Host: Creating custom model '{CUSTOM_MODEL_NAME}' via CLI..."
         )
 
+        # Pass OLLAMA_HOST to the subprocess so the CLI talks to the
+        # correct server (local or remote). Inherits the current env
+        # and adds/overrides OLLAMA_HOST.
+        host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
+        sub_env = os.environ.copy()
+        sub_env["OLLAMA_HOST"] = host
+
         proc = await asyncio.create_subprocess_exec(
             "ollama",
             "create",
@@ -221,6 +242,7 @@ async def _create_model_cli(modelfile_content: str) -> bool:
             modelfile_path,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=sub_env,
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
 
@@ -234,8 +256,12 @@ async def _create_model_cli(modelfile_content: str) -> bool:
             return False
 
     except FileNotFoundError:
-        # `ollama` binary not on PATH — probably a remote Ollama server
-        logging.debug("AI Side Host: 'ollama' CLI not in PATH, trying API method")
+        # `ollama` binary not on PATH — fall through to API method
+        logging.info(
+            "AI Side Host: 'ollama' CLI not found in PATH — "
+            "install it for reliable custom model creation. "
+            "Falling back to API method."
+        )
         return False
     except asyncio.TimeoutError:
         logging.debug("AI Side Host: CLI create timed out (120s)")
@@ -257,10 +283,8 @@ async def _create_model_api(host: str, modelfile_content: str) -> bool:
     This is a fallback for when the `ollama` CLI isn't available on the
     bot's machine (e.g. Ollama runs on a different server at 172.16.x.x).
 
-    The /api/create endpoint historically had bugs with complex Modelfiles
-    (triple-quoted SYSTEM blocks with braces like {sound:name}). If the
-    JSON method fails, we fall back to writing the Modelfile to disk and
-    POSTing it as a multipart file upload, which Ollama parses correctly.
+    We use MESSAGE-based Modelfiles (not SYSTEM triple-quoted blocks)
+    so that the JSON serialization doesn't break the format.
 
     Returns True if the model was created, False otherwise.
     """
@@ -271,7 +295,6 @@ async def _create_model_api(host: str, modelfile_content: str) -> bool:
         f"AI Side Host: Creating custom model '{CUSTOM_MODEL_NAME}' via API..."
     )
 
-    # Method A: JSON payload with modelfile field
     try:
         create_timeout = aiohttp.ClientTimeout(total=120)
         async with aiohttp.ClientSession(timeout=create_timeout) as session:
@@ -287,64 +310,15 @@ async def _create_model_api(host: str, modelfile_content: str) -> bool:
                     return True
                 else:
                     error_body = await create_resp.text()
-                    logging.debug(
-                        f"AI Side Host: API create (JSON) failed "
-                        f"(status {create_resp.status}): {error_body[:200]}"
-                    )
-    except Exception as e:
-        logging.debug(f"AI Side Host: API create (JSON) error: {e}")
-
-    # Method B: Write Modelfile to disk, then POST as multipart file upload.
-    # This uses the same parser as `ollama create -f <file>` and handles
-    # complex SYSTEM blocks correctly.
-    modelfile_path = None
-    try:
-        fd, modelfile_path = tempfile.mkstemp(
-            suffix=".modelfile", prefix="mbot_ollama_api_"
-        )
-        os.close(fd)
-        with open(modelfile_path, "w", encoding="utf-8") as mf:
-            mf.write(modelfile_content)
-
-        create_timeout = aiohttp.ClientTimeout(total=120)
-        async with aiohttp.ClientSession(timeout=create_timeout) as session:
-            # Ollama doesn't have a multipart upload endpoint, but we can
-            # try a different approach: send the Modelfile content as a
-            # binary blob via a custom header or query param.
-            # Actually, the /api/create endpoint accepts `files` as a list
-            # of filename→blob mappings. Let's try that.
-            data = aiohttp.FormData()
-            data.add_field(
-                "name",
-                CUSTOM_MODEL_NAME,
-            )
-            data.add_field(
-                "modelfile",
-                open(modelfile_path, "rb").read(),
-                filename="Modelfile",
-                content_type="text/plain",
-            )
-
-            async with session.post(f"{host}/api/create", data=data) as create_resp:
-                if create_resp.status == 200:
-                    return True
-                else:
-                    error_body = await create_resp.text()
                     logging.warning(
-                        f"AI Side Host: API create (multipart) failed "
+                        f"AI Side Host: API create failed "
                         f"(status {create_resp.status}): {error_body[:200]} — "
                         f"falling back to base model + system prompt"
                     )
                     return False
     except Exception as e:
-        logging.debug(f"AI Side Host: API create (multipart) error: {e}")
+        logging.debug(f"AI Side Host: API create error: {e}")
         return False
-    finally:
-        if modelfile_path and os.path.exists(modelfile_path):
-            try:
-                os.remove(modelfile_path)
-            except OSError:
-                pass
 
 
 # ── Sound Tag Definitions (for the system prompt) ────────────────────
@@ -496,9 +470,11 @@ def _build_system_prompt(station_name: str) -> str:
         f"of the century, but sure' — you comment on it, you don't echo it.\n"
         f"- If no DJ line is given, do your own independent banter.\n\n"
         f"STRICT RULES:\n"
-        f"- Maximum 150 characters. Short and punchy — this is radio, not a podcast.\n"
+        f"- Maximum 200 characters. Short and punchy — this is radio, not a podcast.\n"
         f"- Use contractions (we're, let's, that's, I'm).\n"
-        f"- You can include ONE sound effect tag at the very end: {{sound:name}}\n"
+        f"- You can include sound effect tags anywhere in your line: {{sound:name}}\n"
+        f"  Use them to add energy — airhorns for hype, scratches for transitions, "
+        f"applause for hot takes. Use as many as fit naturally.\n"
         f"  Available sounds: {SOUND_LIST_FOR_PROMPT}\n"
         f"- Do NOT use quotes. Do NOT explain yourself. Do NOT narrate.\n"
         f"- Just output the line you'd say. Nothing else.\n"

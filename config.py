@@ -64,6 +64,8 @@ MAX_SOUND_SECONDS = 8
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.environ.get("WEB_PORT", 8080))
 
+WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
+
 # Now-Playing Channel — Discord channel ID where the bot sends its
 # now-playing embed. If set, all now-playing messages go to this one
 # channel regardless of which channel the user typed the command in.

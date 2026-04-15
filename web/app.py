@@ -12,9 +12,15 @@ The bot instance is passed in at startup so the dashboard can read
 and modify bot state directly via the Music cog.
 """
 
+import hashlib
+import hmac
 import asyncio
 import logging
+import os
 import re
+import signal
+import subprocess
+import sys
 import time
 import urllib.parse
 
@@ -27,6 +33,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    session,
     url_for,
 )
 
@@ -40,8 +47,70 @@ from utils.custom_lines import (
 )
 
 app = Flask(__name__)
-app.secret_key = "mbot-mission-control"
+app.secret_key = os.environ.get(
+    "SECRET_KEY", "mbot-mission-control-secret-key-change-me"
+)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max upload
+
+
+# ── Authentication ────────────────────────────────────────────────────
+
+
+def _password_required():
+    """Return True if a password is configured and authentication is needed."""
+    return bool(getattr(config, "WEB_PASSWORD", ""))
+
+
+@app.before_request
+def require_login():
+    """Redirect unauthenticated users to the login page when a password is set.
+
+    Public endpoints (login page, static files, API endpoints) are always
+    accessible so that the login flow and client-side JS calls work.
+    """
+    if not _password_required():
+        return  # No password configured — open access
+
+    # Allow these endpoints without authentication
+    allowed_endpoints = {"login", "static"}
+    if request.endpoint in allowed_endpoints:
+        return
+
+    # API endpoints require session auth
+    if session.get("authenticated"):
+        return
+
+    # Redirect everything else to login
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    """Login page for Mission Control."""
+    if not _password_required():
+        return redirect(url_for("dashboard"))
+
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if hmac.compare_digest(
+            hashlib.sha256(password.encode()).hexdigest(),
+            hashlib.sha256(config.WEB_PASSWORD.encode()).hexdigest(),
+        ):
+            session["authenticated"] = True
+            flash("Logged in successfully.", "success")
+            return redirect(url_for("dashboard"))
+        else:
+            flash("Incorrect password. Please try again.", "error")
+
+    return render_template("login.html")
+
+
+@app.route("/logout")
+def logout():
+    """Log out and redirect to the login page."""
+    session.pop("authenticated", None)
+    flash("You have been logged out.", "success")
+    return redirect(url_for("login"))
 
 
 # ── Template Filters ──────────────────────────────────────────────────
@@ -81,9 +150,12 @@ bot = None
 
 @app.context_processor
 def inject_bot_name():
-    """Make the bot's name available in all templates."""
+    """Make the bot's name and session auth state available in all templates."""
     name = bot.user.name if bot and bot.user else "MBot"
-    return {"bot_name": name}
+    return {
+        "bot_name": name,
+        "logged_in": session.get("authenticated", False),
+    }
 
 
 def init_dashboard(discord_bot):
@@ -424,6 +496,35 @@ def api_pause(guild_id):
     return jsonify({"error": "Nothing playing"}), 400
 
 
+@app.route("/api/<int:guild_id>/join", methods=["POST"])
+def api_join(guild_id):
+    """Join the first voice channel that has a human member in it."""
+    guild = bot.get_guild(guild_id) if bot else None
+    if not guild:
+        return jsonify({"error": "Guild not found"}), 404
+    if guild.voice_client and guild.voice_client.is_connected():
+        return jsonify({"ok": True, "note": "Already in voice"})
+
+    async def _join():
+        # Find the first human in a voice channel
+        voice_channel = None
+        for member in guild.members:
+            if not member.bot and member.voice and member.voice.channel:
+                voice_channel = member.voice.channel
+                break
+        if not voice_channel:
+            return "No one in a voice channel"
+        await voice_channel.connect(self_deaf=True)
+        return "Joined " + voice_channel.name
+
+    result = _run_async(_join())
+    if result is None:
+        return jsonify({"error": "Request timed out"}), 504
+    if "no one" in str(result).lower():
+        return jsonify({"error": result}), 404
+    return jsonify({"ok": True, "result": str(result)})
+
+
 @app.route("/api/<int:guild_id>/stop", methods=["POST"])
 def api_stop(guild_id):
     music = _get_music_cog()
@@ -439,6 +540,20 @@ def api_stop(guild_id):
             guild.voice_client.stop()
 
     _run_async(_stop())
+    return jsonify({"ok": True})
+
+
+@app.route("/api/<int:guild_id>/leave", methods=["POST"])
+def api_leave(guild_id):
+    """Disconnect the bot from the voice channel in a guild."""
+    guild = bot.get_guild(guild_id) if bot else None
+    if not guild or not guild.voice_client:
+        return jsonify({"error": "Not in voice"}), 400
+
+    async def _leave():
+        await guild.voice_client.disconnect()
+
+    _run_async(_leave())
     return jsonify({"ok": True})
 
 
@@ -771,6 +886,76 @@ def soundboard():
         sounds=list_sounds(),
         guilds=guilds_data,
     )
+
+
+# ── Settings Page ────────────────────────────────────────────────────
+
+
+@app.route("/settings")
+def settings_page():
+    """Settings page — restart, shutdown, and system info."""
+    bot_user = str(bot.user) if bot and bot.user else "Not connected"
+    bot_avatar = bot.user.display_avatar.url if bot and bot.user else None
+    guild_count = len(bot.guilds) if bot else 0
+
+    import platform
+
+    mem_mb = 0
+    cpu_pct = 0
+    try:
+        import psutil
+
+        proc = psutil.Process()
+        mem_mb = proc.memory_info().rss / (1024 * 1024)
+        cpu_pct = proc.cpu_percent(interval=0.1)
+    except ImportError:
+        pass
+
+    return render_template(
+        "settings.html",
+        bot_user=bot_user,
+        bot_avatar=bot_avatar,
+        guild_count=guild_count,
+        python_version=platform.python_version(),
+        platform_info=platform.platform(),
+        mem_mb=mem_mb,
+        cpu_pct=cpu_pct,
+        auto_refresh=False,
+    )
+
+
+@app.route("/api/restart", methods=["POST"])
+def api_restart():
+    """Restart the bot process."""
+    logging.info("Dashboard: Restart requested via Settings page")
+
+    def _do_restart():
+        import time as _time
+
+        _time.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    import threading
+
+    threading.Thread(target=_do_restart, daemon=True).start()
+    return jsonify({"ok": True, "message": "Restarting..."})
+
+
+@app.route("/api/shutdown", methods=["POST"])
+def api_shutdown():
+    """Shut down the bot process."""
+    logging.info("Dashboard: Shutdown requested via Settings page")
+
+    def _do_shutdown():
+        import time as _time
+
+        _time.sleep(1)
+        os.kill(os.getpid(), signal.SIGTERM)
+
+    import threading
+
+    threading.Thread(target=_do_shutdown, daemon=True).start()
+    return jsonify({"ok": True, "message": "Shutting down..."})
 
 
 # ── Soundboard API ─────────────────────────────────────────────────

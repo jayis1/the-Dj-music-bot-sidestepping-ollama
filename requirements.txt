@@ -7,6 +7,7 @@ audioop-lts; python_version >= "3.13"
 aiohttp
 edge-tts
 flask
+psutil
 syncedlyrics
 pytest
 pytest-asyncio

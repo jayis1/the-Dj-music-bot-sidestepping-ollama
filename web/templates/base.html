@@ -16,21 +16,33 @@
                 <h1><span class="icon">🎵</span> {{ bot_name }}</h1>
                 <div class="subtitle">Mission Control</div>
             </div>
-            <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
-                <span class="icon">📊</span> Dashboard
-            </a>
-            <a href="{{ url_for('dj_lines') }}" class="nav-item {% if request.endpoint == 'dj_lines' %}active{% endif %}">
-                <span class="icon">🎙️</span> DJ Lines
-            </a>
-            <a href="{{ url_for('soundboard') }}" class="nav-item {% if request.endpoint == 'soundboard' %}active{% endif %}">
-                <span class="icon">🎛️</span> Soundboard
-            </a>
-            <a href="{{ url_for('radio') }}" class="nav-item {% if request.endpoint == 'radio' %}active{% endif %}">
-                <span class="icon">📻</span> Radio
-            </a>
-            <a href="{{ url_for('queue_manager') }}" class="nav-item {% if request.endpoint == 'queue_manager' %}active{% endif %}">
-                <span class="icon">📋</span> Queue
-            </a>
+            <div class="sidebar-nav">
+                <a href="{{ url_for('dashboard') }}" class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <span class="icon">📊</span> Dashboard
+                </a>
+                <a href="{{ url_for('dj_lines') }}" class="nav-item {% if request.endpoint == 'dj_lines' %}active{% endif %}">
+                    <span class="icon">🎙️</span> DJ Lines
+                </a>
+                <a href="{{ url_for('soundboard') }}" class="nav-item {% if request.endpoint == 'soundboard' %}active{% endif %}">
+                    <span class="icon">🎛️</span> Soundboard
+                </a>
+                <a href="{{ url_for('radio') }}" class="nav-item {% if request.endpoint == 'radio' %}active{% endif %}">
+                    <span class="icon">📻</span> Radio
+                </a>
+                <a href="{{ url_for('queue_manager') }}" class="nav-item {% if request.endpoint == 'queue_manager' %}active{% endif %}">
+                    <span class="icon">📋</span> Queue
+                </a>
+                <a href="{{ url_for('settings_page') }}" class="nav-item {% if request.endpoint == 'settings_page' %}active{% endif %}">
+                    <span class="icon">⚙️</span> Settings
+                </a>
+            </div>
+            {% if session.get('authenticated') %}
+            <div class="sidebar-footer">
+                <a href="{{ url_for('logout') }}" class="nav-item logout-link">
+                    <span class="icon">🔓</span> Log Out
+                </a>
+            </div>
+            {% endif %}
         </nav>
         <main class="main">
             {% with messages = get_flashed_messages(with_categories=true) %}

@@ -65,9 +65,17 @@
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'pause')" title="Play / Pause">{% if g.playing %}⏸️ Pause{% elif g.paused %}▶️ Resume{% else %}▶️ Play{% endif %}</button>
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'skip')" title="Skip">⏭️ Skip</button>
         <button class="btn btn-danger" onclick="apiAction(this, '{{ g.id }}', 'stop')" title="Stop">⏹️ Stop</button>
+        <button class="btn btn-danger" onclick="leaveVoice(this, '{{ g.id }}')" title="Leave Voice Channel">🔌 Leave</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
     </div>
+    {% else %}
+    <div class="controls" style="margin-bottom: 16px;">
+        <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Join Voice Channel">🔌 Join</button>
+        <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
+        <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
+    </div>
+    {% endif %}
 
     <!-- Volume slider -->
     <div style="margin-bottom: 12px;">
@@ -382,6 +390,50 @@ async function apiAction(btn, guildId, action) {
         }
     } catch (e) {
         showToast('Request failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+}
+
+async function joinVoice(btn, guildId) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const res = await fetch('/api/' + guildId + '/join', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔌 Joined voice', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Join failed', 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    } catch (e) {
+        showToast('Join failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+}
+
+async function leaveVoice(btn, guildId) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const res = await fetch('/api/' + guildId + '/leave', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔌 Left voice', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Leave failed', 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    } catch (e) {
+        showToast('Leave failed: ' + e.message, 'error');
         btn.disabled = false;
         btn.textContent = origText;
     }

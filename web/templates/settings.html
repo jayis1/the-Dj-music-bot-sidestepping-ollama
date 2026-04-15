@@ -1,0 +1,230 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1 style="margin-bottom: 8px;">⚙️ {{ bot_name }} Settings</h1>
+<p style="color: var(--text-muted); margin-bottom: 32px;">System controls and information</p>
+
+<!-- Toast notification -->
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; padding:12px 20px; border-radius:8px; font-size:14px; font-weight:500; z-index:9999; transition: opacity 0.3s;"></div>
+
+<!-- ── Bot Info ──────────────────────────────────────────────── -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2><span class="icon">🤖</span> Bot Status</h2>
+    </div>
+    <div class="settings-grid">
+        <div class="settings-item">
+            <span class="settings-label">Bot</span>
+            <span class="settings-value">{{ bot_user }}</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Servers</span>
+            <span class="settings-value">{{ guild_count }}</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Python</span>
+            <span class="settings-value">{{ python_version }}</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Platform</span>
+            <span class="settings-value" style="font-size: 12px;">{{ platform_info }}</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Memory</span>
+            <span class="settings-value">{{ "%.1f"|format(mem_mb) }} MB</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">CPU</span>
+            <span class="settings-value">{{ "%.1f"|format(cpu_pct) }}%</span>
+        </div>
+    </div>
+</div>
+
+<!-- ── Danger Zone ───────────────────────────────────────────── -->
+<div class="card" style="border-color: var(--danger); margin-bottom: 24px;">
+    <div class="card-header">
+        <h2 style="color: var(--danger);"><span class="icon">⚠️</span> Danger Zone</h2>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+        These actions will affect the bot process. Restart will reboot the bot; shutdown will stop it completely.
+    </p>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <button class="btn btn-warning" id="btn-restart" onclick="confirmRestart()">
+            🔄 Restart Bot
+        </button>
+        <button class="btn btn-danger" id="btn-shutdown" onclick="confirmShutdown()">
+            🔴 Shut Down Bot
+        </button>
+    </div>
+</div>
+
+<!-- ── Confirm Modal (hidden) ────────────────────────────────── -->
+<div id="confirm-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:10000; display:none; align-items:center; justify-content:center;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius-lg); padding:32px; max-width:420px; width:90%; text-align:center;">
+        <div style="font-size:48px; margin-bottom:16px;" id="modal-icon">⚠️</div>
+        <h3 style="margin-bottom:8px;" id="modal-title">Are you sure?</h3>
+        <p style="color:var(--text-muted); font-size:14px; margin-bottom:24px;" id="modal-body">
+            This action cannot be undone.
+        </p>
+        <div style="display:flex; gap:12px; justify-content:center;">
+            <button class="btn" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-danger" id="modal-confirm" onclick="">Confirm</button>
+        </div>
+    </div>
+</div>
+
+</div>
+
+<!-- ==================== STYLES ==================== -->
+<style>
+.settings-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+.settings-item {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.settings-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.settings-value {
+    font-size: 14px;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.btn-warning {
+    background: transparent;
+    color: var(--warning);
+    border-color: var(--warning);
+}
+.btn-warning:hover {
+    background: var(--warning);
+    color: #000;
+}
+.btn-warning:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+</style>
+
+<!-- ==================== SCRIPTS ==================== -->
+<script>
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    t.style.background = type === 'error' ? 'var(--danger)' : 'var(--success)';
+    t.style.color = 'white';
+    t.style.border = type === 'error' ? '1px solid var(--danger)' : '1px solid var(--success)';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 3000);
+}
+
+function showModal(icon, title, body, confirmText, onConfirm) {
+    const modal = document.getElementById('confirm-modal');
+    document.getElementById('modal-icon').textContent = icon;
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal-body').textContent = body;
+    const confirmBtn = document.getElementById('modal-confirm');
+    confirmBtn.textContent = confirmText;
+    confirmBtn.onclick = function() {
+        closeModal();
+        onConfirm();
+    };
+    modal.style.display = 'flex';
+}
+
+function closeModal() {
+    document.getElementById('confirm-modal').style.display = 'none';
+}
+
+function confirmRestart() {
+    showModal(
+        '🔄',
+        'Restart Bot?',
+        'The bot will restart in a moment. The dashboard will be temporarily unavailable.',
+        'Restart Now',
+        doRestart
+    );
+}
+
+function confirmShutdown() {
+    showModal(
+        '🔴',
+        'Shut Down Bot?',
+        'The bot will stop completely. You will need to manually start it again.',
+        'Shut Down Now',
+        doShutdown
+    );
+}
+
+async function doRestart() {
+    const btn = document.getElementById('btn-restart');
+    btn.disabled = true;
+    btn.textContent = '⏳ Restarting...';
+    try {
+        const res = await fetch('/api/restart', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔄 Restarting... page will reload shortly.', 'success');
+            setTimeout(() => location.reload(), 8000);
+        } else {
+            showToast(data.error || 'Restart failed', 'error');
+            btn.disabled = false;
+            btn.textContent = '🔄 Restart Bot';
+        }
+    } catch (e) {
+        // Network error is expected during restart
+        showToast('🔄 Bot is restarting... waiting to reconnect.', 'success');
+        setTimeout(() => location.reload(), 8000);
+    }
+}
+
+async function doShutdown() {
+    const btn = document.getElementById('btn-shutdown');
+    btn.disabled = true;
+    btn.textContent = '⏳ Shutting down...';
+    try {
+        const res = await fetch('/api/shutdown', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔴 Bot is shutting down.', 'success');
+        } else {
+            showToast(data.error || 'Shutdown failed', 'error');
+            btn.disabled = false;
+            btn.textContent = '🔴 Shut Down Bot';
+        }
+    } catch (e) {
+        // Network error is expected during shutdown
+        showToast('🔴 Bot is shutting down.', 'success');
+    }
+}
+
+// Close modal on Escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
+
+// Close modal on backdrop click
+document.getElementById('confirm-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+</script>
+{% endblock %}

@@ -84,6 +84,9 @@ The radio dj music bot features a built-in web dashboard (powered by Flask) that
 - **Gapless Crossfade Playback:** Configure a dynamic crossfade overlap (e.g. 3 seconds) using `CROSSFADE_DURATION` in `config.py` for a flawless, club-style transition between songs!
 - **DJ Voice Selector:** Easily switch the Edge-TTS radio host's voice dynamically via a drop-down menu.
 - **Mission Control Theme:** A sleek, dark-themed UI that auto-refreshes to keep you seamlessly synced with the Discord session.
+- **🔐 Password Protection (`WEB_PASSWORD`):** Set a password in `.env` to add a login page. Leave it blank for open access — backwards compatible, zero friction if you don't need it.
+- **🔌 Join / Leave Voice Buttons:** Each guild card shows a **Join** button when the bot isn't in a voice channel and a red **Leave** button when it is. Control voice channel presence entirely from the browser.
+- **⚙️ Settings Page (`/settings`):** System info dashboard (bot name, server count, Python version, memory & CPU usage) plus a **Danger Zone** with confirmation-gated **Restart** and **Shutdown** buttons. Restarts via `os.execv()` for clean in-place process replacement.
 
 **Custom DJ Lines (`/dj-lines`):**
 - **10 Categories:** Customize Intros, Song Intros, Hype Intros (Loud), Outros, Transitions, Hype Transitions, Mellow Transitions, Final Outros, Station IDs, and Listener Callouts.
@@ -92,10 +95,13 @@ The radio dj music bot features a built-in web dashboard (powered by Flask) that
 - Custom lines are saved instantly to `dj_custom_lines.json` and persist across reboots.
 
 **Configuration:**
-In your `.env` file, you can customize the host, port, and now-playing channel:
+In your `.env` file, you can customize the host, port, password, and now-playing channel:
 ```env
 WEB_HOST=0.0.0.0
 WEB_PORT=8080
+
+# Optional: password-protect the dashboard (leave blank for open access)
+WEB_PASSWORD=
 
 # Optional: bind all now-playing embeds to a specific Discord channel
 # Leave as 0 (or omit) to send embeds wherever the command was typed

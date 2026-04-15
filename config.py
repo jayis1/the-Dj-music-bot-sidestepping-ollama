@@ -60,6 +60,35 @@ DJ_BED_MUSIC_ENABLED = True
 # few longer effects are acceptable).
 MAX_SOUND_SECONDS = 8
 
+# ── AI Side Host (Ollama) ──────────────────────────────────────────────
+# The AI side host is a second radio personality powered by a local LLM.
+# It writes its own original banter, hot takes, shoutouts, and commentary
+# — like a co-host who chimes in alongside the main template DJ.
+# Requires Ollama running locally with a pulled model (e.g., `ollama pull llama3.2`).
+
+# Enable the AI side host. Set to "true" in .env to activate.
+OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "true"
+
+# Ollama server URL (default: http://localhost:11434)
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
+# Ollama model to use for side host lines (default: llama3.2)
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+
+# How often the side host chimes in (0.0–1.0).
+# 0.25 = ~25% chance after each template DJ line.
+# 0.5 = ~50% chance. 1.0 = always speaks (alongside the main DJ).
+OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
+
+# TTS voice for the AI side host (separate from the main DJ voice).
+# This makes the two hosts sound like different people.
+# Use ?djvoices in Discord to see available voices.
+OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "en-US-GuyNeural")
+
+# Timeout in seconds for Ollama API calls. If the LLM doesn't respond
+# in this time, the side host is skipped (no dead air).
+OLLAMA_DJ_TIMEOUT = int(os.environ.get("OLLAMA_DJ_TIMEOUT", "4"))
+
 # Web Dashboard
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.environ.get("WEB_PORT", 8080))

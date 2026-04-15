@@ -34,6 +34,7 @@
             {% elif g.in_voice %}<span class="badge badge-idle">Idle</span>
             {% else %}<span class="badge badge-offline">Not Connected</span>{% endif %}
             {% if g.dj_enabled %}<span class="badge badge-dj">🎙️ DJ</span>{% endif %}
+            {% if g.ai_dj_enabled %}<span class="badge badge-ai-dj">🃏 AI</span>{% endif %}
             {% if g.autodj_enabled %}<span class="badge badge-autodj">🔁 Auto</span>{% endif %}
             {% if g.looping %}<span class="badge" style="background: rgba(245,158,11,0.15); color: var(--warning);">🔁 Loop</span>{% endif %}
         </div>
@@ -68,12 +69,14 @@
         <button class="btn btn-danger" onclick="leaveVoice(this, '{{ g.id }}')" title="Leave Voice Channel">🔌 Leave</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
+        {% if g.ai_dj_enabled %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host" style="border-color: var(--purple); color: var(--purple);">🃏 AI On</button>{% else %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host">🃏 AI Off</button>{% endif %}
     </div>
     {% else %}
     <div class="controls" style="margin-bottom: 16px;">
         <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Join Voice Channel">🔌 Join</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
+        {% if g.ai_dj_enabled %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host" style="border-color: var(--purple); color: var(--purple);">🃏 AI On</button>{% else %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host">🃏 AI Off</button>{% endif %}
     </div>
     {% endif %}
 
@@ -323,6 +326,12 @@
     color: var(--success);
 }
 
+/* AI Side Host badge */
+.badge-ai-dj {
+    background: rgba(168,85,247,0.15);
+    color: var(--purple);
+}
+
 /* Song progress bar */
 .progress-bar-track {
     width: 100%;
@@ -517,6 +526,28 @@ async function toggleAutodj(btn, guildId) {
     }
 }
 
+async function toggleAiDj(btn, guildId) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const res = await fetch('/api/' + guildId + '/ai_dj_toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.ai_dj_enabled ? '🃏 AI Side Host On — the studio joker is live!' : '🃏 AI Side Host Off', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'AI DJ toggle failed', 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    } catch (e) {
+        showToast('Request failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+}
+
 // ── Queue: Remove, Play Next, Drag-and-Drop ────────────────
 async function removeFromQueue(guildId, index) {
     try {
@@ -591,13 +622,15 @@ function toggleLyrics(guildId) {
 
 // ── Live Progress Bar Ticker ──────────────────────────────────
 // Each guild card gets a live timer that ticks the progress bar forward
-// every second, so the user sees real-time song progression between page refreshes.
+// every second, so the user sees real-time song progression.
+// When the progress bar reaches the end (song finishes), the page
+// auto-refreshes to show the next song — instead of a blind timer.
 (function() {
     // Gather all guild data for progress bars
     const guildProgress = {
     {% for g in guilds %}
     {% if g.playing and g.current_song and g.current_duration and g.current_duration > 0 %}
-        '{{ g.id }}': { elapsed: {{ g.current_elapsed }}, duration: {{ g.current_duration }}, speed: {{ g.speed }} },
+        '{{ g.id }}': { elapsed: {{ g.current_elapsed }}, duration: {{ g.current_duration }}, speed: {{ g.speed }}, ended: false },
     {% endif %}
     {% endfor %}
     };
@@ -611,7 +644,16 @@ function toggleLyrics(guildId) {
     setInterval(function() {
         for (const [gid, data] of Object.entries(guildProgress)) {
             data.elapsed += data.speed;  // account for playback speed
-            if (data.elapsed >= data.duration) data.elapsed = data.duration;
+
+            // Song just ended — refresh the page to show the next song
+            if (data.elapsed >= data.duration && !data.ended) {
+                data.ended = true;
+                // Small delay so the bar visually reaches 100% before reloading
+                setTimeout(function() { location.reload(); }, 1500);
+                return; // Stop ticking — reload is imminent
+            }
+
+            if (data.elapsed > data.duration) data.elapsed = data.duration;
 
             const fill = document.getElementById('progress-fill-' + gid);
             if (fill) {
@@ -625,6 +667,16 @@ function toggleLyrics(guildId) {
             }
         }
     }, 1000);
+
+    // ── Fallback refresh ─────────────────────────────────────────
+    // If there are no progress bars to track (no song playing, or song has
+    // unknown duration like livestreams/Suno tracks), refresh every 3 minutes
+    // to catch state changes. This is a safety net — the primary refresh
+    // trigger is the progress bar reaching 100% above.
+    const hasProgressBars = Object.keys(guildProgress).length > 0;
+    if (!hasProgressBars) {
+        setTimeout(function() { location.reload(); }, 180000); // 3 minutes
+    }
 })();
 </script>
 {% endblock %}

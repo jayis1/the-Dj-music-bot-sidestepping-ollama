@@ -44,6 +44,7 @@ from utils.custom_lines import (
     load_custom_lines,
     remove_line,
 )
+from utils.llm_dj import OLLAMA_DJ_AVAILABLE, check_ollama_available
 
 app = Flask(__name__)
 app.secret_key = os.environ.get(
@@ -280,6 +281,10 @@ def dashboard():
                     "autodj_source": music.autodj_source.get(guild_id, "")
                     if music
                     else "",
+                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") if music else "",
                     "recently_played": music.recently_played.get(guild_id, [])[:15]
                     if music
                     else [],
@@ -360,6 +365,10 @@ def radio():
                     "autodj_source": music.autodj_source.get(guild_id, "")
                     if music
                     else "",
+                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") if music else "",
                     "recently_played": music.recently_played.get(guild_id, [])[:30]
                     if music
                     else [],
@@ -448,6 +457,10 @@ def queue_manager():
                     "autodj_source": music.autodj_source.get(guild_id, "")
                     if music
                     else "",
+                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") if music else "",
                 }
             )
 
@@ -554,6 +567,50 @@ def api_leave(guild_id):
 
     _run_async(_leave())
     return jsonify({"ok": True})
+
+
+@app.route("/api/<int:guild_id>/ai_dj_toggle", methods=["POST"])
+def api_ai_dj_toggle(guild_id):
+    """Toggle the AI side host (studio joker) on or off."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    music.ai_dj_enabled[guild_id] = not music.ai_dj_enabled.get(guild_id, False)
+    return jsonify({"ok": True, "ai_dj_enabled": music.ai_dj_enabled[guild_id]})
+
+
+@app.route("/api/<int:guild_id>/ai_dj_voice", methods=["POST"])
+def api_ai_dj_voice(guild_id):
+    """Set the AI side host's TTS voice."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    voice = request.json.get("voice", "")
+    if not voice:
+        return jsonify({"error": "Voice required"}), 400
+    music.ai_dj_voice[guild_id] = voice
+    return jsonify({"ok": True, "voice": voice})
+
+
+@app.route("/api/<int:guild_id>/ai_dj_status")
+def api_ai_dj_status(guild_id):
+    """Get the AI side host status for a guild."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    import config as cfg
+
+    return jsonify(
+        {
+            "enabled": music.ai_dj_enabled.get(guild_id, False),
+            "voice": music.ai_dj_voice.get(
+                guild_id, getattr(cfg, "OLLAMA_DJ_VOICE", "en-US-GuyNeural")
+            ),
+            "model": getattr(cfg, "OLLAMA_MODEL", "llama3.2"),
+            "chance": getattr(cfg, "OLLAMA_DJ_CHANCE", 0.25),
+            "ollama_available": OLLAMA_DJ_AVAILABLE,
+        }
+    )
 
 
 @app.route("/api/<int:guild_id>/volume", methods=["POST"])
@@ -885,6 +942,46 @@ def soundboard():
         sounds=list_sounds(),
         guilds=guilds_data,
     )
+
+
+@app.route("/api/ollama/status")
+def api_ollama_status():
+    """Check Ollama server availability and return status info."""
+    try:
+        from utils.llm_dj import OLLAMA_DJ_AVAILABLE, check_ollama_available
+    except ImportError:
+        return jsonify(
+            {
+                "available": False,
+                "model": getattr(config, "OLLAMA_MODEL", "llama3.2"),
+                "models": [],
+                "enabled": getattr(config, "OLLAMA_DJ_ENABLED", False),
+                "error": "llm_dj module not found",
+            }
+        )
+
+    # Run the async check in a thread-safe way
+    if bot and bot.loop:
+        future = asyncio.run_coroutine_threadsafe(check_ollama_available(), bot.loop)
+        try:
+            result = future.result(timeout=5)
+        except Exception as e:
+            result = {
+                "available": False,
+                "model": getattr(config, "OLLAMA_MODEL", "llama3.2"),
+                "models": [],
+                "error": f"Check timed out: {e}",
+            }
+    else:
+        result = {
+            "available": False,
+            "model": getattr(config, "OLLAMA_MODEL", "llama3.2"),
+            "models": [],
+            "error": "Bot not connected",
+        }
+
+    result["enabled"] = getattr(config, "OLLAMA_DJ_ENABLED", False)
+    return jsonify(result)
 
 
 # ── Settings Page ────────────────────────────────────────────────────

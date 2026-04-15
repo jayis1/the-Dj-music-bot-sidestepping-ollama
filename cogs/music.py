@@ -25,6 +25,12 @@ from utils.dj import (
     list_voices,
     DEFAULT_VOICE,
 )
+from utils.llm_dj import (
+    OLLAMA_DJ_AVAILABLE,
+    generate_side_host_line,
+    should_side_host_speak,
+    check_ollama_available,
+)
 
 
 class Music(commands.Cog):
@@ -60,6 +66,11 @@ class Music(commands.Cog):
 
         # DJ Bed Music (ambient loop played under DJ voice)
         self._bed_playing = {}  # guild_id -> bool
+
+        # AI Side Host (Ollama) — a second radio personality with its own voice
+        self.ai_dj_enabled = {}  # guild_id -> bool (side host on/off)
+        self.ai_dj_voice = {}  # guild_id -> str (Edge TTS voice name for side host)
+        self._ai_dj_pending_line = {}  # guild_id -> str|None (AI line waiting to be spoken)
 
     async def get_queue(self, guild_id):
         if guild_id not in self.song_queues:
@@ -1555,6 +1566,113 @@ class Music(commands.Cog):
             embed.add_field(name="Voice", value=f"`{voice_name}`", inline=False)
         await ctx.send(embed=embed)
 
+    @commands.command(name="aidj")
+    async def ai_dj_toggle(self, ctx):
+        """Toggle the AI side host — the studio joker who writes their own lines.
+
+        The AI side host is a second radio personality powered by a local LLM
+        (Ollama). It uses its own TTS voice so it sounds like a different person.
+        It randomly chimes in with jokes, hot takes, and banter alongside the
+        main DJ. Requires: Ollama running locally with a pulled model, and DJ mode on.
+        """
+        logging.info(f"AI DJ toggle invoked by {ctx.author} in {ctx.guild.name}")
+        guild_id = ctx.guild.id
+
+        if not OLLAMA_DJ_AVAILABLE:
+            # Check what's wrong
+            status = await check_ollama_available()
+            error = status.get("error", "Unknown error")
+            return await ctx.send(
+                embed=self.create_embed(
+                    "🃏 AI Side Host Unavailable",
+                    f"{config.ERROR_EMOJI} The AI side host needs Ollama.\n"
+                    f"**Issue:** {error}\n\n"
+                    f"**Setup:**\n"
+                    f"1. Install Ollama: https://ollama.com\n"
+                    f"2. Pull a model: `ollama pull {getattr(config, 'OLLAMA_MODEL', 'llama3.2')}`\n"
+                    f"3. Set `OLLAMA_DJ_ENABLED=true` in your `.env` file",
+                    discord.Color.red(),
+                )
+            )
+
+        if not EDGE_TTS_AVAILABLE:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "🃏 AI Side Host Unavailable",
+                    f"{config.ERROR_EMOJI} The AI side host also needs `edge-tts` "
+                    f"for its own voice. Install with `pip install edge-tts`.",
+                    discord.Color.red(),
+                )
+            )
+
+        self.ai_dj_enabled[guild_id] = not self.ai_dj_enabled.get(guild_id, False)
+        status = "ON" if self.ai_dj_enabled[guild_id] else "OFF"
+
+        ai_voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
+        chance = getattr(config, "OLLAMA_DJ_CHANCE", 0.25)
+        model = getattr(config, "OLLAMA_MODEL", "llama3.2")
+
+        logging.info(f"AI Side Host {status} for {ctx.guild.name} (voice: {ai_voice})")
+
+        embed = self.create_embed(
+            "🃏 AI Side Host",
+            f"{config.SUCCESS_EMOJI} The studio joker is now **{status}**.",
+        )
+        if self.ai_dj_enabled[guild_id]:
+            embed.add_field(name="Voice", value=f"`{ai_voice}`", inline=True)
+            embed.add_field(name="Model", value=f"`{model}`", inline=True)
+            embed.add_field(
+                name="Chime-in chance",
+                value=f"{int(chance * 100)}%",
+                inline=True,
+            )
+            embed.add_field(
+                name="Note",
+                value="The AI side host will randomly chime in after the main "
+                "DJ speaks, with its own voice and original lines.",
+                inline=False,
+            )
+        await ctx.send(embed=embed)
+
+    @commands.command(name="aidjvoice")
+    async def ai_dj_voice_cmd(self, ctx, *, voice_name: str = None):
+        """Set the AI side host's TTS voice. Use ?djvoices to see available voices."""
+        logging.info(
+            f"AI DJ voice command invoked by {ctx.author} in {ctx.guild.name} "
+            f"with voice: {voice_name}"
+        )
+        guild_id = ctx.guild.id
+
+        if not OLLAMA_DJ_AVAILABLE:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "🃏 AI Side Host",
+                    f"{config.ERROR_EMOJI} AI side host is not enabled. "
+                    f"Set `OLLAMA_DJ_ENABLED=true` in `.env`.",
+                    discord.Color.red(),
+                )
+            )
+
+        if voice_name is None:
+            current = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
+            return await ctx.send(
+                embed=self.create_embed(
+                    "🃏 AI Side Host Voice",
+                    f"Current voice: `{current}`\n"
+                    f"Use `?aidjvoice <name>` to change it.\n"
+                    f"Use `?djvoices` to see available voices.",
+                    discord.Color.blurple(),
+                )
+            )
+
+        self.ai_dj_voice[guild_id] = voice_name
+        await ctx.send(
+            embed=self.create_embed(
+                "🃏 AI Side Host Voice",
+                f"{config.SUCCESS_EMOJI} AI side host voice set to `{voice_name}`.",
+            )
+        )
+
     @commands.command(name="djvoice")
     async def dj_voice_cmd(self, ctx, *, voice_name: str = None):
         """Set the DJ's TTS voice. Use ?djvoices to see available voices."""
@@ -1674,11 +1792,19 @@ class Music(commands.Cog):
 
     # ── DJ Playback Helpers ────────────────────────────────────────
 
-    async def _dj_speak(self, voice_client, text: str, guild_id: int):
+    async def _dj_speak(
+        self, voice_client, text: str, guild_id: int, voice: str = None
+    ):
         """
         Generate TTS audio and play it through the voice client.
         Also plays any {sound:name} tags found in the text after TTS finishes.
         Returns True if TTS was played, False if skipped.
+
+        Args:
+            voice_client: The discord.VoiceClient to play through
+            text: The text to speak (may contain {sound:name} tags)
+            guild_id: The guild ID for state tracking
+            voice: Override TTS voice name (defaults to guild DJ voice)
         """
         if not EDGE_TTS_AVAILABLE:
             return False
@@ -1690,7 +1816,7 @@ class Music(commands.Cog):
         if sound_ids:
             logging.info(f"DJ: Extracted sound tags: {sound_ids} for guild {guild_id}")
 
-        voice = self.dj_voice.get(guild_id, config.DJ_VOICE)
+        voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
         tts_path = await generate_tts(clean_text if clean_text else text, voice)
 
         if not tts_path:
@@ -1771,8 +1897,7 @@ class Music(commands.Cog):
         """
         Play a sequence of sound effects, then play the pending song.
         Each sound is capped at MAX_SOUND_SECONDS to prevent long sounds
-        from blocking the next song (discord.py raises "already playing"
-        if we try to start a song while a sound is still going).
+        from blocking the next song.
         """
         from utils.soundboard import get_sound_path
         import discord
@@ -1834,7 +1959,7 @@ class Music(commands.Cog):
                 logging.error(f"DJ: Failed to play sound '{sound_id}': {e}")
                 continue
 
-        # All sounds done — play the song
+        # All sounds done — play the song (AI side host handled in _play_song_after_dj)
         await self._play_song_after_dj(guild_id)
 
     async def _play_song_after_dj(self, guild_id):
@@ -1856,8 +1981,112 @@ class Music(commands.Cog):
         ctx, data, channel_id = pending
         del self._dj_pending[guild_id]
 
+        # ── AI Side Host: chime in after the main DJ, before the song ──
+        if (
+            self.ai_dj_enabled.get(guild_id, False)
+            and OLLAMA_DJ_AVAILABLE
+            and EDGE_TTS_AVAILABLE
+        ):
+            ai_line = await self._try_ai_side_host(guild_id)
+            if ai_line:
+                # Get context for the AI side host
+                voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
+                spoke = await self._dj_speak(
+                    guild.voice_client, ai_line, guild_id, voice=voice
+                )
+                if spoke:
+                    # AI side host spoke — the 'after' callback on this TTS
+                    # will handle song playback via _on_tts_done. But we need
+                    # to make sure it does NOT try to speak AGAIN. Set a flag
+                    # so _on_tts_done knows to go straight to the song.
+                    self._ai_dj_pending_line.pop(guild_id, None)
+                    # Wait for the AI TTS to finish, then play the song.
+                    # We can't just await here because TTS is played via
+                    # voice_client.play(after=callback). Instead, let the
+                    # normal _on_tts_done flow handle it — it will see no
+                    # AI pending line and no pending sounds, and call
+                    # _play_song_after_dj directly. But the pending song data
+                    # is still stored, so _play_song_after_dj will pick it up.
+                    logging.info(f"AI Side Host: Spoke in guild {guild_id}")
+                    return
+                # If TTS failed, fall through to play the song directly
+
         # Now play the actual song
         await self._start_song_playback(ctx, data, channel_id)
+
+    async def _try_ai_side_host(self, guild_id) -> str | None:
+        """Try to generate an AI side host line for this moment.
+
+        Returns an AI-generated line, or None if the side host
+        shouldn't speak right now (random chance, Ollama unavailable, etc.)
+        """
+        if not should_side_host_speak():
+            return None
+
+        # Gather context
+        current = self.current_song.get(guild_id)
+        queue = self.song_queues.get(guild_id)
+        queue_size = queue.qsize() if queue else 0
+
+        guild = self.bot.get_guild(guild_id)
+        listener_count = 0
+        if guild and guild.voice_client and guild.voice_client.channel:
+            listener_count = sum(
+                1 for m in guild.voice_client.channel.members if not m.bot
+            )
+
+        title = current.title if current else ""
+        prev_title = ""
+        next_title = ""
+
+        # Check the queue for next song info
+        if queue and not queue.empty():
+            try:
+                next_title = queue._queue[0].title
+            except (IndexError, AttributeError):
+                pass
+
+        # Check if there was a previous song
+        history = self.recently_played.get(guild_id, [])
+        if history:
+            prev_title = history[-1].get("title", "")
+
+        line = await generate_side_host_line(
+            title=title,
+            prev_title=prev_title,
+            next_title=next_title,
+            queue_size=queue_size,
+            listener_count=listener_count,
+            station_name=config.STATION_NAME,
+        )
+
+        return line
+
+    async def _speak_ai_side_host_then_song(self, guild_id, ai_line):
+        """Speak an AI side host line, then play the pending song.
+
+        This is called from _on_tts_done when there's a pending AI line
+        but no pending sound effects. It speaks the AI line with the side
+        host's voice, then plays the song.
+        """
+        guild = self.bot.get_guild(guild_id)
+        if not guild or not guild.voice_client:
+            logging.warning(f"AI Side Host: Bot not in voice for guild {guild_id}")
+            await self._play_song_after_dj(guild_id)
+            return
+
+        voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
+        spoke = await self._dj_speak(guild.voice_client, ai_line, guild_id, voice=voice)
+
+        if spoke:
+            logging.info(
+                f"AI Side Host: Speaking in guild {guild_id}: {ai_line[:60]}..."
+            )
+            # The TTS after-callback will handle playing the song
+            # via _on_tts_done -> _play_song_after_dj
+        else:
+            # TTS failed — play the song directly
+            await self._play_song_after_dj(guild_id)
 
     async def _start_song_playback(self, ctx, data, channel_id=None):
         """

@@ -51,6 +51,10 @@
 | **DJ Mode** | Soundboard sound tags in DJ lines | `{sound:airhorn}` in any line plays a sound effect after the DJ speaks |
 | **DJ Mode** | 172 built-in DJ line templates | 74 with sound tags across 10 categories |
 | **DJ Mode** | Custom DJ lines | Add/remove via web dashboard, persisted in JSON |
+| **AI Side Host** | Ollama-powered studio joker | Second radio personality with own voice, writes original banter, hot takes, and jokes |
+| **AI Side Host** | Separate TTS voice | `OLLAMA_DJ_VOICE` in `.env` — sounds like a different person |
+| **AI Side Host** | Tunable chime-in frequency | `OLLAMA_DJ_CHANCE` (0.0–1.0) controls how often the side host speaks |
+| **AI Side Host** | 8 banter categories | Random thoughts, shoutouts, song roasts, station trivia, queue hype, vibe checks, hot takes, request prompts |
 | **Soundboard** | Web-based sound effects board | 9 built-in sounds + upload your own via browser |
 | **Crossfade** | Fade-in on new songs | Configurable crossfade duration via `CROSSFADE_DURATION` |
 | **Lyrics** | Synced lyrics lookup | `syncedlyrics` (primary) + web scraping fallbacks |
@@ -91,6 +95,7 @@ this2.0/
 ├── utils/                  # Helper modules
 │   ├── __init__.py         # Auto-generated; makes utils a Python package
 │   ├── dj.py               # Radio DJ mode — TTS message generation, 172 templates, sound tag support, _format_line
+│   ├── llm_dj.py           # AI side host — Ollama client, studio joker personality, 8 banter categories
 │   ├── custom_lines.py     # JSON persistence for custom DJ lines (CRUD operations)
 │   ├── soundboard.py       # Sound listing, path resolution, directory traversal prevention
 │   ├── lyrics.py           # Synced lyrics lookup (syncedlyrics + web scraping fallbacks)
@@ -151,9 +156,11 @@ cogs/music.py
   ├── imports → cogs/youtube.py (YTDLSource, PlaceholderTrack, FFMPEG_OPTIONS, YTDL_FORMAT_OPTIONS)
   ├── imports → utils/suno.py (is_suno_url, get_suno_track)
   ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, generate_intro, generate_song_intro, generate_outro, generate_tts, cleanup_tts_file, extract_sound_tags, list_voices, DEFAULT_VOICE)
-  ├── imports → utils/lyrics.py (get_lyrics)
-  ├── imports → utils/presets.py (save_preset, load_preset, queue_to_tracks)
-  ├── imports → utils/soundboard.py (list_sounds, get_sound_path)
+   ├── imports → utils/lyrics.py (get_lyrics)
+   ├── imports → utils/presets.py (save_preset, load_preset, queue_to_tracks)
+   ├── imports → utils/soundboard.py (list_sounds, get_sound_path)
+   ├── imports → utils/llm_dj.py (OLLAMA_DJ_AVAILABLE, generate_side_host_line, should_side_host_speak, check_ollama_available)
+   ├── state → ai_dj_enabled[guild_id], ai_dj_voice[guild_id] (AI side host per-guild toggle + own TTS voice)
   └── imports → config.py (emojis, prefix, CROSSFADE_DURATION, STATION_NAME, etc.)
 
 cogs/admin.py
@@ -331,6 +338,12 @@ WEB_PASSWORD=
 | `LOG_CHANNEL_ID` | No | Discord: right-click channel → Copy Channel ID (Developer Mode required) | `bot.py` → `DiscordLogHandler` init |
 | `BOT_OWNER_ID` | No | Discord: right-click your username → Copy User ID | `cogs/admin.py` → `@commands.is_owner()` |
 | `WEB_PASSWORD` | No | Any string you choose | `web/app.py` → `require_login()` before_request guard |
+| `OLLAMA_DJ_ENABLED` | No | `"true"` or `"false"` | `config.py` → `utils/llm_dj.py` enables AI side host |
+| `OLLAMA_HOST` | No | Any URL | `config.py` → `utils/llm_dj.py` Ollama server address |
+| `OLLAMA_MODEL` | No | Any Ollama model name | `config.py` → `utils/llm_dj.py` LLM model for side host |
+| `OLLAMA_DJ_CHANCE` | No | `0.0`–`1.0` | `config.py` → frequency of side host chime-ins |
+| `OLLAMA_DJ_VOICE` | No | Edge TTS voice name | `config.py` → `cogs/music.py` separate TTS voice for AI host |
+| `OLLAMA_DJ_TIMEOUT` | No | Seconds (int) | `config.py` → `utils/llm_dj.py` API call timeout |
 
 ### `config.py` Constants
 
@@ -339,6 +352,12 @@ DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 COMMAND_PREFIX = "?"
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
+OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "true"
+OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
+OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "en-US-GuyNeural")
+OLLAMA_DJ_TIMEOUT = int(os.environ.get("OLLAMA_DJ_TIMEOUT", "4"))
 LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 ```
 
@@ -349,6 +368,12 @@ LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 | `COMMAND_PREFIX` | `?` | All commands are prefixed with this character |
 | `LOG_CHANNEL_ID` | None | Channel ID for Discord log shipping |
 | `WEB_PASSWORD` | `""` | Password for dashboard login (blank = open access) |
+| `OLLAMA_DJ_ENABLED` | `false` | Enable AI side host (requires Ollama) |
+| `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
+| `OLLAMA_MODEL` | `llama3.2` | Ollama model for side host lines |
+| `OLLAMA_DJ_CHANCE` | `0.25` | Side host chime-in probability (0.0–1.0) |
+| `OLLAMA_DJ_VOICE` | `en-US-GuyNeural` | TTS voice for the AI side host (separate from main DJ) |
+| `OLLAMA_DJ_TIMEOUT` | `4` | Ollama API call timeout in seconds |
 
 ### DJ Mode Configuration (`config.py`)
 
@@ -1367,7 +1392,135 @@ DJ_EMOJI = '🎙️'                # Emoji for DJ command embeds
 
 ---
 
-## 10. Admin Cog: `cogs/admin.py`
+## 10. AI Side Host: `utils/llm_dj.py` — The Studio Joker
+
+A second radio personality powered by a local LLM (Ollama). Unlike the main DJ that picks from 172 pre-written templates, the AI side host **writes its own original lines from scratch** — spontaneous banter, hot takes, song roasts, jokes, and commentary that a template system simply cannot produce.
+
+### Concept
+
+Think of it like a real radio show with two hosts:
+- **Main DJ** (template-based) — handles the structured moments: "That was *Bohemian Rhapsody*. Up next, *Don't Stop Believin'*."
+- **AI Side Host** (Ollama-powered) — the studio joker who chimes in randomly: "Rhapsody? More like Rhapsno-dy! ...I'll see myself out. {sound:record_scratch}"
+
+The side host uses its **own TTS voice** (configurable via `OLLAMA_DJ_VOICE`) so listeners hear two distinct personalities. The main DJ always speaks first (structured intro/transition/outro), and then the side host randomly drops in with unstructured banter.
+
+### How It Works
+
+```
+Song ends → Main DJ speaks template line (intro/transition/outro)
+              │
+              ├─ ai_dj_enabled + should_side_host_speak() → True?
+              │    ├─ Yes → generate_side_host_line() → Ollama generates original banter
+              │    │         ├─ Ollama responds in time → Side host speaks with own voice → Song plays
+              │    │         └─ Timeout/error → Skip side host, song plays immediately
+              │    └─ No → Song plays immediately
+              │
+              └─ Song plays
+```
+
+### Banter Categories
+
+The side host picks a random category each time it speaks:
+
+| Category | Description | Example Output |
+|---|---|---|
+| `random_thought` | A random funny observation | "Is it just me or does every queue end up being 80% songs from 2009?" |
+| `listener_shoutout` | Hype up the listeners | "Three people listening right now and all of them have great taste!" |
+| `song_roast` | Gently roast the current/next song | "This one? Oh we're going BACK to the 80s. No complaints. {sound:dj_scratch}" |
+| `station_trivia` | Fun (or fake) station facts | "Fun fact: this station has been running for 847 years. Don't check that." |
+| `queue_hype` | Hype up the queue with comedy | "20 songs in the queue! We're in it for the long haul, people." |
+| `vibe_check` | Rate the current mood | "Vibes at 73%. Room for improvement. Let's fix that." |
+| `hot_take` | Spicy but harmless music opinion | "Unpopular opinion: the best album of all time is the Frozen soundtrack." |
+| `request_prompt` | Funny reminder to request songs | "Taking requests! Please. The queue is looking thin and my job depends on it." |
+
+### System Prompt
+
+The AI side host is defined by a detailed system prompt that:
+- Sets the personality: "the studio joker — the co-host who cracks jokes, drops hot takes, roasts the music, and says the things the main DJ is too professional to say"
+- Enforces format constraints: max 150 chars, contractions, short and punchy
+- Instructs the model to include `{sound:name}` tags (which flow through the existing `extract_sound_tags()` pipeline)
+- Prevents meta-commentary, quotes, or off-brand behavior
+- Enforces family-friendly output
+
+### Configuration
+
+```ini
+# .env
+OLLAMA_DJ_ENABLED=true       # Enable the AI side host
+OLLAMA_HOST=http://localhost:11434  # Ollama server URL
+OLLAMA_MODEL=llama3.2         # Model to use (smaller = faster)
+OLLAMA_DJ_CHANCE=0.25         # 25% chance to chime in after each DJ line
+OLLAMA_DJ_VOICE=en-US-GuyNeural  # Separate TTS voice for the side host
+OLLAMA_DJ_TIMEOUT=4           # Timeout in seconds
+```
+
+| Setting | Default | Values | Purpose |
+|---|---|---|---|
+| `OLLAMA_DJ_ENABLED` | `false` | `true`/`false` | Master switch for AI side host |
+| `OLLAMA_HOST` | `http://localhost:11434` | Any URL | Ollama server address |
+| `OLLAMA_MODEL` | `llama3.2` | Any pulled model | LLM model for generation |
+| `OLLAMA_DJ_CHANCE` | `0.25` | `0.0`–`1.0` | How often the side host chimes in |
+| `OLLAMA_DJ_VOICE` | `en-US-GuyNeural` | Edge TTS voice name | Separate voice so 2 hosts sound different |
+| `OLLAMA_DJ_TIMEOUT` | `4` | Seconds | Max wait before falling back |
+
+### Voice Configuration
+
+The main DJ and AI side host have **separate TTS voices** to create two distinct on-air personalities:
+
+| Host | Default Voice | Config Key | Discord Command | Web Dashboard |
+|---|---|---|---|---|
+| Main DJ | `en-US-AriaNeural` (female) | `DJ_VOICE` | `?djvoice <name>` | Radio page → "🗣️ DJ Voice" |
+| AI Side Host | `en-US-GuyNeural` (male) | `OLLAMA_DJ_VOICE` | `?aidjvoice <name>` | Radio page → "🃏 AI Side Host Voice" |
+
+Use `?djvoices` to see all available voices.
+
+### Discord Commands
+
+| Command | Usage | Description |
+|---|---|---|
+| `?aidj` | `?aidj` | Toggle the AI side host on/off for this server |
+| `?aidjvoice` | `?aidjvoice` | Show the current AI side host voice |
+| `?aidjvoice` | `?aidjvoice <name>` | Set the AI side host's TTS voice |
+
+### Web Dashboard Controls
+
+- **🃏 AI On/Off button** — Toggle button on each guild card (next to 🎙️ DJ and 🔁 Auto)
+- **🃏 AI badge** — Purple badge shown when AI side host is active
+- **AI Side Host Voice selector** — On the Radio page, visible when AI is enabled
+- **Ollama Status** — On the Settings page, shows server connectivity, model availability, and setup instructions
+
+### Per-Guild State
+
+| Dictionary | Key | Value | Purpose |
+|---|---|---|---|
+| `ai_dj_enabled` | `guild_id` | `bool` | Whether the AI side host is on for this guild |
+| `ai_dj_voice` | `guild_id` | `str` | Edge TTS voice name for the side host (override) |
+
+### Graceful Degradation
+
+Like the main DJ, the AI side host degrades cleanly:
+
+- **Ollama not running** → Side host is skipped, main DJ works normally. No crash, no hang, no dead air.
+- **Ollama times out** → Side host is skipped. The 4-second timeout ensures no perceptible delay.
+- **`OLLAMA_DJ_ENABLED=false`** → Module never loads. Zero overhead.
+- **`edge-tts` not installed** → Both DJs are unavailable. Songs play normally.
+- **Model not pulled** → `?aidj` shows setup instructions with the pull command.
+- **Invalid `{sound:name}` tags** → `extract_sound_tags()` silently strips unknown sounds.
+
+### Recommended Models
+
+| Model | Size | Speed | Quality | Notes |
+|---|---|---|---|---|
+| `llama3.2:3b` | 2 GB | Fast (~1s) | Good | Best balance for real-time radio |
+| `gemma2:2b` | 1.4 GB | Very fast (~0.5s) | Decent | Fastest, good for short banter |
+| `mistral:7b` | 4.1 GB | Slower (~3s) | Great | May hit timeout on slower hardware |
+| `phi3:mini` | 2.3 GB | Fast | Good | Another compact option |
+
+Pull before use: `ollama pull llama3.2`
+
+---
+
+## 11. Admin Cog: `cogs/admin.py`
 
 Owner-only commands for bot management. All commands use `@commands.is_owner()` which checks `BOT_OWNER_ID` (or the bot's application owner in the Discord Developer Portal).
 
@@ -1420,7 +1573,7 @@ domain\tflag\tpath\tsecure\texpiration\tname\tvalue
 
 ---
 
-## 11. Logging Cog: `cogs/logging.py`
+## 12. Logging Cog: `cogs/logging.py`
 
 **Not auto-loaded** by `bot.py` (explicitly excluded on line 63). Can be loaded manually if needed.
 
@@ -1438,7 +1591,7 @@ Creates its own `FileHandler` writing to `bot_activity.log` in write mode (`mode
 
 ---
 
-## 12. Utility Modules
+## 13. Utility Modules
 
 ### `utils/discord_log_handler.py` — DiscordLogHandler
 
@@ -1627,6 +1780,22 @@ Stores user-added DJ lines in `dj_custom_lines.json` (same directory as bot.py).
 
 ---
 
+### `utils/llm_dj.py` — AI Side Host (Ollama)
+
+The AI side host — the studio joker. Writes its own original DJ banter by calling a local LLM via Ollama's HTTP API.
+
+| Function | Purpose |
+|---|---|
+| `generate_side_host_line(...)` | Generate an original DJ line from the AI side host. Returns `str` or `None` if unavailable. |
+| `should_side_host_speak(chance)` | Decide if the side host chimes in this time (random chance). Returns `bool`. |
+| `check_ollama_available()` | Check Ollama server + model availability. Returns `{available, model, models, error}`. |
+| `call_ollama(prompt, system, ...)` | Low-level Ollama `/api/chat` HTTP client. Returns model text or `None`. |
+| `OLLAMA_DJ_AVAILABLE` | Module-level flag: `True` if `aiohttp` installed and `OLLAMA_DJ_ENABLED=true` |
+
+**Post-processing pipeline:** AI output → strip quotes → validate `{sound:name}` tags via `extract_sound_tags()` → enforce 200 char max → skip if < 5 chars → return clean line.
+
+---
+
 ### `utils/lyrics.py` — Lyrics Lookup
 
 Fetches lyrics for the currently playing song using multiple providers with fallbacks.
@@ -1653,7 +1822,7 @@ Save and load queue state as JSON files in the `presets/` directory.
 
 ---
 
-## 13. Web Dashboard: Mission Control
+## 14. Web Dashboard: Mission Control
 
 The Flask web dashboard runs alongside the Discord bot in a background thread, providing a browser-based "Mission Control" interface for remote control.
 
@@ -1735,7 +1904,11 @@ Both actions display a JavaScript confirmation modal before executing. After res
 
 ### Auto-Refresh
 
-The dashboard page auto-refreshes every 30 seconds (`<meta http-equiv="refresh" content="30">`) to keep the live status current. The DJ Lines, Soundboard, Radio, Queue, and Settings pages **do not** auto-refresh (they use `{% if auto_refresh %}` conditional in the base template) to prevent killing file uploads and form submissions mid-flight.
+The dashboard page auto-refreshes **when a song ends** instead of on a fixed timer. The live progress bar (which ticks every second in JavaScript) detects when `elapsed >= duration` and triggers a page reload after a 1.5-second delay so the user sees the bar fill to 100%. This means the page updates exactly at the right moment — when the next song starts — without any jarring mid-song refreshes.
+
+If no progress bar is tracking a song (e.g., the bot is idle, or playing a track with unknown duration like a livestream), a 3-minute fallback refresh catches state changes.
+
+Other pages (DJ Lines, Soundboard, Radio, Queue, Settings) **never** auto-refresh, so file uploads and form submissions are never interrupted.
 
 ### API Endpoints
 
@@ -1760,6 +1933,9 @@ The dashboard page auto-refreshes every 30 seconds (`<meta http-equiv="refresh" 
 | `/api/<guild_id>/dj_toggle` | POST | Toggle DJ mode on/off |
 | `/api/<guild_id>/dj_voice` | POST | Set DJ TTS voice |
 | `/api/<guild_id>/voices` | GET | List available TTS voices |
+| `/api/<guild_id>/ai_dj_toggle` | POST | Toggle AI side host on/off |
+| `/api/<guild_id>/ai_dj_voice` | POST | Set AI side host TTS voice |
+| `/api/<guild_id>/ai_dj_status` | GET | Get AI side host status (enabled, voice, model, chance) |
 | `/api/<guild_id>/autodj_toggle` | POST | Toggle Auto-DJ on/off |
 | `/api/<guild_id>/autodj_source` | POST | Set Auto-DJ source playlist/preset |
 | `/api/<guild_id>/listeners` | GET | Get list of users in the bot's voice channel |
@@ -1799,6 +1975,7 @@ The dashboard page auto-refreshes every 30 seconds (`<meta http-equiv="refresh" 
 |---|---|---|
 | `/api/restart` | POST | Restart the bot process (`os.execv()`) |
 | `/api/shutdown` | POST | Shut down the bot process (`SIGTERM`) |
+| `/api/ollama/status` | GET | Check Ollama server availability, model list, enabled status |
 
 ### Flask ↔ Discord.py Bridge
 
@@ -1825,7 +2002,7 @@ Discord guild IDs are 64-bit integers (snowflakes) that exceed JavaScript's `Num
 
 ---
 
-## 14. Soundboard System
+## 15. Soundboard System
 
 The soundboard lets users play sound effects in the bot's voice channel. It works both from the web dashboard and from `{sound:name}` tags in DJ lines.
 
@@ -1894,7 +2071,7 @@ The soundboard page uses a hidden `<input type="file">` with `position:absolute;
 
 ---
 
-## 15. DJ Custom Lines
+## 16. DJ Custom Lines
 
 Users can add custom DJ lines alongside the 172 built-in ones. Custom lines are persisted in `dj_custom_lines.json` and merged at runtime.
 
@@ -1941,7 +2118,7 @@ The `_pool(category)` function in `utils/dj.py` merges built-in + custom lines a
 
 ---
 
-## 16. Test Suite
+## 17. Test Suite
 
 ### `tests/test_playlist.py`
 
@@ -1987,7 +2164,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 17. Launcher Scripts
+## 18. Launcher Scripts
 
 ### `launch.sh`
 
@@ -2046,7 +2223,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 18. Complete Command Reference
+## 19. Complete Command Reference
 
 **Default prefix:** `?` (configurable in `config.py`)
 
@@ -2084,6 +2261,14 @@ venv/bin/python -m pytest tests/test_suno.py -v
 | `?djvoices` | `?djvoices` | Any user | List available TTS voices (default: English voices) |
 | `?djvoices` | `?djvoices ja` | Any user | List available Japanese TTS voices (or any language prefix) |
 
+### AI Side Host Commands
+
+| Command | Usage | Permission | Description |
+|---|---|---|---|
+| `?aidj` | `?aidj` | Any user | Toggle the AI side host (studio joker) on/off. Requires Ollama + `OLLAMA_DJ_ENABLED=true`. |
+| `?aidjvoice` | `?aidjvoice <name>` | Any user | Set the AI side host's TTS voice (separate from main DJ). |
+| `?aidjvoice` | `?aidjvoice` | Any user | Show the current AI side host voice. |
+
 ### Admin Commands (Bot Owner Only)
 
 | Command | Usage | Permission | Description |
@@ -2104,7 +2289,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 19. Troubleshooting & Known Issues
+## 20. Troubleshooting & Known Issues
 
 ### Common Problems
 
@@ -2160,7 +2345,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 20. Development Guide
+## 21. Development Guide
 
 ### Adding a New Cog
 

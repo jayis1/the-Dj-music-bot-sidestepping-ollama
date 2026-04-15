@@ -40,6 +40,21 @@
     </div>
 </div>
 
+<!-- ── AI Side Host (Ollama) ──────────────────────────────────── -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2><span class="icon">🃏</span> AI Side Host</h2>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+        The AI side host is a second radio personality powered by a local LLM (Ollama).
+        It writes its own banter, jokes, and hot takes — like a studio joker who steals the mic alongside the main DJ.
+        It uses a separate TTS voice so listeners hear two distinct personalities.
+    </p>
+    <div id="ollama-status" style="margin-bottom: 16px;">
+        <button class="btn" onclick="checkOllamaStatus()">🔄 Check Ollama Status</button>
+    </div>
+</div>
+
 <!-- ── Danger Zone ───────────────────────────────────────────── -->
 <div class="card" style="border-color: var(--danger); margin-bottom: 24px;">
     <div class="card-header">
@@ -214,6 +229,66 @@ async function doShutdown() {
     } catch (e) {
         // Network error is expected during shutdown
         showToast('🔴 Bot is shutting down.', 'success');
+    }
+}
+
+// ── Ollama Status Check ────────────────────────────────────
+async function checkOllamaStatus() {
+    const container = document.getElementById('ollama-status');
+    container.innerHTML = '<span style="color: var(--text-muted); font-size: 13px;">Checking Ollama...</span>';
+    try {
+        const res = await fetch('/api/ollama/status');
+        const data = await res.json();
+
+        let html = '<div class="settings-grid">';
+
+        html += '<div class="settings-item">';
+        html += '<span class="settings-label">Ollama Server</span>';
+        html += '<span class="settings-value" style="color: ' + (data.available ? 'var(--success)' : 'var(--danger)') + ';">' +
+                (data.available ? '✅ Connected' : '❌ Unreachable') + '</span>';
+        html += '</div>';
+
+        html += '<div class="settings-item">';
+        html += '<span class="settings-label">Model</span>';
+        html += '<span class="settings-value">' + data.model + '</span>';
+        html += '</div>';
+
+        html += '<div class="settings-item">';
+        html += '<span class="settings-label">Enabled in .env</span>';
+        html += '<span class="settings-value" style="color: ' + (data.enabled ? 'var(--success)' : 'var(--warning)') + ';">' +
+                (data.enabled ? '✅ Yes' : '⚪ No (OLLAMA_DJ_ENABLED=false)') + '</span>';
+        html += '</div>';
+
+        if (data.models && data.models.length > 0) {
+            html += '<div class="settings-item" style="grid-column: 1 / -1;">';
+            html += '<span class="settings-label">Pulled Models</span>';
+            html += '<span class="settings-value" style="font-size: 12px;">' + data.models.join(', ') + '</span>';
+            html += '</div>';
+        }
+
+        html += '</div>';
+
+        if (data.error) {
+            html += '<div style="margin-top: 12px; padding: 12px; background: rgba(239,68,68,0.1); border: 1px solid var(--danger); border-radius: var(--radius); font-size: 13px; color: var(--danger);">';
+            html += '⚠️ ' + data.error;
+            html += '</div>';
+        }
+
+        if (data.available && data.enabled) {
+            html += '<div style="margin-top: 12px; padding: 12px; background: rgba(34,197,94,0.1); border: 1px solid var(--success); border-radius: var(--radius); font-size: 13px; color: var(--success);">';
+            html += '🃏 AI Side Host is ready! Toggle it on from the Dashboard using the 🃏 AI button.';
+            html += '</div>';
+        }
+
+        if (!data.enabled && data.available) {
+            html += '<div style="margin-top: 12px; padding: 12px; background: rgba(245,158,11,0.1); border: 1px solid var(--warning); border-radius: var(--radius); font-size: 13px; color: var(--warning);">';
+            html += '💡 Ollama is running but AI side host is disabled. Set <code>OLLAMA_DJ_ENABLED=true</code> in your <code>.env</code> file to enable it.';
+            html += '</div>';
+        }
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<span style="color: var(--danger); font-size: 13px;">❌ Failed to check Ollama status: ' + e.message + '</span>';
     }
 }
 

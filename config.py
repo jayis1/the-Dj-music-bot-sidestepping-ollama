@@ -31,32 +31,57 @@ SUCCESS_EMOJI = "✅"
 # Discord Channel ID for sending bot logs (errors, warnings)
 LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 
-# DJ Mode — Default voice for the radio DJ (Microsoft Edge TTS voice name)
+# DJ Mode — Default voice for the radio DJ.
 # Change this if you want a different default voice.
 # Use ?djvoices in Discord to see available voices.
-# When using a local TTS server (TTS_MODE=local), this should be a VibeVoice
-# voice name like "en-Carter_man" instead of an Edge TTS voice.
-DJ_VOICE = os.environ.get("DJ_VOICE", "en-US-AriaNeural")
+# The voice name format depends on the active TTS engine:
+#   Kokoro:   af_heart, am_adam, bf_emma, bm_george, etc.
+#   VibeVoice: en-Carter_man, en-Journalist_woman, etc.
+#   Edge TTS:  en-US-AriaNeural, en-US-GuyNeural, etc.
+DJ_VOICE = os.environ.get("DJ_VOICE", "af_heart")
 
 # ── TTS Engine ──────────────────────────────────────────────────────────
-# The bot supports two TTS engines:
+# The bot supports three TTS engines:
 #
-# 1. "edge-tts" (default) — Uses Microsoft Edge TTS voices via the edge-tts
-#    Python package. Free, no server needed, 100+ voices in 40+ languages.
+# 1. "kokoro" (default) — Kokoro-TTS via Kokoro-FastAPI Docker server.
+#    Local, open-weight, ~200-500ms latency. Runs on your GPU in a Docker container.
+#    No cloud API dependency. OpenAI-compatible REST API.
+#    Voice names like: af_heart, af_breeze, am_adam, am_michael, bf_emma, bm_george
+#    See: https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md
+#    Start with: docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest
+#
+# 2. "vibevoice" — Uses a separately-hosted VibeVoice-Realtime WebSocket server.
+#    Lower latency (~300ms), runs on GPU/CPU in a separate process.
+#    Requires: VibeVoice server running (see https://github.com/microsoft/VibeVoice)
+#    Voice names like: en-Carter_man, en-Journalist_woman, de-Anna_woman
+#    (The legacy alias "local" also works and maps to vibevoice.)
+#
+# 3. "edge-tts" — Microsoft Edge TTS voices (cloud-based).
+#    Free, no server needed, 100+ voices in 40+ languages, but higher latency
+#    and depends on Microsoft's cloud API. Used as automatic fallback.
 #    Requires: pip install edge-tts
 #    Voice names like: en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural
 #
-# 2. "local" — Uses a locally-hosted VibeVoice-Realtime TTS server.
-#    Lower latency (~300ms first audio), runs on your GPU/CPU, no Microsoft API.
-#    Requires: VibeVoice server running (see https://github.com/microsoft/VibeVoice)
-#    Voice names like: en-Carter_man, en-Journalist_woman, de-Anna_woman
-#    The bot connects via WebSocket to stream audio in real-time.
-TTS_MODE = os.environ.get("TTS_MODE", "edge-tts").lower()
+# Fallback chain: kokoro → edge-tts  (or vibevoice → edge-tts)
+# If the primary engine fails, the bot automatically falls back to edge-tts.
+TTS_MODE = os.environ.get("TTS_MODE", "kokoro").lower()
 
-# Local TTS server URL (only used when TTS_MODE=local).
+# Default Kokoro voice (only used when TTS_MODE=kokoro).
+# Popular voices: af_heart (warm female), af_breeze (soft female),
+#   am_adam (male), am_michael (male), bf_emma (British female), bm_george (British male)
+KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "af_heart")
+
+# Kokoro-FastAPI server URL (only used when TTS_MODE=kokoro).
+# Start with: docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest
+KOKORO_TTS_URL = os.environ.get("KOKORO_TTS_URL", "http://localhost:8880")
+
+# VibeVoice server URL (only used when TTS_MODE=vibevoice).
 # This is the VibeVoice-Realtime WebSocket server address.
 # Start it with: python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B
-LOCAL_TTS_URL = os.environ.get("LOCAL_TTS_URL", "http://localhost:3000")
+VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
+
+# Backward-compatible alias — LOCAL_TTS_URL still works for older .env files
+LOCAL_TTS_URL = os.environ.get("LOCAL_TTS_URL", "")
 
 # Emojis for DJ mode
 DJ_EMOJI = "🎙️"

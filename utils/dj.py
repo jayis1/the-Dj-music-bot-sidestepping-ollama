@@ -1,17 +1,21 @@
 """
 utils/dj.py — Radio DJ mode for MBot.
 
-Generates Text-to-Speech DJ commentary between songs using either:
-- Microsoft Edge TTS (default, cloud-based, pip install edge-tts)
-- VibeVoice-Realtime (local, GPU-accelerated, https://github.com/microsoft/VibeVoice)
+Generates Text-to-Speech DJ commentary between songs using:
+- Kokoro-TTS via Kokoro-FastAPI Docker server (default, local, OpenAI-compatible)
+- VibeVoice-Realtime (separate WebSocket server, GPU-accelerated)
+- Microsoft Edge TTS (cloud fallback)
 
 The DJ speaks like a real radio host — with energy, personality, time-aware
 greetings, listener callouts, weather-style banter, and natural transitions.
 
 TTS engine is selected via config.TTS_MODE:
-- "edge-tts" (default): Uses Microsoft Edge TTS voices. Free, no server needed.
-- "local": Uses a locally-hosted VibeVoice-Realtime WebSocket server.
-  Lower latency (~300ms), runs on your GPU/CPU, no Microsoft API dependency.
+- "kokoro" (default): Kokoro-FastAPI Docker server. Local GPU, ~300ms first audio.
+  Start with: docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:latest
+  Voice names: af_heart, af_breeze, am_adam, bf_emma, bm_george, etc.
+- "vibevoice": Uses a VibeVoice-Realtime WebSocket server on a separate port.
+  (The legacy alias "local" also maps to vibevoice.)
+- "edge-tts": Microsoft Edge TTS (cloud-based, always-available fallback).
 """
 
 import asyncio
@@ -19,7 +23,6 @@ import logging
 import os
 import random
 import re
-import struct
 import tempfile
 import wave
 from datetime import datetime
@@ -33,7 +36,7 @@ try:
 except ImportError:
     EDGE_TTS_AVAILABLE = False
     logging.warning(
-        "edge-tts not installed — DJ mode unavailable. Install with: pip install edge-tts"
+        "edge-tts not installed — DJ mode will use local TTS or be unavailable. Install with: pip install edge-tts"
     )
 
 try:
@@ -42,28 +45,74 @@ try:
     AIOHTTP_AVAILABLE = True
 except ImportError:
     AIOHTTP_AVAILABLE = False
-    # If aiohttp is missing, local TTS won't work either, but we don't
-    # block the bot from starting — we just log a warning later.
+    # If aiohttp is missing, Kokoro/VibeVoice HTTP-based TTS won't work either,
+    # but we don't block the bot from starting — we just log a warning later.
 
 
 # ── TTS Engine Detection ─────────────────────────────────────────────
 
-TTS_MODE = getattr(config, "TTS_MODE", "edge-tts").lower()
-LOCAL_TTS_URL = getattr(config, "LOCAL_TTS_URL", "http://localhost:3000")
+# Resolve TTS mode, handling legacy aliases
+_raw_tts_mode = getattr(config, "TTS_MODE", "kokoro").lower()
 
-# Validate TTS mode and availability
-if TTS_MODE == "local":
-    if not AIOHTTP_AVAILABLE:
-        logging.warning(
-            "DJ: TTS_MODE=local but aiohttp not installed. "
-            "Install with: pip install aiohttp"
-        )
-        TTS_MODE = "edge-tts"  # Fall back to edge-tts
+# Backward compat: "local" was the old name for vibevoice
+if _raw_tts_mode == "local":
+    logging.warning(
+        'DJ: TTS_MODE="local" is deprecated. Use "vibevoice" instead. '
+        'Mapping "local" → "vibevoice" for now.'
+    )
+    _raw_tts_mode = "vibevoice"
+
+KNOWN_TTS_MODES = {"kokoro", "vibevoice", "edge-tts"}
+if _raw_tts_mode not in KNOWN_TTS_MODES:
+    logging.warning(f"DJ: Unknown TTS_MODE '{_raw_tts_mode}', falling back to kokoro")
+    _raw_tts_mode = "kokoro"
+
+# Validate: kokoro and vibevoice both need aiohttp for HTTP calls
+if _raw_tts_mode in ("kokoro", "vibevoice") and not AIOHTTP_AVAILABLE:
+    logging.warning(
+        f"DJ: TTS_MODE={_raw_tts_mode} but aiohttp not installed. "
+        "Install with: pip install aiohttp"
+    )
+    if EDGE_TTS_AVAILABLE:
+        logging.warning("DJ: Falling back to edge-tts")
+        _raw_tts_mode = "edge-tts"
     else:
-        logging.info(f"DJ: Using local TTS server at {LOCAL_TTS_URL}")
-elif TTS_MODE != "edge-tts":
-    logging.warning(f"DJ: Unknown TTS_MODE '{TTS_MODE}', falling back to edge-tts")
-    TTS_MODE = "edge-tts"
+        logging.error("DJ: No TTS engine available! DJ mode will not work.")
+
+TTS_MODE = _raw_tts_mode
+
+# Is ANY TTS engine available? This is True when at least one engine is
+# configured and its dependencies are installed. Used by cogs/music.py
+# to gate DJ mode — DJ should work with any engine, not just edge-tts.
+TTS_AVAILABLE = (
+    (TTS_MODE in ("kokoro", "vibevoice") and AIOHTTP_AVAILABLE)
+    or (TTS_MODE == "edge-tts" and EDGE_TTS_AVAILABLE)
+    or EDGE_TTS_AVAILABLE  # edge-tts is always a fallback
+)
+
+# Resolve server URLs from config
+# New dedicated URLs take priority; LOCAL_TTS_URL is a backward-compat fallback
+KOKORO_TTS_URL = getattr(config, "KOKORO_TTS_URL", "") or getattr(
+    config, "LOCAL_TTS_URL", "http://localhost:8880"
+)
+# If KOKORO_TTS_URL wasn't set and LOCAL_TTS_URL was the old default (port 3000),
+# override to the Kokoro default port (8880)
+if not getattr(config, "KOKORO_TTS_URL", "") and not getattr(
+    config, "LOCAL_TTS_URL", ""
+):
+    KOKORO_TTS_URL = "http://localhost:8880"
+
+VIBEVOICE_TTS_URL = getattr(config, "VIBEVOICE_TTS_URL", "") or getattr(
+    config, "LOCAL_TTS_URL", "http://localhost:3000"
+)
+
+# Log the active TTS configuration at startup
+if TTS_MODE == "kokoro":
+    logging.info(f"DJ: Using Kokoro TTS server at {KOKORO_TTS_URL}")
+elif TTS_MODE == "vibevoice":
+    logging.info(f"DJ: Using VibeVoice TTS server at {VIBEVOICE_TTS_URL}")
+elif TTS_MODE == "edge-tts":
+    logging.info("DJ: Using Microsoft Edge TTS (cloud)")
 
 
 # ── Time-of-day helpers ────────────────────────────────────────────
@@ -622,27 +671,72 @@ def generate_outro(
 
 # ── TTS Generation ─────────────────────────────────────────────────
 
-DEFAULT_VOICE = "en-US-AriaNeural"
+# Default voice names per engine — used when no voice is explicitly set
+DEFAULT_VOICE_EDGE = "en-US-AriaNeural"
+DEFAULT_VOICE_KOKORO = "af_heart"
+DEFAULT_VOICE_VIBEVOICE = "en-Carter_man"
 
-# VibeVoice voices always default to Carter (male) since Edge TTS defaults to
-# Aria (female). This gives a natural gender contrast for the main DJ voice.
-DEFAULT_LOCAL_VOICE = "en-Carter_man"
-
-# VibeVoice-Realtime outputs raw PCM16 at 24kHz, mono.
+# Sample rates for local engines that output PCM/WAV
+KOKORO_SAMPLE_RATE = 24000
 VIBEVOICE_SAMPLE_RATE = 24000
+
+# ── Built-in Kokoro voice catalog ──────────────────────────────────────
+# These are the voices available in Kokoro-FastAPI v0.2.x.
+# The bot also queries the server's /v1/audio/voices endpoint at runtime
+# to get the authoritative list (which may include custom / combined voices).
+KOKORO_VOICE_CATALOG: dict[str, str] = {
+    "af_heart": "American Female - Heart (warm)",
+    "af_bella": "American Female - Bella",
+    "af_nicole": "American Female - Nicole",
+    "af_sarah": "American Female - Sarah",
+    "af_sky": "American Female - Sky",
+    "am_adam": "American Male - Adam",
+    "am_michael": "American Male - Michael",
+    "bf_emma": "British Female - Emma",
+    "bf_isabella": "British Female - Isabella",
+    "bm_george": "British Male - George",
+    "bm_lewis": "British Male - Lewis",
+}
+
+
+def _resolve_voice(voice: str, engine: str = "") -> str:
+    """Resolve a voice name for the given engine.
+
+    If the voice looks like it belongs to a different engine (e.g. passing an
+    Edge TTS voice name like 'en-US-AriaNeural' when using Kokoro), swap it
+    for that engine's default instead of silently producing incompatible audio.
+    """
+    if not engine:
+        engine = TTS_MODE
+
+    # Heuristic: Edge TTS voice names contain '-' (e.g. en-US-AriaNeural)
+    # Kokoro voice names use '_' (e.g. af_heart, am_adam)
+    # VibeVoice voice names use '-' and '_' (e.g. en-Carter_man)
+    if engine == "kokoro":
+        if "_" not in voice and "-" in voice and "Neural" in voice:
+            return DEFAULT_VOICE_KOKORO
+    elif engine == "vibevoice":
+        if "Neural" in voice:
+            return DEFAULT_VOICE_VIBEVOICE
+    elif engine == "edge-tts":
+        if "_" in voice and "Neural" not in voice:
+            return DEFAULT_VOICE_EDGE
+
+    return voice
+
+
+# ── Voice listing ────────────────────────────────────────────────────
 
 
 async def list_voices(language: str = "en") -> list[dict]:
-    """Return available TTS voices.
+    """Return available TTS voices for the active engine.
 
-    When TTS_MODE is "local", queries the VibeVoice-Realtime server's /config
-    endpoint for its list of voice presets. When TTS_MODE is "edge-tts" (default),
-    queries the Microsoft Edge TTS voice list.
-
-    Each entry is a dict with keys: name, gender, locale.
+    Each entry is a dict with keys: ShortName/name, Gender, Locale.
     """
-    if TTS_MODE == "local":
-        return await _list_voices_local(language)
+    if TTS_MODE == "kokoro":
+        return await _list_voices_kokoro(language)
+    elif TTS_MODE == "vibevoice":
+        return await _list_voices_vibevoice(language)
 
     # Default: edge-tts
     if not EDGE_TTS_AVAILABLE:
@@ -655,7 +749,104 @@ async def list_voices(language: str = "en") -> list[dict]:
         return []
 
 
-async def _list_voices_local(language: str = "en") -> list[dict]:
+async def _list_voices_kokoro(language: str = "en") -> list[dict]:
+    """Fetch available voices from the Kokoro-FastAPI server.
+
+    Queries the OpenAI-compatible /v1/audio/voices endpoint.
+    Falls back to the built-in KOKORO_VOICE_CATALOG if the server is unreachable.
+    """
+    if not AIOHTTP_AVAILABLE:
+        return _kokoro_catalog_to_list(language)
+
+    url = f"{KOKORO_TTS_URL}/v1/audio/voices"
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    logging.warning(
+                        f"DJ: Kokoro /v1/audio/voices returned {resp.status}, "
+                        "using built-in catalog"
+                    )
+                    return _kokoro_catalog_to_list(language)
+                data = await resp.json(content_type=None)
+    except Exception as e:
+        logging.warning(
+            f"DJ: Failed to query Kokoro server at {KOKORO_TTS_URL}: {e}. "
+            "Using built-in voice catalog."
+        )
+        return _kokoro_catalog_to_list(language)
+
+    # The API returns {"voices": ["af_heart", "af_bella", ...]}
+    voice_names = data.get("voices", [])
+    if not voice_names:
+        return _kokoro_catalog_to_list(language)
+
+    result = []
+    for name in voice_names:
+        # Skip combined voices like "af_bella+af_heart" from the list
+        # (they work for generation but clutter the voice picker)
+        if "+" in name:
+            continue
+
+        desc = KOKORO_VOICE_CATALOG.get(name, "")
+        # Parse language/gender from voice prefix
+        # af = American Female, am = American Male, bf = British Female, bm = British Male
+        prefix = name.split("_")[0] if "_" in name else "af"
+        lang_map = {"a": "en-US", "b": "en-GB"}
+        gender_map = {"f": "Female", "m": "Male"}
+        locale = lang_map.get(prefix[0], "en-US")
+        gender = gender_map.get(prefix[-1], "Female")
+
+        # Filter by language prefix
+        if language and not locale.lower().startswith(language.lower()):
+            # Also allow loose match: "en" matches both en-US and en-GB
+            if not locale.split("-")[0].lower().startswith(language.lower()):
+                continue
+
+        result.append(
+            {
+                "ShortName": name,
+                "Gender": gender,
+                "Locale": locale,
+                "name": name,
+                "default": name == DEFAULT_VOICE_KOKORO,
+                "description": desc,
+            }
+        )
+
+    return result
+
+
+def _kokoro_catalog_to_list(language: str = "en") -> list[dict]:
+    """Convert the built-in KOKORO_VOICE_CATALOG to the voice-list format."""
+    result = []
+    for name, desc in KOKORO_VOICE_CATALOG.items():
+        prefix = name.split("_")[0] if "_" in name else "af"
+        lang_map = {"a": "en-US", "b": "en-GB"}
+        gender_map = {"f": "Female", "m": "Male"}
+        locale = lang_map.get(prefix[0], "en-US")
+        gender = gender_map.get(prefix[-1], "Female")
+
+        if language and not locale.lower().startswith(language.lower()):
+            if not locale.split("-")[0].lower().startswith(language.lower()):
+                continue
+
+        result.append(
+            {
+                "ShortName": name,
+                "Gender": gender,
+                "Locale": locale,
+                "name": name,
+                "default": name == DEFAULT_VOICE_KOKORO,
+                "description": desc,
+            }
+        )
+    return result
+
+
+async def _list_voices_vibevoice(language: str = "en") -> list[dict]:
     """Fetch available voices from the VibeVoice-Realtime server.
 
     Calls the /config endpoint which returns:
@@ -665,10 +856,10 @@ async def _list_voices_local(language: str = "en") -> list[dict]:
     the format expected by the web dashboard and ?djvoices command.
     """
     if not AIOHTTP_AVAILABLE:
-        logging.error("DJ: aiohttp not installed, cannot list local TTS voices")
+        logging.error("DJ: aiohttp not installed, cannot list VibeVoice TTS voices")
         return []
 
-    url = f"{LOCAL_TTS_URL}/config"
+    url = f"{VIBEVOICE_TTS_URL}/config"
     try:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=10)
@@ -676,13 +867,13 @@ async def _list_voices_local(language: str = "en") -> list[dict]:
             async with session.get(url) as resp:
                 if resp.status != 200:
                     logging.error(
-                        f"DJ: Local TTS /config returned status {resp.status}"
+                        f"DJ: VibeVoice /config returned status {resp.status}"
                     )
                     return []
                 data = await resp.json(content_type=None)
     except Exception as e:
         logging.error(
-            f"DJ: Failed to connect to local TTS server at {LOCAL_TTS_URL}: {e}"
+            f"DJ: Failed to connect to VibeVoice server at {VIBEVOICE_TTS_URL}: {e}"
         )
         return []
 
@@ -692,12 +883,10 @@ async def _list_voices_local(language: str = "en") -> list[dict]:
     result = []
     for name in voice_names:
         # Parse voice name pattern: "en-Carter_man", "de-Anna_woman", "ja-Sakura_woman"
-        # Format: {lang}-{Name}_{gender_suffix}
         parts = name.split("-", 1)
         locale = parts[0] if len(parts) == 2 else "en"
         gender = "female" if name.endswith(("_woman", "_girl")) else "male"
 
-        # Filter by language prefix
         if language and not locale.lower().startswith(language.lower()):
             continue
 
@@ -708,7 +897,7 @@ async def _list_voices_local(language: str = "en") -> list[dict]:
                 "Locale": f"{locale}-US"
                 if locale == "en"
                 else f"{locale}-{locale.upper()}",
-                "name": name,  # For dashboard compatibility
+                "name": name,
                 "default": name == default_voice,
             }
         )
@@ -716,36 +905,227 @@ async def _list_voices_local(language: str = "en") -> list[dict]:
     return result
 
 
-async def generate_tts(text: str, voice: str = DEFAULT_VOICE) -> str | None:
+# ── TTS audio generation ──────────────────────────────────────────────
+
+
+# ── Kokoro server health check ────────────────────────────────────────
+# Caches the last health check result so we don't probe the server on
+# every single TTS call. If the server was down 3 seconds ago, it's
+# probably still down — skip straight to the fallback.
+_kokoro_last_health_check: float = 0.0
+_kokoro_healthy: bool | None = None  # None = never checked
+_KOKORO_HEALTH_CACHE_TTL = 30  # seconds before re-checking a "healthy" result
+_KOKORO_HEALTH_CACHE_TTL_DOWN = 10  # seconds before re-checking a "down" result
+
+
+async def _check_kokoro_health() -> bool:
+    """Quick health check: can we reach the Kokoro-FastAPI server?
+
+    Sends a GET to /v1/audio/voices (lightweight endpoint) with a very
+    short timeout. Returns True if the server responds, False otherwise.
+    Caches the result to avoid hammering the server on every TTS call.
+    """
+    global _kokoro_last_health_check, _kokoro_healthy
+
+    import time as _time
+
+    now = _time.monotonic()
+    cache_ttl = (
+        _KOKORO_HEALTH_CACHE_TTL if _kokoro_healthy else _KOKORO_HEALTH_CACHE_TTL_DOWN
+    )
+    if _kokoro_healthy is not None and (now - _kokoro_last_health_check) < cache_ttl:
+        return _kokoro_healthy
+
+    if not AIOHTTP_AVAILABLE:
+        _kokoro_healthy = False
+        _kokoro_last_health_check = now
+        return False
+
+    url = f"{KOKORO_TTS_URL}/v1/audio/voices"
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=3, connect=2)
+        ) as session:
+            async with session.get(url) as resp:
+                _kokoro_healthy = resp.status == 200
+                _kokoro_last_health_check = now
+                if not _kokoro_healthy:
+                    logging.warning(f"DJ: Kokoro health check returned {resp.status}")
+                return _kokoro_healthy
+    except Exception as e:
+        logging.warning(f"DJ: Kokoro server at {KOKORO_TTS_URL} is unreachable: {e}")
+        _kokoro_healthy = False
+        _kokoro_last_health_check = now
+        return False
+
+
+async def generate_tts(text: str, voice: str = None) -> str | None:
     """Generate a TTS audio file and return its path.
 
     Routes to the appropriate TTS engine based on config.TTS_MODE:
-    - "local": Uses VibeVoice-Realtime WebSocket server (low latency, local GPU)
-    - "edge-tts" (default): Uses Microsoft Edge TTS (cloud-based, no server needed)
+    - "kokoro": Kokoro-FastAPI Docker server (local GPU, OpenAI-compatible API)
+    - "vibevoice": VibeVoice-Realtime WebSocket server (local GPU, separate process)
+    - "edge-tts": Microsoft Edge TTS (cloud-based, always-available fallback)
 
-    Returns the path to a WAV file (local) or MP3 file (edge-tts).
+    If the primary engine fails, falls back to edge-tts automatically.
+    For Kokoro, a quick health check is done first — if the server is
+    unreachable, the fallback is nearly instant instead of waiting for
+    a long timeout.
+
+    Returns the path to a WAV file (kokoro/vibevoice) or MP3 file (edge-tts).
     The caller must delete the file after use via cleanup_tts_file().
     Returns None if TTS is unavailable or generation fails.
     """
     if not text or not text.strip():
         return None
 
-    if TTS_MODE == "local":
-        result = await _generate_tts_local(text, voice)
+    # Resolve default voice based on active engine
+    if voice is None:
+        if TTS_MODE == "kokoro":
+            voice = DEFAULT_VOICE_KOKORO
+        elif TTS_MODE == "vibevoice":
+            voice = DEFAULT_VOICE_VIBEVOICE
+        else:
+            voice = DEFAULT_VOICE_EDGE
+
+    if TTS_MODE == "kokoro":
+        # Quick health check — skip Kokoro entirely if server is down
+        healthy = await _check_kokoro_health()
+        if healthy:
+            resolved = _resolve_voice(voice, "kokoro")
+            result = await _generate_tts_kokoro(text, resolved)
+            if result is not None:
+                return result
+            logging.warning(
+                "DJ: Kokoro TTS generation failed despite server being up. "
+                "Falling back to edge-tts."
+            )
+        else:
+            logging.warning(
+                "DJ: Kokoro server is down, falling back to edge-tts. "
+                "Start it with: docker run --gpus all -p 8880:8880 "
+                "ghcr.io/remsky/kokoro-fastapi-gpu:latest"
+            )
+        # Re-resolve voice for edge-tts (Kokoro voice names won't work there)
+        edge_voice = _resolve_voice(voice, "edge-tts")
+
+    elif TTS_MODE == "vibevoice":
+        resolved = _resolve_voice(voice, "vibevoice")
+        result = await _generate_tts_vibevoice(text, resolved)
         if result is not None:
             return result
-        # Local TTS failed — fall back to edge-tts if available
-        logging.warning("DJ: Local TTS failed, falling back to edge-tts")
+        logging.warning("DJ: VibeVoice TTS failed, falling back to edge-tts")
+        edge_voice = _resolve_voice(voice, "edge-tts")
 
-    # Default / fallback: edge-tts
+    else:
+        # TTS_MODE == "edge-tts" — use directly
+        edge_voice = _resolve_voice(voice, "edge-tts")
+
+    # Final fallback: edge-tts
     if not EDGE_TTS_AVAILABLE:
-        logging.warning("DJ: edge-tts not available, skipping TTS.")
+        logging.error(
+            "DJ: edge-tts not installed — cannot fall back! "
+            "Install with: pip install edge-tts"
+        )
         return None
 
-    return await _generate_tts_edge(text, voice)
+    logging.info(f"DJ: Using edge-tts fallback (voice={edge_voice})")
+    return await _generate_tts_edge(text, edge_voice)
 
 
-async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE) -> str | None:
+async def _generate_tts_kokoro(
+    text: str, voice: str = DEFAULT_VOICE_KOKORO
+) -> str | None:
+    """Generate TTS audio using a Kokoro-FastAPI Docker server.
+
+    Calls the OpenAI-compatible /v1/audio/speech endpoint.
+    Kokoro-FastAPI serves audio in multiple formats (mp3, wav, pcm, etc).
+    We request WAV for consistency with the existing pipeline.
+
+    Returns the path to a WAV file, or None on failure.
+    """
+    if not AIOHTTP_AVAILABLE:
+        logging.error("DJ: aiohttp not installed, cannot use Kokoro TTS")
+        return None
+
+    url = f"{KOKORO_TTS_URL}/v1/audio/speech"
+    payload = {
+        "model": "kokoro",
+        "input": text.strip(),
+        "voice": voice,
+        "response_format": "wav",
+        "speed": 1.0,
+    }
+
+    # Short, aggressive timeout — we don't want the DJ sitting in silence
+    # for 30 seconds if the server is down. If Kokoro doesn't respond in
+    # 5 seconds (connect) or 15 seconds (total), we bail and let edge-tts
+    # take over. DJ speech clips are typically under 10 seconds of audio,
+    # which Kokoro generates in <1 second on GPU.
+    timeout = aiohttp.ClientTimeout(total=15, connect=5)
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logging.error(
+                        f"DJ: Kokoro TTS returned status {resp.status}: "
+                        f"{error_text[:200]}"
+                    )
+                    return None
+
+                audio_data = await resp.read()
+
+    except aiohttp.ClientConnectorError as e:
+        logging.error(
+            f"DJ: Cannot connect to Kokoro server at {KOKORO_TTS_URL}. "
+            f"Is the Docker container running? Error: {e}"
+        )
+        return None
+    except asyncio.TimeoutError:
+        logging.error(
+            "DJ: Kokoro TTS timed out (15s). "
+            "The server may be overloaded or starting up. Falling back."
+        )
+        return None
+    except Exception as e:
+        logging.error(f"DJ: Kokoro TTS unexpected error: {e}")
+        return None
+
+    if not audio_data or len(audio_data) < 44:
+        logging.warning("DJ: Kokoro TTS returned empty or tiny audio data")
+        return None
+
+    # Save the WAV data to a temp file
+    try:
+        fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="dj_kokoro_")
+        os.close(fd)
+
+        with open(wav_path, "wb") as f:
+            f.write(audio_data)
+
+        # Log duration by reading the WAV header
+        duration = 0.0
+        try:
+            with wave.open(wav_path, "rb") as wf:
+                frames = wf.getnframes()
+                rate = wf.getframerate()
+                duration = frames / rate if rate > 0 else 0
+        except Exception:
+            pass
+
+        logging.info(
+            f"DJ: Generated TTS (kokoro) → {wav_path} "
+            f"({len(text)} chars, voice={voice}, {duration:.1f}s)"
+        )
+        return wav_path
+    except Exception as e:
+        logging.error(f"DJ: Failed to write Kokoro TTS WAV file: {e}")
+        return None
+
+
+async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE_EDGE) -> str | None:
     """Generate TTS audio using Microsoft Edge TTS (cloud-based).
 
     Returns the path to an MP3 file, or None on failure.
@@ -775,8 +1155,8 @@ async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE) -> str | Non
         return None
 
 
-async def _generate_tts_local(
-    text: str, voice: str = DEFAULT_LOCAL_VOICE
+async def _generate_tts_vibevoice(
+    text: str, voice: str = DEFAULT_VOICE_VIBEVOICE
 ) -> str | None:
     """Generate TTS audio using a VibeVoice-Realtime WebSocket server.
 
@@ -786,16 +1166,15 @@ async def _generate_tts_local(
     Returns the path to a WAV file, or None on failure.
     """
     if not AIOHTTP_AVAILABLE:
-        logging.error("DJ: aiohttp not installed, cannot use local TTS")
+        logging.error("DJ: aiohttp not installed, cannot use VibeVoice TTS")
         return None
 
     # Build the WebSocket URL with query parameters
-    # VibeVoice-Realtime: /stream?text=<text>&voice=<voice>
     params = f"text={text.strip()}"
     if voice:
         params += f"&voice={voice}"
 
-    ws_url = f"{LOCAL_TTS_URL.replace('http://', 'ws://').replace('https://', 'wss://')}/stream?{params}"
+    ws_url = f"{VIBEVOICE_TTS_URL.replace('http://', 'ws://').replace('https://', 'wss://')}/stream?{params}"
 
     audio_chunks = []
     try:
@@ -809,35 +1188,35 @@ async def _generate_tts_local(
                         if msg.type == aiohttp.WSMsgType.BINARY:
                             audio_chunks.append(msg.data)
                         elif msg.type == aiohttp.WSMsgType.TEXT:
-                            # JSON status messages — ignore for now
+                            # JSON status messages — ignore
                             pass
                         elif msg.type == aiohttp.WSMsgType.ERROR:
                             logging.error(
-                                f"DJ: Local TTS WebSocket error: {ws.exception()}"
+                                f"DJ: VibeVoice WebSocket error: {ws.exception()}"
                             )
                             break
             except aiohttp.WSError as e:
                 logging.error(
-                    f"DJ: Failed to connect to local TTS server at {LOCAL_TTS_URL}: {e}"
+                    f"DJ: Failed to connect to VibeVoice server at {VIBEVOICE_TTS_URL}: {e}"
                 )
                 return None
             except asyncio.TimeoutError:
-                logging.error(f"DJ: Local TTS connection timed out (30s)")
+                logging.error("DJ: VibeVoice TTS connection timed out (30s)")
                 return None
 
     except Exception as e:
-        logging.error(f"DJ: Local TTS unexpected error: {e}")
+        logging.error(f"DJ: VibeVoice TTS unexpected error: {e}")
         return None
 
     if not audio_chunks:
-        logging.warning("DJ: Local TTS returned no audio data")
+        logging.warning("DJ: VibeVoice TTS returned no audio data")
         return None
 
     # Combine all PCM16 chunks and write as a WAV file
     try:
         pcm_data = b"".join(audio_chunks)
 
-        fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="dj_")
+        fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="dj_vv_")
         os.close(fd)
 
         with wave.open(wav_path, "wb") as wf:
@@ -847,12 +1226,12 @@ async def _generate_tts_local(
             wf.writeframes(pcm_data)
 
         logging.info(
-            f"DJ: Generated TTS (local) → {wav_path} ({len(text)} chars, "
+            f"DJ: Generated TTS (vibevoice) → {wav_path} ({len(text)} chars, "
             f"voice={voice}, {len(pcm_data) / VIBEVOICE_SAMPLE_RATE:.1f}s)"
         )
         return wav_path
     except Exception as e:
-        logging.error(f"DJ: Failed to write local TTS WAV file: {e}")
+        logging.error(f"DJ: Failed to write VibeVoice TTS WAV file: {e}")
         return None
 
 

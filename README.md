@@ -180,6 +180,20 @@ Click **📋 Log** in the sidebar to open a live slide-out log panel:
 - Auto-reconnects if the connection drops
 - No new dependencies — uses native browser `EventSource` API
 
+### 🔄 Dashboard Auto-Refresh System
+The dashboard uses 4 independent refresh layers that never interfere with each other:
+
+| System | Interval | What it updates |
+|---|---|---|
+| **Progress bar ticker** | Every 1 second | Only the progress fill width + elapsed time text |
+| **Soft refresh** | Every 30 seconds | Guild status badges, DJ controls, queue, listeners, volume, song title |
+| **Song-end refresh** | When progress hits 100% | Full dashboard state for the new track |
+| **Fallback refresh** | Every 3 minutes | Full page reload as safety net |
+
+**Why the progress bar never jumps:** The 30-second soft refresh deliberately skips `.progress-bar-fill` and `#elapsed-*` elements. The progress bar runs on a client-side 1-second timer — if the soft refresh also touched it, the bar would jump to wherever the server says the elapsed time is, causing visible jitter. By leaving it alone, the bar stays buttery smooth.
+
+**When a new song starts:** If the soft refresh detects a title change, it replaces the progress bar section and reinitializes the JS timer using the `data-elapsed`, `data-duration`, and `data-speed` attributes on the guild card.
+
 ### AI Side Host Dashboard Controls
 - 🃏 **AI On/Off button** on dashboard cards (glows purple when active)
 - 🃏 **AI badge** on guild cards when side host is enabled

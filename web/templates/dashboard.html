@@ -17,7 +17,7 @@
 
 <!-- ==================== GUILD CARDS ==================== -->
 {% for g in guilds %}
-<div class="card guild-card" id="guild-{{ g.id }}" data-gid="{{ g.id }}">
+<div class="card guild-card" id="guild-{{ g.id }}" data-guild-card="{{ g.id }}" data-elapsed="{{ g.current_elapsed|default(0)|int }}" data-duration="{{ g.current_duration|default(0)|int }}" data-speed="{{ g.speed|default(1.0)|float }}">
     <!-- Guild header -->
     <div class="guild-header">
         <div class="guild-icon">{{ g.name[0] }}</div>
@@ -62,7 +62,7 @@
 
     <!-- Playback controls -->
     {% if g.in_voice %}
-    <div class="controls" style="margin-bottom: 16px;">
+    <div class="controls controls-row" style="margin-bottom: 16px;">
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'pause')" title="Play / Pause">{% if g.playing %}⏸️ Pause{% elif g.paused %}▶️ Resume{% else %}▶️ Play{% endif %}</button>
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'skip')" title="Skip">⏭️ Skip</button>
         <button class="btn btn-danger" onclick="apiAction(this, '{{ g.id }}', 'stop')" title="Stop">⏹️ Stop</button>
@@ -72,7 +72,7 @@
         {% if g.ai_dj_enabled %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host" style="border-color: var(--purple); color: var(--purple);">🃏 AI On</button>{% else %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host">🃏 AI Off</button>{% endif %}
     </div>
     {% else %}
-    <div class="controls" style="margin-bottom: 16px;">
+    <div class="controls controls-row" style="margin-bottom: 16px;">
         <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Join Voice Channel">🔌 Join</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
@@ -83,7 +83,7 @@
     <!-- Volume slider -->
     <div style="margin-bottom: 12px;">
         <label style="font-size: 12px; color: var(--text-muted); display: flex; align-items: center; gap: 8px;">
-            🔊 Volume: <span id="vol-label-{{ g.id }}">{{ g.volume }}%</span>
+            🔊 Volume: <span class="vol-label" id="vol-label-{{ g.id }}">{{ g.volume }}%</span>
         </label>
         <input type="range" min="0" max="200" value="{{ g.volume }}"
                class="slider" id="vol-{{ g.id }}"
@@ -209,7 +209,7 @@
 
     <!-- Listener List -->
     {% if g.in_voice and g.listeners %}
-    <div style="margin-top: 16px;">
+    <div class="listeners-row" style="margin-top: 16px;">
         <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">🎧 Listening Now ({{ g.listeners|length }})</h4>
         <div style="display: flex; flex-wrap: wrap; gap: 8px;">
         {% for listener in g.listeners %}
@@ -645,12 +645,12 @@ function toggleLyrics(guildId) {
         for (const [gid, data] of Object.entries(guildProgress)) {
             data.elapsed += data.speed;  // account for playback speed
 
-            // Song just ended — refresh the page to show the next song
+            // Song just ended — trigger a soft refresh to show the next song
             if (data.elapsed >= data.duration && !data.ended) {
                 data.ended = true;
-                // Small delay so the bar visually reaches 100% before reloading
-                setTimeout(function() { location.reload(); }, 1500);
-                return; // Stop ticking — reload is imminent
+                // Small delay so the bar visually reaches 100% first
+                setTimeout(function() { softRefresh(); }, 1500);
+                return; // Stop ticking — refresh is imminent
             }
 
             if (data.elapsed > data.duration) data.elapsed = data.duration;
@@ -668,15 +668,137 @@ function toggleLyrics(guildId) {
         }
     }, 1000);
 
+    // ── Soft Refresh (AJAX) ──────────────────────────────────────
+    // Fetches fresh dashboard HTML from the server and updates all
+    // dynamic content EXCEPT the progress bar. The progress bar
+    // keeps ticking independently on its 1-second client-side timer,
+    // so it never jumps or flickers during a refresh.
+    let refreshTimer = null;
+
+    function softRefresh() {
+        // Add a cache-busting param so the browser doesn't serve stale HTML
+        fetch(window.location.pathname + '?_refresh=' + Date.now(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(resp) { return resp.text(); })
+        .then(function(html) {
+            // Parse the fetched HTML into a DOM
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+
+            // ── Update everything EXCEPT progress bars ────────────
+            // For each guild card, swap out the non-progress content
+            const newCards = doc.querySelectorAll('[data-guild-card]');
+            newCards.forEach(function(newCard) {
+                const gid = newCard.getAttribute('data-guild-card');
+                const oldCard = document.querySelector('[data-guild-card="' + gid + '"]');
+                if (!oldCard) return;
+
+                // --- Title bar (guild name, status badge) ---
+                const newHeader = newCard.querySelector('.guild-header');
+                const oldHeader = oldCard.querySelector('.guild-header');
+                if (newHeader && oldHeader) oldHeader.innerHTML = newHeader.innerHTML;
+
+                // --- Control buttons (play/pause, skip, stop, DJ, etc.) ---
+                const newControls = newCard.querySelector('.controls-row');
+                const oldControls = oldCard.querySelector('.controls-row');
+                if (newControls && oldControls) oldControls.innerHTML = newControls.innerHTML;
+
+                // --- Song title + thumbnail (but NOT the progress bar) ---
+                const newNowPlaying = newCard.querySelector('.now-playing');
+                const oldNowPlaying = oldCard.querySelector('.now-playing');
+                if (newNowPlaying && oldNowPlaying) {
+                    // Replace song title link
+                    const newTitle = newNowPlaying.querySelector('.song-title');
+                    const oldTitle = oldNowPlaying.querySelector('.song-title');
+                    if (newTitle && oldTitle) oldTitle.innerHTML = newTitle.innerHTML;
+
+                    // Replace thumbnail
+                    const newThumb = newNowPlaying.querySelector('img');
+                    const oldThumb = oldNowPlaying.querySelector('img');
+                    if (newThumb && oldThumb) oldThumb.src = newThumb.src;
+
+                    // Update queue duration text (if present)
+                    const newQueueDur = newNowPlaying.querySelector('.queue-duration');
+                    const oldQueueDur = oldNowPlaying.querySelector('.queue-duration');
+                    if (newQueueDur && oldQueueDur) oldQueueDur.innerHTML = newQueueDur.innerHTML;
+
+                    // If no song is playing in new data but one was before,
+                    // replace the entire now-playing section (no progress bar to preserve)
+                    if (!newNowPlaying.querySelector('.progress-bar-track') && !oldNowPlaying.querySelector('.progress-bar-track')) {
+                        oldNowPlaying.innerHTML = newNowPlaying.innerHTML;
+                    }
+
+                    // If a new song started (different title), replace everything
+                    // including progress bar — the JS ticker will re-init on next page load
+                    const newSongName = newTitle ? newTitle.textContent.trim() : '';
+                    const oldSongName = oldTitle ? oldTitle.textContent.trim() : '';
+                    if (newSongName !== oldSongName) {
+                        oldNowPlaying.innerHTML = newNowPlaying.innerHTML;
+                        // Re-init the progress bar data from the new song
+                        if (guildProgress[gid]) {
+                            delete guildProgress[gid];
+                        }
+                        // Parse new elapsed/duration from the server-rendered data
+                        const newElapsed = newCard.getAttribute('data-elapsed');
+                        const newDuration = newCard.getAttribute('data-duration');
+                        const newSpeed = newCard.getAttribute('data-speed') || '1';
+                        if (newElapsed && newDuration && parseInt(newDuration) > 0) {
+                            guildProgress[gid] = {
+                                elapsed: parseFloat(newElapsed),
+                                duration: parseFloat(newDuration),
+                                speed: parseFloat(newSpeed),
+                                ended: false
+                            };
+                        }
+                    }
+                }
+
+                // --- Queue list ---
+                const newQueue = newCard.querySelector('.queue-list');
+                const oldQueue = oldCard.querySelector('.queue-list');
+                if (newQueue && oldQueue) oldQueue.innerHTML = newQueue.innerHTML;
+
+                // --- Listeners ---
+                const newListeners = newCard.querySelector('.listeners-row');
+                const oldListeners = oldCard.querySelector('.listeners-row');
+                if (newListeners && oldListeners) oldListeners.innerHTML = newListeners.innerHTML;
+
+                // --- Volume label ---
+                const newVolLabel = newCard.querySelector('.vol-label');
+                const oldVolLabel = oldCard.querySelector('.vol-label');
+                if (newVolLabel && oldVolLabel) oldVolLabel.textContent = newVolLabel.textContent;
+            });
+
+            // Update status bar (bot connection, guild count)
+            const newStatusBar = doc.querySelector('.status-bar');
+            const oldStatusBar = document.querySelector('.status-bar');
+            if (newStatusBar && oldStatusBar) oldStatusBar.innerHTML = newStatusBar.innerHTML;
+        })
+        .catch(function(err) {
+            console.warn('Mission Control soft refresh failed:', err);
+        });
+    }
+
+    // ── 30-second auto-refresh ──────────────────────────────────
+    // Refreshes all dashboard data every 30 seconds (DJ status, queue,
+    // listeners, etc.) WITHOUT touching the progress bar — the 1-second
+    // JS ticker keeps it smooth and independent.
+    refreshTimer = setInterval(function() {
+        softRefresh();
+    }, 30000);
+
     // ── Fallback refresh ─────────────────────────────────────────
     // If there are no progress bars to track (no song playing, or song has
-    // unknown duration like livestreams/Suno tracks), refresh every 3 minutes
-    // to catch state changes. This is a safety net — the primary refresh
-    // trigger is the progress bar reaching 100% above.
+    // unknown duration like livestreams/Suno tracks), do a full reload
+    // every 3 minutes as a safety net to catch all state changes.
     const hasProgressBars = Object.keys(guildProgress).length > 0;
     if (!hasProgressBars) {
         setTimeout(function() { location.reload(); }, 180000); // 3 minutes
     }
+
+    // Expose softRefresh globally so other code can trigger it
+    window.softRefresh = softRefresh;
 })();
 </script>
 {% endblock %}

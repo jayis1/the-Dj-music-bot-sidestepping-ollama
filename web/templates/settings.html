@@ -63,22 +63,26 @@
     <div class="settings-grid">
         <div class="settings-item">
             <span class="settings-label">Engine</span>
-            {% if tts_mode == 'local' %}
-            <span class="settings-value" style="color: var(--success);">⚡ Local (VibeVoice-Realtime)</span>
+            {% if tts_mode == 'kokoro' %}
+            <span class="settings-value" style="color: var(--success);">🧡 Kokoro-TTS (local Docker)</span>
+            {% elif tts_mode == 'vibevoice' %}
+            <span class="settings-value" style="color: var(--success);">⚡ VibeVoice-Realtime (local)</span>
             {% else %}
             <span class="settings-value">☁️ Microsoft Edge TTS</span>
             {% endif %}
         </div>
         <div class="settings-item">
             <span class="settings-label">Server URL</span>
-            {% if tts_mode == 'local' %}
-            <span class="settings-value" style="font-size: 12px;">{{ local_tts_url }}</span>
+            {% if tts_mode == 'kokoro' %}
+            <span class="settings-value" style="font-size: 12px;">{{ kokoro_tts_url }}</span>
+            {% elif tts_mode == 'vibevoice' %}
+            <span class="settings-value" style="font-size: 12px;">{{ vibevoice_tts_url }}</span>
             {% else %}
             <span class="settings-value" style="font-size: 12px; color: var(--text-muted);">N/A (cloud-based)</span>
             {% endif %}
         </div>
         <div class="settings-item">
-            <span class="settings-label">edge-tts</span>
+            <span class="settings-label">edge-tts (fallback)</span>
             {% if edge_tts_available %}
             <span class="settings-value" style="color: var(--success);">✅ Installed</span>
             {% else %}
@@ -87,20 +91,26 @@
         </div>
         <div class="settings-item">
             <span class="settings-label">Latency</span>
-            {% if tts_mode == 'local' %}
+            {% if tts_mode == 'kokoro' %}
+            <span class="settings-value">~300ms (first audio, GPU)</span>
+            {% elif tts_mode == 'vibevoice' %}
             <span class="settings-value">~300ms (first audio)</span>
             {% else %}
             <span class="settings-value">2-5s (cloud API)</span>
             {% endif %}
         </div>
     </div>
-    {% if tts_mode == 'local' %}
+    {% if tts_mode == 'kokoro' %}
     <div style="margin-top: 12px; padding: 12px; background: rgba(34,197,94,0.1); border: 1px solid var(--success); border-radius: var(--radius); font-size: 13px; color: var(--success);">
-        ⚡ Using local TTS — DJ voice audio is generated on your hardware with minimal latency. Voice names like <code>en-Carter_man</code> are VibeVoice presets. Set <code>TTS_MODE=edge-tts</code> in <code>.env</code> to switch back to Microsoft Edge TTS.
+        🧡 Using Kokoro-TTS — DJ voice audio is generated locally on your GPU via the Kokoro-FastAPI Docker server with minimal latency. Voice names like <code>af_heart</code>, <code>am_adam</code> are Kokoro voices. Automatic fallback to Edge TTS if the server is unreachable.
+    </div>
+    {% elif tts_mode == 'vibevoice' %}
+    <div style="margin-top: 12px; padding: 12px; background: rgba(34,197,94,0.1); border: 1px solid var(--success); border-radius: var(--radius); font-size: 13px; color: var(--success);">
+        ⚡ Using local TTS — DJ voice audio is generated on your hardware with minimal latency. Voice names like <code>en-Carter_man</code> are VibeVoice presets.
     </div>
     {% else %}
     <div style="margin-top: 12px; padding: 12px; background: rgba(59,130,246,0.1); border: 1px solid var(--accent); border-radius: var(--radius); font-size: 13px; color: var(--accent);">
-        ☁️ Using Microsoft Edge TTS (cloud-based) — no local server needed but has higher latency. To switch to a local VibeVoice-Realtime server for ~300ms latency, set <code>TTS_MODE=local</code> in your <code>.env</code> file.
+        ☁️ Using Microsoft Edge TTS (cloud-based) — no local server needed but has higher latency. To switch to local Kokoro-TTS for ~300ms latency, set <code>TTS_MODE=kokoro</code> in your <code>.env</code> file and start the Kokoro-FastAPI Docker container.
     </div>
     {% endif %}
 </div>

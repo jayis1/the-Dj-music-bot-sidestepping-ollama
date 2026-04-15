@@ -390,7 +390,7 @@ def radio():
         guilds=guilds_data,
         bot_user=str(bot.user) if bot else "Not connected",
         guild_count=len(bot.guilds) if bot else 0,
-        tts_mode=getattr(config, "TTS_MODE", "edge-tts"),
+        tts_mode=getattr(config, "TTS_MODE", "kokoro"),
         config=config,
     )
 
@@ -726,19 +726,19 @@ def api_dj_voice(guild_id):
 def api_voices(guild_id):
     """Return available TTS voices, with server-side caching to avoid repeated API calls.
 
-    When TTS_MODE is 'local', queries the VibeVoice-Realtime server's /config
-    endpoint and caches the result for 30 minutes. When TTS_MODE is 'edge-tts'
-    (default), fetches from Microsoft's TTS API and caches for 30 minutes.
+    Supports three TTS engines via config.TTS_MODE:
+    - "kokoro": Queries Kokoro-FastAPI /v1/audio/voices endpoint (cached 30 min)
+    - "vibevoice": Queries VibeVoice-Realtime /config endpoint (cached 30 min)
+    - "edge-tts": Fetches from Microsoft's TTS API (cached 30 min)
     """
     from utils.dj import list_voices, EDGE_TTS_AVAILABLE, TTS_MODE as CURRENT_TTS_MODE
 
-    # ── Local TTS mode (VibeVoice-Realtime) ────────────────────────
-    if CURRENT_TTS_MODE == "local":
-        lang = request.args.get("lang", "en")
+    lang = request.args.get("lang", "en")
 
-        # Cache key for local voices
-        cache_key = "_local_voice_cache"
-        cache_timestamp_key = "_local_voice_cache_ts"
+    # ── Kokoro TTS mode ────────────────────────────────────────────
+    if CURRENT_TTS_MODE == "kokoro":
+        cache_key = "_kokoro_voice_cache"
+        cache_timestamp_key = "_kokoro_voice_cache_ts"
 
         if not hasattr(api_voices, cache_key):
             setattr(api_voices, cache_key, None)
@@ -749,22 +749,71 @@ def api_voices(guild_id):
         cache_ttl = 30 * 60  # 30 minutes
 
         if cached_voices is not None and (time.time() - cache_ts) < cache_ttl:
-            return jsonify({"voices": cached_voices, "tts_mode": "local"})
+            return jsonify({"voices": cached_voices, "tts_mode": "kokoro"})
 
         raw_voices = _run_async(list_voices(lang))
         if raw_voices is None:
-            # Failed — return stale cache if available
             if cached_voices is not None:
                 return jsonify(
-                    {"voices": cached_voices, "cached": True, "tts_mode": "local"}
+                    {"voices": cached_voices, "cached": True, "tts_mode": "kokoro"}
                 )
             return jsonify(
                 {
                     "voices": [],
-                    "tts_mode": "local",
-                    "error": "Failed to fetch voices from local TTS server. "
+                    "tts_mode": "kokoro",
+                    "error": "Failed to fetch voices from Kokoro TTS server. "
+                    "Make sure the Kokoro-FastAPI Docker container is running at {url}.".format(
+                        url=getattr(config, "KOKORO_TTS_URL", "http://localhost:8880")
+                    ),
+                }
+            )
+
+        formatted = [
+            {
+                "name": v.get("ShortName", v.get("name", "")),
+                "gender": v.get("Gender", v.get("gender", "?")),
+                "locale": v.get("Locale", v.get("locale", "?")),
+                "description": v.get("description", ""),
+            }
+            for v in raw_voices
+        ]
+
+        setattr(api_voices, cache_key, formatted)
+        setattr(api_voices, cache_timestamp_key, time.time())
+
+        return jsonify({"voices": formatted, "tts_mode": "kokoro"})
+
+    # ── VibeVoice TTS mode ──────────────────────────────────────────
+    if CURRENT_TTS_MODE == "vibevoice":
+        cache_key = "_vv_voice_cache"
+        cache_timestamp_key = "_vv_voice_cache_ts"
+
+        if not hasattr(api_voices, cache_key):
+            setattr(api_voices, cache_key, None)
+            setattr(api_voices, cache_timestamp_key, 0)
+
+        cached_voices = getattr(api_voices, cache_key)
+        cache_ts = getattr(api_voices, cache_timestamp_key)
+        cache_ttl = 30 * 60  # 30 minutes
+
+        if cached_voices is not None and (time.time() - cache_ts) < cache_ttl:
+            return jsonify({"voices": cached_voices, "tts_mode": "vibevoice"})
+
+        raw_voices = _run_async(list_voices(lang))
+        if raw_voices is None:
+            if cached_voices is not None:
+                return jsonify(
+                    {"voices": cached_voices, "cached": True, "tts_mode": "vibevoice"}
+                )
+            return jsonify(
+                {
+                    "voices": [],
+                    "tts_mode": "vibevoice",
+                    "error": "Failed to fetch voices from VibeVoice server. "
                     "Make sure VibeVoice-Realtime is running at {url}.".format(
-                        url=getattr(config, "LOCAL_TTS_URL", "http://localhost:3000")
+                        url=getattr(
+                            config, "VIBEVOICE_TTS_URL", "http://localhost:3000"
+                        )
                     ),
                 }
             )
@@ -781,7 +830,7 @@ def api_voices(guild_id):
         setattr(api_voices, cache_key, formatted)
         setattr(api_voices, cache_timestamp_key, time.time())
 
-        return jsonify({"voices": formatted, "tts_mode": "local"})
+        return jsonify({"voices": formatted, "tts_mode": "vibevoice"})
 
     # ── Default: edge-tts mode ─────────────────────────────────────
     if not EDGE_TTS_AVAILABLE:
@@ -792,8 +841,6 @@ def api_voices(guild_id):
                 "error": "edge-tts not installed — install with: pip install edge-tts",
             }
         )
-
-    lang = request.args.get("lang", "en")
 
     # ── Server-side voice cache ──────────────────────────────────
     # edge_tts.list_voices() makes a live HTTP request to Microsoft's TTS
@@ -1121,8 +1168,9 @@ def settings_page():
         mem_mb=mem_mb,
         cpu_pct=cpu_pct,
         auto_refresh=False,
-        tts_mode=getattr(config, "TTS_MODE", "edge-tts"),
-        local_tts_url=getattr(config, "LOCAL_TTS_URL", "http://localhost:3000"),
+        tts_mode=getattr(config, "TTS_MODE", "kokoro"),
+        kokoro_tts_url=getattr(config, "KOKORO_TTS_URL", "http://localhost:8880"),
+        vibevoice_tts_url=getattr(config, "VIBEVOICE_TTS_URL", "http://localhost:3000"),
         edge_tts_available=EDGE_TTS_AVAILABLE,
     )
 

@@ -39,11 +39,17 @@
     {% if g.in_voice %}
 
     <!-- ── DJ Voice ──────────────────────────────────────────── -->
-    {% if tts_mode == 'local' %}
+    {% if tts_mode == 'kokoro' %}
     <div style="margin-bottom: 20px;">
-        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">Local TTS</span></h4>
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">Kokoro TTS</span></h4>
         <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
-            Using VibeVoice-Realtime at <code>{{ config.LOCAL_TTS_URL }}</code>
+            Using Kokoro-FastAPI at <code>{{ config.KOKORO_TTS_URL }}</code>
+        </div>
+    {% elif tts_mode == 'vibevoice' %}
+    <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">VibeVoice TTS</span></h4>
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Using VibeVoice-Realtime at <code>{{ config.VIBEVOICE_TTS_URL }}</code>
         </div>
     {% else %}
     <div style="margin-bottom: 20px;">
@@ -325,8 +331,8 @@ async function loadVoices(guildId, currentVoice) {
         const ttsMode = data.tts_mode || 'edge-tts';
         select.innerHTML = '';
         if (data.voices && data.voices.length > 0) {
-            // In local TTS mode, the default voice is marked with a "default" field
-            // Place it first in the list.
+            // In local TTS modes (kokoro/vibevoice), the default voice is marked
+            // with a "default" field. Place it first in the list.
             const sorted = [...data.voices].sort((a, b) => {
                 if (a.default) return -1;
                 if (b.default) return 1;

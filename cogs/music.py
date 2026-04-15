@@ -17,13 +17,14 @@ from cogs.youtube import (
 from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
     EDGE_TTS_AVAILABLE,
+    TTS_MODE,
+    TTS_AVAILABLE,
     generate_intro,
     generate_song_intro,
     generate_outro,
     generate_tts,
     cleanup_tts_file,
     list_voices,
-    DEFAULT_VOICE,
 )
 from utils.llm_dj import (
     OLLAMA_DJ_AVAILABLE,
@@ -631,7 +632,7 @@ class Music(commands.Cog):
             # ── DJ Mode: Speak an intro before the song ────────────
             if (
                 self.dj_enabled.get(guild_id, False)
-                and EDGE_TTS_AVAILABLE
+                and TTS_AVAILABLE
                 and not self.dj_playing_tts.get(guild_id, False)
             ):
                 # Build the DJ intro text
@@ -690,7 +691,7 @@ class Music(commands.Cog):
             # DJ Mode: Speak an outro for the last song
             if (
                 self.dj_enabled.get(guild_id, False)
-                and EDGE_TTS_AVAILABLE
+                and TTS_AVAILABLE
                 and guild_id in self.current_song
                 and self.current_song[guild_id]
                 and not self.dj_playing_tts.get(guild_id, False)
@@ -1543,12 +1544,19 @@ class Music(commands.Cog):
         """Toggle the radio DJ mode on or off."""
         logging.info(f"DJ toggle command invoked by {ctx.author} in {ctx.guild.name}")
 
-        if not EDGE_TTS_AVAILABLE:
+        if not TTS_AVAILABLE:
+            engine_hint = (
+                "Kokoro FastAPI server running (TTS_MODE=kokoro)"
+                if TTS_MODE == "kokoro"
+                else "VibeVoice server running (TTS_MODE=vibevoice)"
+                if TTS_MODE == "vibevoice"
+                else "`edge-tts` package installed (pip install edge-tts)"
+            )
             return await ctx.send(
                 embed=self.create_embed(
                     "DJ Unavailable",
-                    f"{config.ERROR_EMOJI} DJ mode requires the `edge-tts` package. "
-                    "Install it with `pip install edge-tts` and restart the bot.",
+                    f"{config.ERROR_EMOJI} DJ mode requires a TTS engine. "
+                    f"Make sure you have {engine_hint} and restart the bot.",
                     discord.Color.red(),
                 )
             )
@@ -1596,12 +1604,13 @@ class Music(commands.Cog):
                 )
             )
 
-        if not EDGE_TTS_AVAILABLE:
+        if not TTS_AVAILABLE:
             return await ctx.send(
                 embed=self.create_embed(
                     "🃏 AI Side Host Unavailable",
-                    f"{config.ERROR_EMOJI} The AI side host also needs `edge-tts` "
-                    f"for its own voice. Install with `pip install edge-tts`.",
+                    f"{config.ERROR_EMOJI} The AI side host needs a TTS engine "
+                    f"for its own voice. Make sure a TTS engine is available "
+                    f"(Kokoro, VibeVoice, or edge-tts) and restart the bot.",
                     discord.Color.red(),
                 )
             )
@@ -1682,11 +1691,12 @@ class Music(commands.Cog):
         )
         guild_id = ctx.guild.id
 
-        if not EDGE_TTS_AVAILABLE:
+        if not TTS_AVAILABLE:
             return await ctx.send(
                 embed=self.create_embed(
                     "DJ Unavailable",
-                    f"{config.ERROR_EMOJI} DJ mode requires the `edge-tts` package.",
+                    f"{config.ERROR_EMOJI} DJ mode requires a TTS engine. "
+                    "Make sure Kokoro, VibeVoice, or edge-tts is available.",
                     discord.Color.red(),
                 )
             )
@@ -1743,11 +1753,12 @@ class Music(commands.Cog):
             f"DJ voices command invoked by {ctx.author} in {ctx.guild.name} (lang: {language})"
         )
 
-        if not EDGE_TTS_AVAILABLE:
+        if not TTS_AVAILABLE:
             return await ctx.send(
                 embed=self.create_embed(
                     "DJ Unavailable",
-                    f"{config.ERROR_EMOJI} DJ mode requires the `edge-tts` package.",
+                    f"{config.ERROR_EMOJI} DJ mode requires a TTS engine. "
+                    "Make sure Kokoro, VibeVoice, or edge-tts is available.",
                     discord.Color.red(),
                 )
             )
@@ -1813,7 +1824,7 @@ class Music(commands.Cog):
             voice: Override TTS voice name (defaults to guild DJ voice)
             is_ai: True if this is the AI side host speaking (don't overwrite dj_line context)
         """
-        if not EDGE_TTS_AVAILABLE:
+        if not TTS_AVAILABLE:
             return False
 
         # Extract {sound:name} tags before TTS so they aren't spoken aloud
@@ -1997,7 +2008,7 @@ class Music(commands.Cog):
         if (
             self.ai_dj_enabled.get(guild_id, False)
             and OLLAMA_DJ_AVAILABLE
-            and EDGE_TTS_AVAILABLE
+            and TTS_AVAILABLE
         ):
             # Pass what the main DJ just said so the AI can react to it
             dj_line = self._last_dj_line.get(guild_id, "")
@@ -2413,7 +2424,7 @@ class Music(commands.Cog):
         line = random.choice(shoutout_lines)
         text = _format_line(line + " {sound:applause}", user=user.display_name)
 
-        if self.dj_enabled.get(guild_id, False) and EDGE_TTS_AVAILABLE:
+        if self.dj_enabled.get(guild_id, False) and TTS_AVAILABLE:
             spoke = await self._dj_speak(ctx.voice_client, text, guild_id)
             if spoke:
                 await ctx.send(

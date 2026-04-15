@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/logo.png" alt="The Radio DJ Music Bot" width="420"/>
+</p>
+
 # 🎵 The Radio DJ Music Bot — v6.3.0
 
 > *🎙️ "LADIES AND GENTLEMEN, boys and girls, Discord users of ALL ages — put your hands together, because tonight — TONIGHT — we have something truly, genuinely, historically SPECIAL for you.*

@@ -3,6 +3,7 @@ import discord
 from discord.ext import commands
 from googleapiclient.discovery import build
 import random
+import re
 import logging
 import time
 

@@ -207,6 +207,21 @@ ollama rm mbot-sidehost    # Delete — bot recreates on next startup
 ollama list                # Confirm mbot-sidehost appears
 ```
 
+### 👤 Station Name = Bot's Discord Display Name
+
+The AI side host's system prompt and DJ lines use the bot's actual Discord username, not a generic string:
+
+| Source | Example | Used when |
+|---|---|---|
+| `bot.user.name` | `musicBOT2` | Bot is connected (primary) |
+| `config.STATION_NAME` | `MBot` | Manual override in `.env` |
+| Hardcoded fallback | `MBot` | Neither is set |
+
+```
+# Before:  "You're tuned in to MBot Radio — the wildest ride on Discord!"
+# After:   "You're tuned in to musicBOT2 Radio — the wildest ride on Discord!"
+```
+
 ### Quick Start
 ```bash
 # 1. Install Ollama
@@ -482,6 +497,7 @@ For full technical details — architecture, cog internals, all API endpoints, m
 | 🎵 **DJ Bed Race Condition** | Fixed "Already playing audio" crash — bed music now starts after TTS finishes, not simultaneously |
 | 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation via JSON API failed — fixed by switching `SYSTEM """..."""` to `MESSAGE system` format which survives JSON serialization |
 | 🎛️ **Multi Sound Effects** | AI side host can now use multiple `{sound:name}` tags per line (char limit raised 150→200) — the pipeline already supported it, only the prompt restricted it |
+| 👤 **Bot Name as Station Name** | AI side host now uses the bot's actual Discord display name (e.g. `musicBOT2`) instead of the generic `STATION_NAME` config value |
 | 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
 | 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |
 | 🔧 **Kokoro WAV Header Fix** | Streaming WAV files had broken `0xFFFFFFFF` chunk sizes → 89478s duration → FFmpeg hung → entire queue skipped. Fixed with 3-layer solution (WAV rewrite + FFmpeg `-t 30` cap + stuck-state recovery) |

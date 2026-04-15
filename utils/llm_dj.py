@@ -103,11 +103,16 @@ else:
 _custom_model_ready = False  # Set True once model is confirmed created
 
 
-async def ensure_custom_model():
+async def ensure_custom_model(station_name: str | None = None):
     """Check if the custom Ollama model exists, create it if not.
 
     Called once at bot startup. This is a one-time setup — once the model
     is created in Ollama, it persists until manually deleted.
+
+    Args:
+        station_name: The bot's Discord display name (e.g. "musicBOT2").
+            Used in the system prompt so the AI side host identifies with
+            the correct station. Falls back to config.STATION_NAME if None.
     """
     global _custom_model_ready
 
@@ -116,6 +121,10 @@ async def ensure_custom_model():
 
     host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
     base_model = getattr(config, "OLLAMA_MODEL", "gemma4:latest")
+
+    # Resolve the station name: prefer the bot's Discord name,
+    # fall back to config.STATION_NAME, then to "MBot"
+    resolved_name = station_name or getattr(config, "STATION_NAME", "MBot")
 
     try:
         session = await _get_session()
@@ -156,31 +165,16 @@ async def ensure_custom_model():
                 )
                 return
 
-        # Step 2: Create the custom model via Modelfile
-        station = getattr(config, "STATION_NAME", "MBot")
-        system_prompt = _build_system_prompt(station)
-
-        # Build Modelfile content. We use MESSAGE system instead of
-        # SYSTEM """...""" because the /api/create JSON endpoint mangles
-        # triple-quoted blocks — json.dumps() escapes """ as \\"\\"
-        # which Ollama's Modelfile parser can't read, causing
-        # "neither 'from' or 'files' was specified".
-        # MESSAGE system <text> works for single lines — we split
-        # the multi-line prompt into multiple MESSAGE lines.
-        modelfile_lines = [f"FROM {base_model}"]
-        for line in system_prompt.strip().split("\n"):
-            line = line.strip()
-            if line:
-                modelfile_lines.append(f"MESSAGE system {line}")
-        modelfile_content = "\n".join(modelfile_lines)
+        # Step 2: Create the custom model
+        system_prompt = _build_system_prompt(resolved_name)
 
         # Try two methods to create the model:
-        # Method 1: `ollama create` CLI (preferred — handles complex Modelfiles)
-        # Method 2: /api/create HTTP endpoint (fallback for remote Ollama servers)
-        created = await _create_model_cli(modelfile_content)
+        # Method 1: `ollama create` CLI (preferred — handles all Modelfile formats)
+        # Method 2: /api/create HTTP endpoint with structured fields (no Modelfile needed)
+        created = await _create_model_cli(base_model, system_prompt)
 
         if not created:
-            created = await _create_model_api(host, modelfile_content)
+            created = await _create_model_api(host, base_model, system_prompt)
 
         if created:
             _custom_model_ready = True
@@ -202,20 +196,19 @@ async def ensure_custom_model():
         )
 
 
-async def _create_model_cli(modelfile_content: str) -> bool:
+async def _create_model_cli(base_model: str, system_prompt: str) -> bool:
     """Create the custom model using the `ollama create` CLI command.
 
-    This is the preferred method — it writes a Modelfile to disk and calls
-    `ollama create <name> -f <path>`, which handles complex SYSTEM prompts
-    with triple quotes, braces, etc. correctly.
-
     The `ollama` CLI respects the OLLAMA_HOST environment variable, so this
-    works even when Ollama runs on a different server (e.g. 172.16.1.26).
+    works for both local and remote Ollama servers.
 
     Returns True if the model was created, False otherwise.
     """
     modelfile_path = None
     try:
+        # Build Modelfile content
+        modelfile_content = f'FROM {base_model}\nSYSTEM """\n{system_prompt}\n"""'
+
         fd, modelfile_path = tempfile.mkstemp(
             suffix=".modelfile", prefix="mbot_ollama_"
         )
@@ -228,8 +221,7 @@ async def _create_model_cli(modelfile_content: str) -> bool:
         )
 
         # Pass OLLAMA_HOST to the subprocess so the CLI talks to the
-        # correct server (local or remote). Inherits the current env
-        # and adds/overrides OLLAMA_HOST.
+        # correct server (local or remote).
         host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
         sub_env = os.environ.copy()
         sub_env["OLLAMA_HOST"] = host
@@ -277,14 +269,20 @@ async def _create_model_cli(modelfile_content: str) -> bool:
                 pass
 
 
-async def _create_model_api(host: str, modelfile_content: str) -> bool:
+async def _create_model_api(host: str, base_model: str, system_prompt: str) -> bool:
     """Create the custom model using Ollama's /api/create HTTP endpoint.
 
-    This is a fallback for when the `ollama` CLI isn't available on the
-    bot's machine (e.g. Ollama runs on a different server at 172.16.x.x).
+    Uses the structured JSON fields (from, system) instead of a raw
+    Modelfile string. This is the newer, cleaner API that doesn't have
+    the triple-quote escaping problems of the modelfile field.
 
-    We use MESSAGE-based Modelfiles (not SYSTEM triple-quoted blocks)
-    so that the JSON serialization doesn't break the format.
+    Example payload:
+        {
+            "model": "mbot-sidehost",
+            "from": "phi3:latest",
+            "system": "You are the AI side host on MBot Radio...",
+            "stream": false
+        }
 
     Returns True if the model was created, False otherwise.
     """
@@ -298,9 +296,13 @@ async def _create_model_api(host: str, modelfile_content: str) -> bool:
     try:
         create_timeout = aiohttp.ClientTimeout(total=120)
         async with aiohttp.ClientSession(timeout=create_timeout) as session:
+            # Use the structured API fields — no Modelfile string needed.
+            # The "from" field replaces FROM, "system" replaces SYSTEM.
+            # This avoids all the triple-quote escaping bugs.
             create_payload = {
-                "name": CUSTOM_MODEL_NAME,
-                "modelfile": modelfile_content,
+                "model": CUSTOM_MODEL_NAME,
+                "from": base_model,
+                "system": system_prompt,
                 "stream": False,
             }
             async with session.post(

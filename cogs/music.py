@@ -2118,7 +2118,7 @@ class Music(commands.Cog):
             next_title=next_title,
             queue_size=queue_size,
             listener_count=listener_count,
-            station_name=config.STATION_NAME,
+            station_name=self.bot.user.name if self.bot.user else config.STATION_NAME,
             dj_line=dj_line,
         )
 

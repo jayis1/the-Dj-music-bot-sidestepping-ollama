@@ -60,7 +60,10 @@ async def on_ready():
         try:
             from utils.llm_dj import ensure_custom_model
 
-            await ensure_custom_model()
+            # Use the bot's Discord display name as the station identity.
+            # Falls back to STATION_NAME config if bot user isn't available yet.
+            bot_name = bot.user.name if bot.user else None
+            await ensure_custom_model(station_name=bot_name)
         except Exception as e:
             logging.debug(f"AI Side Host: Custom model check skipped ({e})")
 

@@ -1,8 +1,56 @@
-# MBot 6.2.0 — Comprehensive Technical Guide
+# MBot 6.3.0 — Comprehensive Technical Guide
 
-> **Last Updated:** 2026-04-16
-> **Version:** 6.2.0
+> **Last Updated:** 2026-04-15
+> **Version:** 6.3.0
 > **License:** MIT
+
+---
+
+## What's New in 6.3.0
+
+### 📋 Activity Log Panel (Mission Control)
+
+A live, Discord-channel-style activity log panel now slides out from the right side of Mission Control when you click **📋 Log** in the sidebar. It streams the exact same log messages that are shipped to the Discord log channel — in real-time, with no Discord API round-trip.
+
+**How it works:**
+- A thread-safe ring buffer (`deque(maxlen=200)`) is attached to `DiscordLogHandler` — every `emit()` pushes a structured log entry to this buffer alongside the existing Discord flush.
+- Two new Flask endpoints expose the buffer: `GET /api/logs/recent` (initial load, returns last N entries as JSON) and `GET /api/logs/stream` (Server-Sent Events for real-time streaming).
+- The browser uses `EventSource` (SSE) to receive new entries as they're emitted, with auto-reconnect and heartbeat keep-alive.
+- **Filter buttons** (All / Info / Warn / Error) let you narrow what's visible — client-side only.
+- Each entry shows a timestamp, color-coded severity badge (INFO=blue, WARNING=amber, ERROR=red, DEBUG=gray), and the message in monospace.
+- The panel is a 420px slide-out on desktop, 100% width on mobile.
+- No new dependencies — SSE is native browser API.
+
+### 🎙️ Voice Dropdown Fixes (Radio Page)
+
+The "DJ Voice" and "AI Side Host Voice" dropdowns on the Radio page were permanently stuck at "Loading voices..." due to two bugs:
+
+1. **Script ordering** — Inline `<script>` tags called `loadVoices()` before the function was defined (the definitions were at the bottom of the page). Fixed: functions are now called via `DOMContentLoaded` after all scripts load. The current voice is stored in a `data-current` attribute on the `<select>` element.
+2. **No voice caching** — Every dropdown open called `edge_tts.list_voices()` which makes a live HTTP request to Microsoft's TTS API (5–15 seconds). Fixed: server-side cache with 30-minute TTL; first call fetches from Microsoft, all subsequent calls return the cached list instantly. If the API times out, stale cache is returned (graceful degradation). Descriptive error messages now appear in the dropdown when `edge-tts` isn't installed or the API is unreachable.
+
+### 🃏 AI Side Host — Reactive Banter (DJ Context Awareness)
+
+The AI side host now **knows what the main DJ just said** and can react to it. Instead of generating blind banter, the side host receives the main DJ's spoken line as context when calling Ollama, enabling two-host chemistry like a real radio show.
+
+**How it works:**
+- `_dj_speak()` stores the clean spoken text in `self._last_dj_line[guild_id]` (after stripping `{sound:name}` tags).
+- When the AI side host is about to speak, the last DJ line is passed through `_try_ai_side_host(dj_line=...)` → `generate_side_host_line(dj_line=...)` → `_build_user_prompt(dj_line=...)` → included as `Main DJ just said: "..."` in the Ollama prompt.
+- An `is_ai=True` flag on `_dj_speak()` prevents the AI's own lines from overwriting the main DJ's stored line — the AI always reacts to the main DJ, not to itself.
+- **4 new reactive banter categories:** `react_agree` (agree + funny twist), `react_disagree` (playful pushback), `react_one_up` (escalate the joke), `react_tangent` (go off on a funny tangent).
+- **Smart category selection:** When a DJ line is provided, 60% chance of a reactive category, 40% chance of independent banter (for variety).
+- The system prompt now includes a "REACTING TO THE MAIN DJ" section teaching the model to respond to the DJ's line without repeating it.
+
+### 🔧 Ollama Error Handling Improvements
+
+The 404 error from Ollama when a model isn't pulled now shows an actionable message:
+- **Before:** `AI Side Host: Ollama returned status 404`
+- **After:** `AI Side Host: Model 'llama3.2' not found (Ollama 404). Run: ollama pull llama3.2 | Available models: gemma4:latest`
+
+On 404, the handler now queries `/api/tags` to list what's actually available and includes the pull command in the log. The `check_ollama_available()` function also now includes `Run: ollama pull <model>` in its error message.
+
+### 🔄 Default Model Change
+
+The default Ollama model has been changed from `llama3.2` to `gemma4:latest` across all files (`config.py`, `.env.example`, `utils/llm_dj.py`, `web/app.py`, `cogs/music.py`). The `.env.example` now lists `gemma4:latest`, `phi3:mini`, `llama3.2`, and `gemma2:2b` as recommended models.
 
 ---
 
@@ -55,6 +103,9 @@
 | **AI Side Host** | Separate TTS voice | `OLLAMA_DJ_VOICE` in `.env` — sounds like a different person |
 | **AI Side Host** | Tunable chime-in frequency | `OLLAMA_DJ_CHANCE` (0.0–1.0) controls how often the side host speaks |
 | **AI Side Host** | 8 banter categories | Random thoughts, shoutouts, song roasts, station trivia, queue hype, vibe checks, hot takes, request prompts |
+| **AI Side Host** | 4 reactive banter categories | react_agree, react_disagree, react_one_up, react_tangent — AI reacts to what the main DJ just said |
+| **AI Side Host** | DJ context awareness | Main DJ's spoken line is passed to Ollama so the AI can respond to it, not just talk over it |
+| **AI Side Host** | Actionable Ollama errors | 404 errors show the model name, pull command, and available models instead of just "status 404" |
 | **Soundboard** | Web-based sound effects board | 9 built-in sounds + upload your own via browser |
 | **Crossfade** | Fade-in on new songs | Configurable crossfade duration via `CROSSFADE_DURATION` |
 | **Lyrics** | Synced lyrics lookup | `syncedlyrics` (primary) + web scraping fallbacks |
@@ -62,6 +113,8 @@
 | **Web Dashboard** | Mission Control | Flask web app: playback controls, queue drag-and-drop, volume/speed sliders, DJ voice picker, search-to-queue |
 | **Web Dashboard** | Login & password protection | Optional password set via `WEB_PASSWORD` in `.env` — dashboard is open access if blank |
 | **Web Dashboard** | Settings page | Restart/shutdown controls, bot status info |
+| **Web Dashboard** | Activity Log Panel | 📋 Log sidebar item opens a slide-out panel with real-time SSE log streaming, severity filtering, and auto-reconnect |
+| **Web Dashboard** | Voice caching | TTS voice list cached server-side for 30 minutes — instant dropdown load after first fetch |
 | **Web Dashboard** | Join/Leave voice | Dashboard buttons to connect/disconnect the bot from voice |
 | **Auto-Disconnect** | 60-second inactivity timer | Disconnects from voice when idle |
 | **Admin** | Remote shutdown & restart | Bot owner only |
@@ -354,10 +407,10 @@ COMMAND_PREFIX = "?"
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "true"
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest")
 OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
 OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "en-US-GuyNeural")
-OLLAMA_DJ_TIMEOUT = int(os.environ.get("OLLAMA_DJ_TIMEOUT", "4"))
+OLLAMA_DJ_TIMEOUT = int(os.environ.get("OLLAMA_DJ_TIMEOUT", "15"))
 LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 ```
 
@@ -370,10 +423,10 @@ LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 | `WEB_PASSWORD` | `""` | Password for dashboard login (blank = open access) |
 | `OLLAMA_DJ_ENABLED` | `false` | Enable AI side host (requires Ollama) |
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `llama3.2` | Ollama model for side host lines |
+| `OLLAMA_MODEL` | `gemma4:latest` | Ollama model for side host lines |
 | `OLLAMA_DJ_CHANCE` | `0.25` | Side host chime-in probability (0.0–1.0) |
 | `OLLAMA_DJ_VOICE` | `en-US-GuyNeural` | TTS voice for the AI side host (separate from main DJ) |
-| `OLLAMA_DJ_TIMEOUT` | `4` | Ollama API call timeout in seconds |
+| `OLLAMA_DJ_TIMEOUT` | `15` | Ollama API call timeout in seconds |
 
 ### DJ Mode Configuration (`config.py`)
 
@@ -1420,7 +1473,9 @@ Song ends → Main DJ speaks template line (intro/transition/outro)
 
 ### Banter Categories
 
-The side host picks a random category each time it speaks:
+The side host picks a random category each time it speaks. When the main DJ just spoke (a DJ line is available), the side host **prefers reactive categories** (60% chance) so it responds to what was said.
+
+#### Independent Categories (unstructured banter)
 
 | Category | Description | Example Output |
 |---|---|---|
@@ -1432,6 +1487,43 @@ The side host picks a random category each time it speaks:
 | `vibe_check` | Rate the current mood | "Vibes at 73%. Room for improvement. Let's fix that." |
 | `hot_take` | Spicy but harmless music opinion | "Unpopular opinion: the best album of all time is the Frozen soundtrack." |
 | `request_prompt` | Funny reminder to request songs | "Taking requests! Please. The queue is looking thin and my job depends on it." |
+
+#### Reactive Categories (respond to the main DJ) — *New in 6.3.0*
+
+When a DJ line is available, the side host preferentially picks from these categories to create two-host chemistry:
+
+| Category | What the AI Does | Example (after DJ says "Great track coming up") |
+|---|---|---|
+| `react_agree` | Agree + add a funny twist or exaggeration | "Yeah! And it only took us 3 songs to find a good one." |
+| `react_disagree` | Playfully disagree or offer a cheeky alternative | "Debatable. I've heard better from a microwave." |
+| `react_one_up` | Escalate the joke with something wilder/absurd | "That's cute, but wait'll you hear what's next." |
+| `react_tangent` | Go off on a funny tangent triggered by what was said | "Speaking of great, did I mention we run 24/7? No sleep. Just vibes." |
+
+**Smart category selection:** When a DJ line is provided, 60% chance of a reactive category, 40% chance of independent banter (for variety). When no DJ line is available (e.g., first song of session), only independent categories are used.
+
+### DJ Context Awareness — *New in 6.3.0*
+
+The AI side host now receives the **main DJ's spoken line** as context when generating its banter. This means the two hosts can actually interact like a real radio duo, rather than the AI talking over the DJ with unrelated jokes.
+
+**Data flow:**
+```
+Main DJ speaks: "Good afternoon! We're starting with Loving U."
+   ↓
+_dj_speak() stores clean text → self._last_dj_line[guild_id]
+   ↓
+_play_song_after_dj() reads _last_dj_line → passes to _try_ai_side_host(dj_line=...)
+   ↓
+generate_side_host_line(dj_line="Good afternoon! We're starting with Loving U.")
+   ↓
+_build_user_prompt includes: Main DJ just said: "Good afternoon! We're starting with Loving U."
+   ↓
+Ollama generates reactive banter: "Understatement of the century, but sure. {sound:airhorn}"
+```
+
+**Key implementation details:**
+- `_dj_speak()` accepts an `is_ai` flag — only the main DJ's lines are stored in `_last_dj_line`. When the AI side host calls `_dj_speak()` with `is_ai=True`, it doesn't overwrite the main DJ's line, preventing context contamination.
+- The DJ line is stripped of `{sound:name}` tags before being passed to Ollama (the AI sees the actual spoken words, not the sound tags).
+- The system prompt includes a "REACTING TO THE MAIN DJ" section instructing the model to respond to the DJ's line without repeating or paraphrasing it.
 
 ### System Prompt
 
@@ -1448,20 +1540,20 @@ The AI side host is defined by a detailed system prompt that:
 # .env
 OLLAMA_DJ_ENABLED=true       # Enable the AI side host
 OLLAMA_HOST=http://localhost:11434  # Ollama server URL
-OLLAMA_MODEL=llama3.2         # Model to use (smaller = faster)
+OLLAMA_MODEL=gemma4:latest    # Model to use (must be pulled first)
 OLLAMA_DJ_CHANCE=0.25         # 25% chance to chime in after each DJ line
 OLLAMA_DJ_VOICE=en-US-GuyNeural  # Separate TTS voice for the side host
-OLLAMA_DJ_TIMEOUT=4           # Timeout in seconds
+OLLAMA_DJ_TIMEOUT=15          # Timeout in seconds (larger models need more time)
 ```
 
 | Setting | Default | Values | Purpose |
 |---|---|---|---|
 | `OLLAMA_DJ_ENABLED` | `false` | `true`/`false` | Master switch for AI side host |
 | `OLLAMA_HOST` | `http://localhost:11434` | Any URL | Ollama server address |
-| `OLLAMA_MODEL` | `llama3.2` | Any pulled model | LLM model for generation |
+| `OLLAMA_MODEL` | `gemma4:latest` | Any pulled model | LLM model for generation |
 | `OLLAMA_DJ_CHANCE` | `0.25` | `0.0`–`1.0` | How often the side host chimes in |
 | `OLLAMA_DJ_VOICE` | `en-US-GuyNeural` | Edge TTS voice name | Separate voice so 2 hosts sound different |
-| `OLLAMA_DJ_TIMEOUT` | `4` | Seconds | Max wait before falling back |
+| `OLLAMA_DJ_TIMEOUT` | `15` | Seconds | Max wait before falling back |
 
 ### Voice Configuration
 
@@ -1495,15 +1587,17 @@ Use `?djvoices` to see all available voices.
 |---|---|---|---|
 | `ai_dj_enabled` | `guild_id` | `bool` | Whether the AI side host is on for this guild |
 | `ai_dj_voice` | `guild_id` | `str` | Edge TTS voice name for the side host (override) |
+| `_last_dj_line` | `guild_id` | `str` | What the main DJ just said (for AI reactive context). Not overwritten when the AI itself speaks. |
 
 ### Graceful Degradation
 
 Like the main DJ, the AI side host degrades cleanly:
 
 - **Ollama not running** → Side host is skipped, main DJ works normally. No crash, no hang, no dead air.
-- **Ollama times out** → Side host is skipped. The 4-second timeout ensures no perceptible delay.
+- **Ollama times out** → Side host is skipped. The configurable timeout ensures no perceptible delay.
 - **`OLLAMA_DJ_ENABLED=false`** → Module never loads. Zero overhead.
 - **`edge-tts` not installed** → Both DJs are unavailable. Songs play normally.
+- **Model not pulled (404)** → Actionable log message with model name, pull command, and list of available models. Example: `Model 'llama3.2' not found (Ollama 404). Run: ollama pull llama3.2 | Available models: gemma4:latest`
 - **Model not pulled** → `?aidj` shows setup instructions with the pull command.
 - **Invalid `{sound:name}` tags** → `extract_sound_tags()` silently strips unknown sounds.
 
@@ -1511,12 +1605,13 @@ Like the main DJ, the AI side host degrades cleanly:
 
 | Model | Size | Speed | Quality | Notes |
 |---|---|---|---|---|
-| `llama3.2:3b` | 2 GB | Fast (~1s) | Good | Best balance for real-time radio |
+| `gemma4:latest` | 9.6 GB | Moderate (~2s) | Excellent | **Default.** Best quality for reactive banter. Needs longer timeout. |
+| `phi3:mini` | 2.3 GB | Fast (~1s) | Good | Compact, good for short banter |
+| `llama3.2:3b` | 2 GB | Fast (~1s) | Good | Good balance for real-time radio |
 | `gemma2:2b` | 1.4 GB | Very fast (~0.5s) | Decent | Fastest, good for short banter |
 | `mistral:7b` | 4.1 GB | Slower (~3s) | Great | May hit timeout on slower hardware |
-| `phi3:mini` | 2.3 GB | Fast | Good | Another compact option |
 
-Pull before use: `ollama pull llama3.2`
+Pull before use: `ollama pull gemma4:latest`
 
 ---
 
@@ -1595,7 +1690,15 @@ Creates its own `FileHandler` writing to `bot_activity.log` in write mode (`mode
 
 ### `utils/discord_log_handler.py` — DiscordLogHandler
 
-A custom Python `logging.Handler` that ships log messages to a Discord text channel.
+A custom Python `logging.Handler` that ships log messages to a Discord text channel. Also powers the Mission Control Activity Log Panel via an in-memory ring buffer.
+
+#### Module-level: `log_buffer`
+
+```python
+log_buffer = deque(maxlen=200)
+```
+
+A thread-safe ring buffer that stores the last 200 log entries as structured dicts (`timestamp`, `level`, `message`, `created`). Flask reads from this buffer via `/api/logs/recent` and `/api/logs/stream`. Every `emit()` call appends to this buffer alongside the existing Discord flush.
 
 #### Class: `DiscordLogHandler`
 
@@ -1873,6 +1976,33 @@ The dashboard supports optional password protection via the `WEB_PASSWORD` envir
 
 The sidebar in `base.html` provides navigation between all pages. The bot's name is dynamically injected from `bot.user.name` (not hardcoded). When authenticated, a 🔓 **Log Out** link appears at the bottom of the sidebar.
 
+### Activity Log Panel — *New in 6.3.0*
+
+Clicking **📋 Log** in the sidebar opens a 420px slide-out panel from the right side that shows real-time bot activity logs — the same messages shipped to the Discord log channel.
+
+**Features:**
+- **Real-time streaming** via Server-Sent Events (SSE) — new log entries appear as they're emitted, with no page refresh.
+- **Severity filtering** — All / Info / Warn / Error buttons filter visible entries client-side.
+- **Color-coded entries** — each entry shows a timestamp, color-coded severity badge (INFO=blue, WARNING=amber, ERROR=red, DEBUG=gray), and message in monospace.
+- **Auto-reconnect** — the `EventSource` API reconnects automatically on disconnect. On reconnect, `/api/logs/recent` is called to backfill missed entries.
+- **Backdrop overlay** — clicking the dark backdrop or the ✕ button closes the panel.
+- **Responsive** — full-width on mobile (≤768px), 420px slide-out on desktop.
+
+**Architecture:**
+```
+DiscordLogHandler.emit()
+   ├─→ self.buffer (Discord channel flush, existing)
+   └─→ log_buffer (deque(maxlen=200), new ring buffer)
+            ↓
+       Flask endpoints
+         /api/logs/recent → JSON (initial load, reconnect)
+         /api/logs/stream → SSE (real-time push)
+            ↓
+       Browser EventSource → renders entries
+```
+
+**Voice caching:** The `/api/<guild_id>/voices` endpoint now caches the edge-tts voice list server-side for 30 minutes. The first request fetches from Microsoft's TTS API (5–15 seconds); all subsequent requests return the cached list instantly. If the API times out, stale cache is returned (graceful degradation).
+
 ### Dashboard Voice Controls (Join/Leave)
 
 The dashboard provides **🔌 Join** and **🔌 Leave** buttons for each guild card:
@@ -1932,7 +2062,7 @@ Other pages (DJ Lines, Soundboard, Radio, Queue, Settings) **never** auto-refres
 |---|---|---|
 | `/api/<guild_id>/dj_toggle` | POST | Toggle DJ mode on/off |
 | `/api/<guild_id>/dj_voice` | POST | Set DJ TTS voice |
-| `/api/<guild_id>/voices` | GET | List available TTS voices |
+| `/api/<guild_id>/voices` | GET | List available TTS voices (cached for 30 minutes) |
 | `/api/<guild_id>/ai_dj_toggle` | POST | Toggle AI side host on/off |
 | `/api/<guild_id>/ai_dj_voice` | POST | Set AI side host TTS voice |
 | `/api/<guild_id>/ai_dj_status` | GET | Get AI side host status (enabled, voice, model, chance) |
@@ -1941,6 +2071,13 @@ Other pages (DJ Lines, Soundboard, Radio, Queue, Settings) **never** auto-refres
 | `/api/<guild_id>/listeners` | GET | Get list of users in the bot's voice channel |
 | `/api/<guild_id>/history` | GET | Get recently played history |
 | `/api/<guild_id>/history/replay/<index>` | POST | Re-add a track from history to the queue |
+
+#### Activity Log (SSE) — *New in 6.3.0*
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/logs/recent` | GET | Return last N log entries from the in-memory ring buffer as JSON. Accepts `?count=N` (max 200). |
+| `/api/logs/stream` | GET | Server-Sent Events (SSE) endpoint for real-time log streaming. Polls the ring buffer every 0.5s and pushes new entries. Sends heartbeat comments every ~5s to keep connections alive. |
 
 #### Queue
 
@@ -2310,6 +2447,8 @@ venv/bin/python -m pytest tests/test_suno.py -v
 | **Dashboard buttons broken for some guilds** | Guild IDs passed as JS numbers instead of strings, truncating >53-bit snowflakes | Fixed — all guild IDs in HTML/JS wrapped in single quotes. (Fixed in 6.2.0) |
 | **Dashboard 500 error after login** | Stray `{% endif %}` in `dashboard.html` with no matching `{% if %}` — Jinja2 `TemplateSyntaxError` | Fixed — removed the orphaned `{% endif %}` tag. (Fixed in 6.2.0) |
 | **Settings page shows 0 MB / 0% CPU** | `psutil` not installed | Install with `pip install psutil`. The page gracefully falls back to 0 if not installed. |
+| **Voice dropdowns stuck at "Loading voices..."** | Script ordering bug — inline scripts called functions before they were defined; also no server-side caching (every request hit Microsoft's API) | Fixed in 6.3.0 — functions called via `DOMContentLoaded`; voice list cached for 30 minutes; current voice stored in `data-current` attribute. |
+| **"Ollama returned status 404" with no details** | Model not pulled but error gave no actionable info | Fixed in 6.3.0 — now shows model name, pull command, and available models. |
 
 ### Known Issues
 
@@ -2328,6 +2467,14 @@ venv/bin/python -m pytest tests/test_suno.py -v
 7. **`?fetch_and_set_cookies` crashes with `AttributeError`** — The `admin.py` cog calls `cookie_parser.parse_all_cookies(header)` but this function does not exist in `utils/cookie_parser.py` (that file only contains log-parsing functions). The cookie-fetching admin command will fail at runtime.
 
 8. **Speed values below 0.5 may cause FFmpeg errors** — The `atempo` FFmpeg filter only supports 0.5–2.0 per instance. While the bot's speed ladder starts at 0.25x, attempting to play at that speed may cause FFmpeg to fail. Values below 0.5 require chaining multiple `atempo` filters (e.g., `atempo=0.5,atempo=0.5` for 0.25x).
+
+### Bugs Fixed in 6.3.0
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| **Voice dropdowns permanently stuck at "Loading voices..."** | Inline `<script>` tags called `loadVoices()`/`loadAiVoices()` before they were defined (definitions were at the bottom of the page). Also no server-side caching — every dropdown fetch called `edge_tts.list_voices()` which makes a live HTTP request to Microsoft (5–15s). | Functions now called via `DOMContentLoaded`; current voice stored in `data-current` attribute; voice list cached server-side for 30 minutes with stale-cache fallback on timeout |
+| **"Ollama returned status 404" with no actionable info** | `call_ollama()` logged only the HTTP status code (404) without model name, pull command, or available alternatives | On 404, handler now queries `/api/tags` for available models and logs: `Model 'X' not found. Run: ollama pull X \| Available: Y,Z` |
+| **Wrong default Ollama model** | `config.py`, `llm_dj.py`, `app.py`, `music.py` all hardcoded `llama3.2` as fallback — but that model wasn't pulled | Changed default to `gemma4:latest` across all files; created `.env` file with correct model |
 
 ### Bugs Fixed in 6.2.0
 

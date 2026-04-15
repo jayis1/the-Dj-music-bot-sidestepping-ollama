@@ -158,6 +158,27 @@ BANTER_CATEGORIES = {
         "or bribe them. 'We're taking requests. Please. The queue is looking thin and "
         "I'm starting to sweat.'"
     ),
+    # ── Reactive categories (triggered by the main DJ's line) ──
+    "react_agree": (
+        "The main DJ just said something. Agree enthusiastically but add a "
+        "funny twist, extra detail, or wild exaggeration. Like 'Yeah! And...' or "
+        "'Exactly! Not to mention...' Build on what they said, don't just repeat it."
+    ),
+    "react_disagree": (
+        "The main DJ just said something. Playfully disagree or offer a cheeky "
+        "alternative take. Like 'Debatable...' or 'I mean, sure, but...' Keep it "
+        "friendly banter — you're the studio joker, not a hater."
+    ),
+    "react_one_up": (
+        "The main DJ just said something. One-up them with a funnier or more "
+        "absurd version. Like 'That's cute, but check THIS out' or 'Hold my "
+        "beer...' Escalate the joke, make it wilder."
+    ),
+    "react_tangent": (
+        "The main DJ said something that reminds you of a totally unrelated "
+        "thing. Go off on a funny tangent. Like 'That reminds me...' or "
+        "'Speaking of which...' Random but connected, like a stand-up bit."
+    ),
 }
 
 
@@ -180,6 +201,13 @@ def _build_system_prompt(station_name: str) -> str:
         f"- You roast gently — never mean, always fun. Like a late-night sidekick.\n"
         f"- You reference song titles, listener counts, queue sizes, and time of day when given.\n"
         f"- You're NOT the main announcer — you're the side host with the hot takes.\n\n"
+        f"REACTING TO THE MAIN DJ:\n"
+        f"- When you see 'Main DJ just said:', that's what the other host just spoke.\n"
+        f"- Use it! React, agree, disagree, one-up, or go off on a tangent.\n"
+        f"- NEVER repeat or paraphrase what the main DJ said — add something NEW.\n"
+        f"- If they said 'Great track coming up', say something like 'Understatement "
+        f"of the century, but sure' — you comment on it, you don't echo it.\n"
+        f"- If no DJ line is given, do your own independent banter.\n\n"
         f"STRICT RULES:\n"
         f"- Maximum 150 characters. Short and punchy — this is radio, not a podcast.\n"
         f"- Use contractions (we're, let's, that's, I'm).\n"
@@ -203,6 +231,7 @@ def _build_user_prompt(
     listener_count: int = 0,
     station_name: str = "",
     session_duration_minutes: int = 0,
+    dj_line: str = "",
     extra_instruction: str = "",
 ) -> str:
     """Build the user prompt with context for the AI side host."""
@@ -212,6 +241,8 @@ def _build_user_prompt(
     context_parts.append(f"Banter type: {banter_type}")
     context_parts.append(f"What to do: {category_desc}")
 
+    if dj_line:
+        context_parts.append(f'Main DJ just said: "{dj_line}"')
     if title:
         context_parts.append(f'Current song: "{title}"')
     if prev_title:
@@ -401,6 +432,30 @@ def _clean_ai_line(raw: str) -> str:
 # ── Public API ───────────────────────────────────────────────────────
 
 
+# ── Banter categories that react to the main DJ ───────────────────
+# When a DJ line is provided, we prefer these reactive categories
+# so the AI side host actually responds to what was said, rather than
+# just delivering an unrelated tangent.
+
+_REACTIVE_BANTER_TYPES = [
+    "react_agree",
+    "react_disagree",
+    "react_one_up",
+    "react_tangent",
+]
+
+_INDEPENDENT_BANTER_TYPES = [
+    "random_thought",
+    "listener_shoutout",
+    "song_roast",
+    "station_trivia",
+    "queue_hype",
+    "vibe_check",
+    "hot_take",
+    "request_prompt",
+]
+
+
 async def generate_side_host_line(
     title: str = "",
     prev_title: str = "",
@@ -410,12 +465,18 @@ async def generate_side_host_line(
     station_name: str | None = None,
     session_duration_minutes: int = 0,
     banter_type: str | None = None,
+    dj_line: str = "",
 ) -> str | None:
     """Generate an original DJ line from the AI side host.
 
     The side host writes its own unstructured banter — random thoughts,
-    shoutouts, hot takes, vibe checks, etc. Returns None if Ollama is
-    unavailable or the generation fails, so the caller can skip gracefully.
+    shoutouts, hot takes, vibe checks, etc. When the main DJ's line is
+    provided, the side host will prefer reactive categories that build
+    on what was just said — agreeing, disagreeing, one-upping, or
+    going off on a tangent.
+
+    Returns None if Ollama is unavailable or the generation fails,
+    so the caller can skip gracefully.
 
     Args:
         title: Current song title (if known)
@@ -426,6 +487,7 @@ async def generate_side_host_line(
         station_name: Radio station name (from config.STATION_NAME)
         session_duration_minutes: How long the session has been running
         banter_type: Override the random banter category (for testing)
+        dj_line: What the main DJ just said (for reactive banter)
 
     Returns:
         Cleaned AI-generated DJ line, or None if generation failed.
@@ -437,7 +499,13 @@ async def generate_side_host_line(
 
     # Pick a random banter type if not specified
     if banter_type is None:
-        banter_type = random.choice(list(BANTER_CATEGORIES.keys()))
+        # When the main DJ just spoke, prefer reactive categories (60% chance)
+        # so the side host actually responds to what was said.
+        # 40% of the time it still does independent banter for variety.
+        if dj_line and random.random() < 0.6:
+            banter_type = random.choice(_REACTIVE_BANTER_TYPES)
+        else:
+            banter_type = random.choice(_INDEPENDENT_BANTER_TYPES)
 
     system = _build_system_prompt(station)
     user = _build_user_prompt(
@@ -449,6 +517,7 @@ async def generate_side_host_line(
         listener_count=listener_count,
         station_name=station,
         session_duration_minutes=session_duration_minutes,
+        dj_line=dj_line,
     )
 
     raw = await call_ollama(prompt=user, system=system)
@@ -458,7 +527,8 @@ async def generate_side_host_line(
 
     cleaned = _clean_ai_line(raw)
     if cleaned:
-        logging.info(f"AI Side Host: Generated [{banter_type}]: {cleaned[:80]}")
+        label = f"react→{banter_type}" if dj_line else banter_type
+        logging.info(f"AI Side Host: Generated [{label}]: {cleaned[:80]}")
         return cleaned
 
     return None

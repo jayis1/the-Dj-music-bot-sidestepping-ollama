@@ -71,6 +71,7 @@ class Music(commands.Cog):
         self.ai_dj_enabled = {}  # guild_id -> bool (side host on/off)
         self.ai_dj_voice = {}  # guild_id -> str (Edge TTS voice name for side host)
         self._ai_dj_pending_line = {}  # guild_id -> str|None (AI line waiting to be spoken)
+        self._last_dj_line = {}  # guild_id -> str (what the main DJ just said, for AI context)
 
     async def get_queue(self, guild_id):
         if guild_id not in self.song_queues:
@@ -1793,7 +1794,12 @@ class Music(commands.Cog):
     # ── DJ Playback Helpers ────────────────────────────────────────
 
     async def _dj_speak(
-        self, voice_client, text: str, guild_id: int, voice: str = None
+        self,
+        voice_client,
+        text: str,
+        guild_id: int,
+        voice: str = None,
+        is_ai: bool = False,
     ):
         """
         Generate TTS audio and play it through the voice client.
@@ -1805,6 +1811,7 @@ class Music(commands.Cog):
             text: The text to speak (may contain {sound:name} tags)
             guild_id: The guild ID for state tracking
             voice: Override TTS voice name (defaults to guild DJ voice)
+            is_ai: True if this is the AI side host speaking (don't overwrite dj_line context)
         """
         if not EDGE_TTS_AVAILABLE:
             return False
@@ -1815,6 +1822,11 @@ class Music(commands.Cog):
         clean_text, sound_ids = extract_sound_tags(text)
         if sound_ids:
             logging.info(f"DJ: Extracted sound tags: {sound_ids} for guild {guild_id}")
+
+        # Store what the DJ is about to say so the AI side host can react to it.
+        # Only store the main DJ's lines — not the AI's own lines.
+        if not is_ai:
+            self._last_dj_line[guild_id] = clean_text if clean_text else text
 
         voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
         tts_path = await generate_tts(clean_text if clean_text else text, voice)
@@ -1987,12 +1999,14 @@ class Music(commands.Cog):
             and OLLAMA_DJ_AVAILABLE
             and EDGE_TTS_AVAILABLE
         ):
-            ai_line = await self._try_ai_side_host(guild_id)
+            # Pass what the main DJ just said so the AI can react to it
+            dj_line = self._last_dj_line.get(guild_id, "")
+            ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
             if ai_line:
                 # Get context for the AI side host
                 voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
                 spoke = await self._dj_speak(
-                    guild.voice_client, ai_line, guild_id, voice=voice
+                    guild.voice_client, ai_line, guild_id, voice=voice, is_ai=True
                 )
                 if spoke:
                     # AI side host spoke — the 'after' callback on this TTS
@@ -2014,11 +2028,15 @@ class Music(commands.Cog):
         # Now play the actual song
         await self._start_song_playback(ctx, data, channel_id)
 
-    async def _try_ai_side_host(self, guild_id) -> str | None:
+    async def _try_ai_side_host(self, guild_id, dj_line: str = "") -> str | None:
         """Try to generate an AI side host line for this moment.
 
         Returns an AI-generated line, or None if the side host
         shouldn't speak right now (random chance, Ollama unavailable, etc.)
+
+        Args:
+            guild_id: The guild ID
+            dj_line: What the main DJ just said (for reactive context)
         """
         if not should_side_host_speak():
             return None
@@ -2058,6 +2076,7 @@ class Music(commands.Cog):
             queue_size=queue_size,
             listener_count=listener_count,
             station_name=config.STATION_NAME,
+            dj_line=dj_line,
         )
 
         return line
@@ -2076,7 +2095,9 @@ class Music(commands.Cog):
             return
 
         voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
-        spoke = await self._dj_speak(guild.voice_client, ai_line, guild_id, voice=voice)
+        spoke = await self._dj_speak(
+            guild.voice_client, ai_line, guild_id, voice=voice, is_ai=True
+        )
 
         if spoke:
             logging.info(

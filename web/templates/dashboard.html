@@ -38,6 +38,7 @@
             {% elif g.in_voice %}<span class="badge badge-idle">Idle</span>
             {% else %}<span class="badge badge-offline">Not Connected</span>{% endif %}
             {% if g.dj_enabled %}<span class="badge badge-dj">🎙️ DJ</span>{% endif %}
+            {% if g.autodj_enabled %}<span class="badge badge-autodj">🔁 Auto</span>{% endif %}
             {% if g.looping %}<span class="badge" style="background: rgba(245,158,11,0.15); color: var(--warning);">🔁 Loop</span>{% endif %}
         </div>
     </div>
@@ -56,6 +57,10 @@
             <div class="value">{{ "%.1f"|format(g.speed) }}x</div>
             <div class="label">Speed</div>
         </div>
+        <div class="stat">
+            <div class="value">{{ g.listeners|length }}</div>
+            <div class="label">Listeners</div>
+        </div>
     </div>
 
     <!-- Playback controls -->
@@ -65,6 +70,7 @@
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'skip')" title="Skip">⏭️ Skip</button>
         <button class="btn btn-danger" onclick="apiAction(this, '{{ g.id }}', 'stop')" title="Stop">⏹️ Stop</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
+        <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
     </div>
 
     <!-- Volume slider -->
@@ -177,6 +183,120 @@
             ... and {{ g.queue_size - 50 }} more songs
         </div>
         {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Audio Visualizer -->
+    {% if g.playing %}
+    <div style="margin-top: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+            <h4 style="font-size: 14px; color: var(--text-secondary);">🎵 Live Visualizer</h4>
+            <button class="btn" style="font-size: 11px;" onclick="this.parentElement.nextElementSibling.classList.toggle('viz-hidden'); this.textContent = this.parentElement.nextElementSibling.classList.contains('viz-hidden') ? '▶ Show' : '⏹ Hide'">⏹ Hide</button>
+        </div>
+        <div id="viz-{{ g.id }}" style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; height: 80px; position: relative; overflow: hidden;">
+            <canvas id="viz-canvas-{{ g.id }}" style="width: 100%; height: 100%; display: block;"></canvas>
+            <script>
+            (function() {
+                const canvas = document.getElementById('viz-canvas-{{ g.id }}');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                const colors = ['#3b82f6', '#a855f7', '#06b6d4', '#22c55e', '#f59e0b'];
+                let frame = 0;
+                function draw() {
+                    canvas.width = canvas.offsetWidth * 2;
+                    canvas.height = canvas.offsetHeight * 2;
+                    ctx.scale(2, 2);
+                    const w = canvas.offsetWidth;
+                    const h = canvas.offsetHeight;
+                    const bars = 48;
+                    const barW = w / bars;
+                    ctx.clearRect(0, 0, w, h);
+                    for (let i = 0; i < bars; i++) {
+                        // Pseudo-random height based on sine waves — looks like a real visualizer
+                        const t = frame * 0.02;
+                        const base = Math.sin(i * 0.3 + t) * 0.3 + 0.5;
+                        const hype = Math.sin(i * 0.7 + t * 1.3) * 0.15;
+                        const beat = Math.sin(t * 3) * 0.1;
+                        const v = Math.max(0.05, Math.min(1, base + hype + beat));
+                        const barH = v * h;
+                        const color = colors[i % colors.length];
+                        const x = i * barW + 1;
+                        // Gradient bar
+                        const grad = ctx.createLinearGradient(x, h, x, h - barH);
+                        grad.addColorStop(0, color);
+                        grad.addColorStop(1, color + '33');
+                        ctx.fillStyle = grad;
+                        ctx.beginPath();
+                        ctx.roundRect ? ctx.roundRect(x, h - barH, barW - 2, barH, 2) : ctx.rect(x, h - barH, barW - 2, barH);
+                        ctx.fill();
+                    }
+                    frame++;
+                    requestAnimationFrame(draw);
+                }
+                draw();
+            })();
+            </script>
+        </div>
+        <style>.viz-hidden { display: none !important; }</style>
+    </div>
+    {% endif %}
+
+    <!-- Listener List -->
+    {% if g.in_voice and g.listeners %}
+    <div style="margin-top: 16px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">🎧 Listening Now ({{ g.listeners|length }})</h4>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        {% for listener in g.listeners %}
+            <div style="display: flex; align-items: center; gap: 6px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 20px; padding: 4px 10px 4px 4px;">
+                {% if listener.avatar %}
+                <img src="{{ listener.avatar }}" alt="" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;">
+                {% else %}
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; font-weight: 700;">{{ listener.name[0] }}</div>
+                {% endif %}
+                <span style="font-size: 12px; color: var(--text-secondary);">{{ listener.name }}</span>
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recently Played -->
+    {% if g.recently_played %}
+    <div style="margin-top: 16px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 8px;">🕰️ Recently Played</h4>
+        <div class="recently-played-list">
+        {% for item in g.recently_played %}
+        <div class="recently-played-item">
+            {% if item.thumbnail %}
+            <img src="{{ item.thumbnail }}" alt="" class="queue-thumb">
+            {% else %}
+            <div class="queue-thumb queue-thumb-placeholder">🎵</div>
+            {% endif %}
+            <div class="queue-info">
+                <span class="queue-title">{{ item.title }}</span>
+                <span style="font-size: 11px; color: var(--text-muted);">{{ item.played_at }}</span>
+            </div>
+            {% if item.url %}
+            <button class="btn" style="font-size: 11px; margin-left: auto;" onclick="replayHistory('{{ g.id }}', {{ loop.index0 }})">🔁</button>
+            {% endif %}
+        </div>
+        {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Auto-DJ Source -->
+    {% if g.autodj_enabled %}
+    <div style="margin-top: 16px; padding: 12px; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); border-radius: var(--radius);">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <span style="font-size: 14px;">🔁</span>
+            <span style="font-size: 13px; font-weight: 600; color: var(--success);">Auto-DJ Active</span>
+            <span style="font-size: 11px; color: var(--text-muted);">— never go silent</span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="text" id="autodj-source-{{ g.id }}" value="{{ g.autodj_source }}" placeholder="YouTube playlist URL, preset:Name, or leave blank for history replay" style="flex: 1; min-width: 250px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); padding: 6px 10px; border-radius: var(--radius); font-size: 12px;">
+            <button class="btn" style="font-size: 11px;" onclick="setAutodjSource('{{ g.id }}')">Set Source</button>
         </div>
     </div>
     {% endif %}
@@ -330,6 +450,29 @@
 /* Responsive */
 @media (max-width: 768px) {
 }
+
+/* Recently Played */
+.recently-played-list {
+    max-height: 250px;
+    overflow-y: auto;
+}
+.recently-played-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+    transition: border-color 0.15s;
+}
+.recently-played-item:hover { border-color: var(--accent); }
+
+/* Auto-DJ badge */
+.badge-autodj {
+    background: rgba(34,197,94,0.15);
+    color: var(--success);
+}
 </style>
 
 <!-- ==================== SCRIPTS ==================== -->
@@ -413,6 +556,60 @@ async function toggleDj(btn, guildId) {
         btn.disabled = false;
         btn.textContent = origText;
     }
+}
+
+async function toggleAutodj(btn, guildId) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const res = await fetch('/api/' + guildId + '/autodj_toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.autodj_enabled ? '🔁 Auto-DJ On — never go silent' : '🔁 Auto-DJ Off', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Auto-DJ toggle failed', 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    } catch (e) {
+        showToast('Request failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+}
+
+async function setAutodjSource(guildId) {
+    const input = document.getElementById('autodj-source-' + guildId);
+    if (!input) return;
+    const source = input.value.trim();
+    try {
+        const res = await fetch('/api/' + guildId + '/autodj_source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: source })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔁 Auto-DJ source: ' + (source || 'history replay'), 'success');
+        } else {
+            showToast(data.error || 'Failed to set source', 'error');
+        }
+    } catch (e) { showToast('Set source failed', 'error'); }
+}
+
+async function replayHistory(guildId, index) {
+    try {
+        const res = await fetch('/api/' + guildId + '/history/replay/' + index, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔁 Re-added: ' + data.title, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Replay failed', 'error');
+        }
+    } catch (e) { showToast('Replay failed: ' + e.message, 'error'); }
 }
 
 async function setDjVoice(guildId, voice) {

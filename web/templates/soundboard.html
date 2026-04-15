@@ -35,7 +35,8 @@
     <div class="soundboard-grid">
     {% for s in sounds %}
         <div class="soundboard-item">
-            <button class="soundboard-btn" onclick="playSound('{{ s.id }}')" title="Play {{ s.name }}">
+            <button class="soundboard-btn" onclick="playSound('{{ s.id }}')" title="Play {{ s.name }}{% if loop.index <= 9 %} [{{ loop.index }}]{% endif %}">
+                {% if loop.index <= 9 %}<span class="sound-key">{{ loop.index }}</span>{% endif %}
                 {{ s.name }}
             </button>
             <button class="btn btn-icon btn-danger soundboard-delete" onclick="deleteSound('{{ s.id }}')" title="Delete {{ s.name }}">✕</button>
@@ -53,6 +54,7 @@
 
 <p style="color: var(--text-muted); font-size: 12px; margin-top: 24px; text-align: center;">
     💡 Tip: Use <code>{sound:filename}</code> (without extension) in DJ lines to play sounds after the DJ speaks.
+    <br>⌨️ Keyboard shortcuts: press <strong>1-9</strong> to play the first 9 sounds instantly!
 </p>
 
 <!-- ==================== STYLES ==================== -->
@@ -88,6 +90,19 @@
     transform: scale(0.95);
     background: var(--purple);
     color: white;
+}
+.sound-key {
+    display: inline-block;
+    background: rgba(168, 85, 247, 0.3);
+    color: var(--purple);
+    font-size: 10px;
+    min-width: 16px;
+    text-align: center;
+    border-radius: 3px;
+    padding: 0 4px;
+    margin-right: 6px;
+    font-weight: 700;
+    line-height: 1.4;
 }
 .soundboard-delete {
     opacity: 0;
@@ -233,5 +248,26 @@ async function deleteSound(soundId) {
         showToast('Delete failed: ' + e.message, 'error');
     }
 }
+
+// ── Keyboard Shortcuts (1-9 = play first 9 sounds) ──────────────
+const soundButtons = document.querySelectorAll('.soundboard-btn');
+document.addEventListener('keydown', (e) => {
+    // Don't trigger if user is typing in an input
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    const num = parseInt(e.key);
+    if (num >= 1 && num <= 9 && num <= soundButtons.length) {
+        e.preventDefault();
+        soundButtons[num - 1].click();
+        // Flash effect on the button
+        soundButtons[num - 1].style.background = 'var(--purple)';
+        soundButtons[num - 1].style.color = 'white';
+        soundButtons[num - 1].style.transform = 'scale(0.95)';
+        setTimeout(() => {
+            soundButtons[num - 1].style.background = '';
+            soundButtons[num - 1].style.color = '';
+            soundButtons[num - 1].style.transform = '';
+        }, 200);
+    }
+});
 </script>
 {% endblock %}

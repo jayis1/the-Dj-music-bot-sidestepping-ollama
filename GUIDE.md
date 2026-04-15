@@ -117,7 +117,7 @@ this2.0/
 │   ├── dj_drop.wav         # DJ drop / station ID effect
 │   ├── in_the_mix.wav      # "In the mix" transition effect
 │   ├── record_scratch.wav  # Vinyl record scratch
-│   └── turntable_start.wav # Turntable motor spin-up
+│   └── dj_scratch.wav # Turntable motor spin-up
 │
 ├── presets/                # Saved playlist JSON files (created at runtime)
 ├── tests/                  # pytest test suite
@@ -1263,7 +1263,7 @@ The DJ has **172 built-in line templates** across 10 categories. 74 of these inc
 | **Outros** | 13 | 5 | `"That was {title}.", "{title} — done and dusted. {sound:button_press}"` |
 | **Transitions** | 23 | 8 | `"That was {prev_title}. Next up, {next_title}.", "From {prev_title} to {next_title}. In the mix! {sound:in_the_mix}"` |
 | **Hype Transitions** | 12 | 7 | `"That was {prev_title}! And NOW — {next_title}! {sound:airhorn} LET'S GO!"` |
-| **Mellow Transitions** | 9 | 4 | `"Lovely track. Here's {next_title} to keep the vibe going. {sound:turntable_start}"` |
+| **Mellow Transitions** | 9 | 4 | `"Lovely track. Here's {next_title} to keep the vibe going. {sound:dj_scratch}"` |
 | **Final Outros** | 17 | 7 | `"The queue's empty but the radio stays on.", "End of the road. {sound:applause}"` |
 | **Station IDs** | 18 | 8 | `"You're tuned in to MBot Radio.", "MBot Radio — on the air! {sound:air_raid}"` |
 | **Listener Callouts** | 20 | 10 | `"Shoutout to everyone listening right now.", "You guys are the best! {sound:applause}"` |
@@ -1292,7 +1292,7 @@ Any DJ line can include a `{sound:name}` tag. When the DJ speaks that line, the 
 | `{sound:dj_drop}` | `dj_drop.wav` | DJ drop/station ID effect |
 | `{sound:in_the_mix}` | `in_the_mix.wav` | Transition effect |
 | `{sound:record_scratch}` | `record_scratch.wav` | Vinyl scratch |
-| `{sound:turntable_start}` | `turntable_start.wav` | Turntable spin-up |
+| `{sound:dj_scratch}` | `dj_scratch.wav` | Turntable spin-up |
 
 > **Important:** Station IDs (which use Python f-strings for `{config.STATION_NAME}`) must use **doubled braces** for sound tags: `{{sound:dj_drop}}` produces the literal `{sound:dj_drop}` at runtime.
 
@@ -1748,7 +1748,7 @@ These were generated programmatically (sine waves, noise bursts) — no copyrigh
 | `dj_drop.wav` | DJ drop effect | Station IDs, transitions |
 | `in_the_mix.wav` | Transition effect | Intros, transitions, callouts |
 | `record_scratch.wav` | Vinyl scratch | Final outros |
-| `turntable_start.wav` | Turntable spin-up | Intros, mellow transitions |
+| `dj_scratch.wav` | Turntable spin-up | Intros, mellow transitions |
 
 ### Soundboard Play Endpoint
 

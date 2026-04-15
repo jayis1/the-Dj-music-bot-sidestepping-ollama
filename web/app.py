@@ -171,6 +171,24 @@ def dashboard():
                     else 100,
                     "looping": music.looping.get(guild_id, False) if music else False,
                     "speed": music.playback_speed.get(guild_id, 1.0) if music else 1.0,
+                    "autodj_enabled": music.autodj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "autodj_source": music.autodj_source.get(guild_id, "")
+                    if music
+                    else "",
+                    "recently_played": music.recently_played.get(guild_id, [])[:15]
+                    if music
+                    else [],
+                    "listeners": [
+                        {
+                            "id": m.id,
+                            "name": m.display_name,
+                            "avatar": m.display_avatar.url if m.avatar else None,
+                        }
+                        for m in (voice.channel.members if voice else [])
+                        if not m.bot
+                    ],
                 }
             )
 
@@ -659,6 +677,111 @@ def api_soundboard(guild_id):
     if result:
         return jsonify({"ok": True})
     return jsonify({"error": "Failed to play sound"}), 500
+
+
+# ── Recently Played & Auto-DJ & Listeners ────────────────────────────
+
+
+@app.route("/api/<int:guild_id>/history")
+def api_history(guild_id):
+    """Get recently played history."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    history = music.recently_played.get(guild_id, [])
+    return jsonify({"history": history[:30]})
+
+
+@app.route("/api/<int:guild_id>/history/replay/<int:index>", methods=["POST"])
+def api_history_replay(guild_id, index):
+    """Re-add a track from history back to the queue."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    history = music.recently_played.get(guild_id, [])
+    if index < 0 or index >= len(history):
+        return jsonify({"error": "Invalid index"}), 400
+    entry = history[index]
+    url = entry.get("url")
+    if not url:
+        return jsonify({"error": "No URL for this track"}), 400
+
+    async def _replay():
+        queue = await music.get_queue(guild_id)
+        from cogs.youtube import PlaceholderTrack
+
+        pt_data = {
+            "id": url.split("v=")[-1].split("&")[0] if "v=" in url else "",
+            "title": entry.get("title", "Unknown"),
+            "url": url,
+            "ie_key": "Youtube",
+        }
+        await queue.put(PlaceholderTrack(pt_data))
+
+        # Start playback if nothing is playing
+        guild = bot.get_guild(guild_id)
+        if (
+            guild
+            and guild.voice_client
+            and not guild.voice_client.is_playing()
+            and not guild.voice_client.is_paused()
+        ):
+
+            class WebCtx:
+                pass
+
+            ctx = WebCtx()
+            ctx.guild = guild
+            ctx.voice_client = guild.voice_client
+            ctx.channel = guild.text_channels[0] if guild.text_channels else None
+            ctx.author = guild.me
+            if guild_id in music.inactivity_timers:
+                music.inactivity_timers[guild_id].cancel()
+                del music.inactivity_timers[guild_id]
+            await music.play_next(ctx)
+
+    _run_async(_replay())
+    return jsonify({"ok": True, "title": entry.get("title", "Unknown")})
+
+
+@app.route("/api/<int:guild_id>/autodj_toggle", methods=["POST"])
+def api_autodj_toggle(guild_id):
+    """Toggle Auto-DJ mode."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    music.autodj_enabled[guild_id] = not music.autodj_enabled.get(guild_id, False)
+    return jsonify({"ok": True, "autodj_enabled": music.autodj_enabled[guild_id]})
+
+
+@app.route("/api/<int:guild_id>/autodj_source", methods=["POST"])
+def api_autodj_source(guild_id):
+    """Set the Auto-DJ source playlist/preset."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+    data = request.json or request.form
+    source = data.get("source", "").strip()
+    music.autodj_source[guild_id] = source
+    return jsonify({"ok": True, "source": source})
+
+
+@app.route("/api/<int:guild_id>/listeners")
+def api_listeners(guild_id):
+    """Get list of users currently in the bot's voice channel."""
+    guild = bot.get_guild(guild_id) if bot else None
+    if not guild or not guild.voice_client:
+        return jsonify({"listeners": []})
+    members = [
+        {
+            "id": str(m.id),
+            "name": m.display_name,
+            "avatar": m.display_avatar.url if m.avatar else None,
+        }
+        for m in guild.voice_client.channel.members
+        if not m.bot
+    ]
+    return jsonify({"listeners": members})
 
 
 # ── Queue Reorder & Play Next ──────────────────────────────────────

@@ -1,6 +1,6 @@
-# 🎵 MBot 6.2.0 - The DJ Music Bot
+# 🎵 The radio dj music bot
 
-MBot is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. 
+The radio dj music bot is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. 
 
 ## ✨ Features
 - Play music directly from YouTube and Suno.com
@@ -8,18 +8,25 @@ MBot is a self-contained Discord music bot built with Python and `discord.py`. I
 - Support for playback of entire YouTube playlists and radio continuous play
 - Built-in YouTube search
 - Interactive Now Playing UI with button controls (Play/Pause/Skip/Stop/Queue)
+- **🕰️ Recently Played history** — replay any of the last 30 tracks with one click
+- **🔁 Auto-DJ / Radio Autoplay** — keep the music going forever with a YouTube playlist, a saved preset, or your own listening history
+- **🎧 Listener List** — see who's in the voice channel live on the dashboard
+- **📢 `?shoutout @user`** — give a live on-air shoutout with TTS and sound effects
+- **🎶 DJ Bed Music** — ambient looping pad plays softly under DJ commentary for a real radio feel
+- **🎛️ Soundboard Keyboard Shortcuts** — press 1–9 to instantly fire sound effects
+- **📊 Live Audio Visualizer** — animated frequency canvas on the dashboard while music plays
 - Fully configurable via interactive launcher scripts
 
 ---
 
 ## 🎙️ DJ Mode
 
-MBot includes a unique **Radio DJ Mode**. When activated, the bot utilizes a Text-to-Speech (TTS) engine to speak between songs, just like a real radio DJ!
+The radio dj music bot includes a unique **Radio DJ Mode**. When activated, the bot utilizes a Text-to-Speech (TTS) engine to speak between songs, just like a real radio DJ!
 
 **What the DJ does:**
 - Introduces the very first song in your session.
 - Seamlessly transitions between songs by back-announcing what just played and introducing what's up next.
-- Drops station IDs ("You're tuned to MBot Radio") randomly.
+- Drops station IDs ("You're tuned to The radio dj music bot") randomly.
 - Adapts personality based on the time of day (morning, afternoon, late-night crew).
 - Plays a smooth outro when the queue runs out.
 
@@ -32,18 +39,23 @@ MBot includes a unique **Radio DJ Mode**. When activated, the bot utilizes a Tex
 ## 🌐 Web Dashboard & Custom DJ Lines
 *(Available at `http://your-server:8080/`)*
 
-MBot features a built-in web dashboard (powered by Flask) that starts automatically in the background alongside the Discord bot.
+The radio dj music bot features a built-in web dashboard (powered by Flask) that starts automatically in the background alongside the Discord bot.
 
 **Dashboard Features:**
 - **Live Status & Remote Control:** The dashboard isn't just for viewing! You can skip, pause, play, or stop the currently playing song directly from your browser.
 - **Interactive UI & Toast Notifications:** Enjoy smooth real-time feedback with loading spinners and stylish pop-up notifications whenever you trigger actions!
 - **Audio Sliders:** Adjust the bot's volume and playback speed smoothly on the fly.
 - **Drag-and-Drop Queue Reordering:** Rearrange the upcoming songs effortlessly by dragging and dropping them, or use the "Play Next" shortcut to move them straight to the top of the queue.
+- **🕰️ Recently Played:** See the last 30 tracks with album art and timestamps. Hit 🔁 Replay to instantly re-queue any of them.
+- **🔁 Auto-DJ / Radio Autoplay:** When the queue empties, the bot automatically refills it from a YouTube playlist URL, a saved preset (`preset:Name`), or randomly from your recently played history.
+- **🎧 Listener List:** Avatar pills showing exactly who is in the voice channel — live.
+- **📊 Live Audio Visualizer:** A 48-bar animated frequency canvas that pulses while music plays. Toggle it on/off anytime.
 - **Web-based "Add to Queue":** A built-in search bar allows you to paste YouTube links or search queries directly from the dashboard to instantly queue songs.
 - **Live Lyrics Panel:** Automatically fetches and displays lyrics for the currently playing track via `syncedlyrics`.
 - **Save / Load Custom Playlists (Presets):** Save your perfectly crafted queues directly into a preset JSON, and reload them with one click later.
-- **Instant DJ Soundboard & Custom Uploads:** Play classic radio Soundboard drops on top of the music live! You can also securely upload your own custom `.mp3` or `.wav` drops directly through the web UI and manage them with ease.
+- **Instant DJ Soundboard & Custom Uploads:** A 17-sound library of DJ drops from MyInstants, plus you can upload your own `.mp3` files and fire them via the dashboard or keyboard shortcuts (keys 1–9).
 - **Smart DJ Audio Tags:** Type `{sound:filename}` anywhere inside your custom DJ lines (e.g. `In the mix! {sound:airhorn}`). The DJ will speak the intro and perfectly sequence your chosen sound effect right before the song drops!
+- **🎶 DJ Bed Music:** A subtle ambient pad plays softly under DJ commentary for a polished radio-station feel. Configurable via `DJ_BED_MUSIC_ENABLED`.
 - **Gapless Crossfade Playback:** Configure a dynamic crossfade overlap (e.g. 3 seconds) using `CROSSFADE_DURATION` in `config.py` for a flawless, club-style transition between songs!
 - **DJ Voice Selector:** Easily switch the Edge-TTS radio host's voice dynamically via a drop-down menu.
 - **Mission Control Theme:** A sleek, dark-themed UI that auto-refreshes to keep you seamlessly synced with the Discord session.
@@ -215,7 +227,7 @@ The `/api/<guild_id>/soundboard` endpoint was previously using a broken nested-a
 The Soundboard logic has been decoupled from the primary dashboard into its own dedicated page (`/soundboard`). This cleans up the main view and provides a dedicated space for upload cards, file previews, and a play button grid.
 
 **3. Expanded DJ Lines & Sound Tags:**
-The DJ now has access to 172 completely unique built-in broadcast lines, up from 98. More importantly, 74 of these lines natively embed the `{sound:name}` tag architecture (leveraging all 9 built-in sounds: airhorn, air_raid, applause, button_press, club_hit, dj_drop, in_the_mix, record_scratch, turntable_start). 
+The DJ now has access to 172 completely unique built-in broadcast lines, up from 98. More importantly, 74 of these lines natively embed the `{sound:name}` tag architecture (leveraging all 9 built-in sounds: airhorn, air_raid, applause, button_press, club_hit, dj_drop, in_the_mix, record_scratch, dj_scratch). 
 
 *(Note: `STATION_IDS` now require double-braces `{{sound:name}}` due to concurrent f-string interpolation).*
 

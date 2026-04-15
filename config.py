@@ -43,6 +43,15 @@ DJ_EMOJI = "🎙️"
 # Set to 0 to disable crossfade. Recommended: 3-5 seconds.
 CROSSFADE_DURATION = 3
 
+# Auto-DJ — default source when the queue empties (optional)
+# Can be a YouTube playlist URL, "preset:Name", or "" (uses recently-played history)
+AUTODJ_DEFAULT_SOURCE = os.environ.get("AUTODJ_SOURCE", "")
+
+# DJ Bed Music — ambient loop played under the DJ's voice between songs
+# The bot looks for sounds/bed_music.wav or sounds/bed_music.mp3
+# Set to True to enable (if a bed music file exists).
+DJ_BED_MUSIC_ENABLED = True
+
 # Web Dashboard
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.environ.get("WEB_PORT", 8080))

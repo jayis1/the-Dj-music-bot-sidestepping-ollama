@@ -50,6 +50,17 @@ class Music(commands.Cog):
         self._current_tts_path = {}  # guild_id -> str|None (path to clean up after TTS playback)
         self._dj_pending_sounds = {}  # guild_id -> list[str] (sound IDs to play after TTS, from {sound:name} tags)
 
+        # Recently played history (per-guild, max 30 entries)
+        self.recently_played = {}  # guild_id -> [{title, url, thumbnail, played_at}, ...]
+        self._max_history = 30
+
+        # Auto-DJ / Radio Autoplay (per-guild)
+        self.autodj_enabled = {}  # guild_id -> bool
+        self.autodj_source = {}  # guild_id -> str (YouTube playlist URL or preset name)
+
+        # DJ Bed Music (ambient loop played under DJ voice)
+        self._bed_playing = {}  # guild_id -> bool
+
     async def get_queue(self, guild_id):
         if guild_id not in self.song_queues:
             self.song_queues[guild_id] = asyncio.Queue()
@@ -621,6 +632,8 @@ class Music(commands.Cog):
 
                 spoke = await self._dj_speak(ctx.voice_client, intro_text, guild_id)
                 if spoke:
+                    # Start bed music under the DJ voice
+                    await self._start_bed_music(ctx.voice_client, guild_id)
                     # TTS started — song will play after the intro finishes
                     # (via _on_tts_done → _play_song_after_dj → _start_song_playback)
                     return
@@ -636,6 +649,15 @@ class Music(commands.Cog):
             # ── Queue empty ────────────────────────────────────────
             logging.info("Queue is empty, stopping playback.")
             guild_id = ctx.guild.id
+
+            # Auto-DJ: refill the queue instead of going silent
+            if self.autodj_enabled.get(guild_id, False):
+                filled = await self._autodj_fill(ctx)
+                if filled:
+                    logging.info(f"Auto-DJ: Refilled queue for guild {guild_id}")
+                    # Don't speak an outro — just keep going
+                    await self.play_next(ctx)
+                    return
 
             # DJ Mode: Speak an outro for the last song
             if (
@@ -1790,6 +1812,9 @@ class Music(commands.Cog):
             logging.warning(f"DJ: Voice client gone for guild {guild_id}")
             return
 
+        # Stop any bed music before the song starts
+        await self._stop_bed_music(guild_id)
+
         try:
             logging.info(
                 f"Playing {data.title} in {ctx.guild.name} (url={data.url[:80]}…)"
@@ -1829,6 +1854,10 @@ class Music(commands.Cog):
             )
             self.current_song[guild_id] = data
             self.song_start_time[guild_id] = time.time()
+
+            # Record to recently-played history
+            self._record_history(guild_id, data)
+
             await self.bot.change_presence(
                 activity=discord.Activity(
                     type=discord.ActivityType.listening, name=data.title
@@ -1858,6 +1887,289 @@ class Music(commands.Cog):
                 )
             await asyncio.sleep(2)
             await self.play_next(ctx)
+
+    # ── Recently Played & Auto-DJ ──────────────────────────────────
+
+    def _record_history(self, guild_id, track):
+        """Record a track to the recently-played history."""
+        import datetime
+
+        entry = {
+            "title": getattr(track, "title", "Unknown"),
+            "url": getattr(track, "webpage_url", None),
+            "thumbnail": getattr(track, "thumbnail", None),
+            "duration": getattr(track, "duration", None),
+            "played_at": datetime.datetime.now().strftime("%H:%M"),
+        }
+        if guild_id not in self.recently_played:
+            self.recently_played[guild_id] = []
+        self.recently_played[guild_id].insert(0, entry)
+        # Trim to max
+        if len(self.recently_played[guild_id]) > self._max_history:
+            self.recently_played[guild_id] = self.recently_played[guild_id][
+                : self._max_history
+            ]
+
+    async def _autodj_fill(self, ctx):
+        """Auto-DJ: when the queue empties, refill it from the configured source.
+
+        Source can be a YouTube playlist URL, a preset name, or the recently-played history.
+        """
+        guild_id = ctx.guild.id
+        source = self.autodj_source.get(guild_id, "")
+        if not source:
+            source = getattr(config, "AUTODJ_DEFAULT_SOURCE", "")
+
+        if not source:
+            # No source configured — try to replay from history
+            history = self.recently_played.get(guild_id, [])
+            if len(history) < 2:
+                logging.info(
+                    f"Auto-DJ: No source and not enough history for guild {guild_id}"
+                )
+                return False
+            # Pick a random track from history (skip the one that just finished)
+            import random
+
+            pick = random.choice(history[1:])
+            url = pick.get("url")
+            if not url:
+                return False
+            source = url
+
+        queue = await self.get_queue(guild_id)
+        from cogs.youtube import PlaceholderTrack
+
+        try:
+            if source.startswith("preset:"):
+                # Load a preset by name
+                preset_name = source[7:]
+                from utils.presets import load_preset
+
+                tracks = load_preset(preset_name)
+                if not tracks:
+                    logging.warning(f"Auto-DJ: Preset '{preset_name}' not found")
+                    return False
+                for t in tracks:
+                    url = t.get("webpage_url") or t.get("url")
+                    if url:
+                        entry = {
+                            "id": url.split("v=")[-1].split("&")[0]
+                            if "v=" in url
+                            else "",
+                            "title": t.get("title", "Unknown"),
+                            "url": url,
+                            "ie_key": "Youtube",
+                            "duration": t.get("duration"),
+                            "thumbnail": t.get("thumbnail"),
+                        }
+                        await queue.put(PlaceholderTrack(entry))
+                logging.info(
+                    f"Auto-DJ: Loaded preset '{preset_name}' ({len(tracks)} tracks)"
+                )
+                return True
+            elif "playlist" in source.lower() or "list=" in source:
+                # YouTube playlist
+                tracks = await PlaceholderTrack.from_playlist_url(
+                    source, loop=self.bot.loop
+                )
+                for t in tracks:
+                    await queue.put(t)
+                logging.info(f"Auto-DJ: Loaded playlist ({len(tracks)} tracks)")
+                return True
+            else:
+                # Single URL (maybe from history replay)
+                entry = {
+                    "id": source.split("v=")[-1].split("&")[0]
+                    if "v=" in source
+                    else "",
+                    "title": "Auto-DJ",
+                    "url": source,
+                    "ie_key": "Youtube",
+                }
+                await queue.put(PlaceholderTrack(entry))
+                logging.info(f"Auto-DJ: Queued single track from source")
+                return True
+        except Exception as e:
+            logging.error(f"Auto-DJ: Failed to fill queue: {e}")
+            return False
+
+    @commands.command(name="autodj")
+    async def autodj(self, ctx, *, source: str = ""):
+        """Toggle Auto-DJ mode. Optionally set a source playlist/preset.
+
+        Usage:
+            ?autodj              — Toggle on/off (uses default or recently-played)
+            ?autodj <YouTube URL>— Set source to a YouTube playlist
+            ?autodj preset:Name  — Set source to a saved preset
+            ?autodj off          — Disable Auto-DJ
+        """
+        guild_id = ctx.guild.id
+
+        if source.lower() in ("off", "disable", "stop"):
+            self.autodj_enabled[guild_id] = False
+            await ctx.send(
+                embed=self.create_embed(
+                    "Auto-DJ Off",
+                    f"{config.SUCCESS_EMOJI} Auto-DJ disabled. The radio will go silent when the queue empties.",
+                    discord.Color.blurple(),
+                )
+            )
+            return
+
+        if source:
+            self.autodj_source[guild_id] = source
+
+        currently_on = self.autodj_enabled.get(guild_id, False)
+        self.autodj_enabled[guild_id] = not currently_on
+
+        status = "On" if self.autodj_enabled[guild_id] else "Off"
+        source_desc = ""
+        if self.autodj_enabled[guild_id]:
+            s = self.autodj_source.get(guild_id, "")
+            if s:
+                source_desc = f"\n📡 Source: `{s}`"
+            else:
+                source_desc = "\n📡 Source: Recently played (shuffled replay)"
+
+        await ctx.send(
+            embed=self.create_embed(
+                f"🔁 Auto-DJ {status}",
+                f"{'Radio will never go silent!' if self.autodj_enabled[guild_id] else 'Radio will go silent when queue empties.'}{source_desc}",
+                discord.Color.green()
+                if self.autodj_enabled[guild_id]
+                else discord.Color.orange(),
+            )
+        )
+
+    # ── Shoutout Command ──────────────────────────────────────────
+
+    @commands.command(name="shoutout")
+    async def shoutout(self, ctx, *, user: discord.Member = None):
+        """Give a shoutout to a user! The DJ will announce them over the air.
+
+        Usage: ?shoutout @username
+        """
+        if not user:
+            await ctx.send(
+                embed=self.create_embed(
+                    "Shoutout",
+                    f"{config.ERROR_EMOJI} Mention a user to shout out! `?shoutout @username`",
+                    discord.Color.orange(),
+                )
+            )
+            return
+
+        if not ctx.voice_client:
+            await ctx.send(
+                embed=self.create_embed(
+                    "Shoutout",
+                    f"{config.ERROR_EMOJI} I need to be in a voice channel for that!",
+                    discord.Color.red(),
+                )
+            )
+            return
+
+        guild_id = ctx.guild.id
+
+        # Build shoutout text
+        from utils.dj import _format_line
+
+        shoutout_lines = [
+            "Big shoutout to {user}! You're a legend!",
+            "Yo, shoutout to {user}! Thanks for rocking with us!",
+            "This one goes out to {user}! You're the real MVP!",
+            "Hey {user}! This one's for you, my friend!",
+            "Shoutout to {user}! Keep doing what you do!",
+            "Ladies and gentlemen, give it up for {user}!",
+            "Where my {user} fans at? Shoutout to the one and only!",
+            "And now, a very special shoutout to {user}!",
+        ]
+        import random
+
+        line = random.choice(shoutout_lines)
+        text = _format_line(line + " {sound:applause}", user=user.display_name)
+
+        if self.dj_enabled.get(guild_id, False) and EDGE_TTS_AVAILABLE:
+            spoke = await self._dj_speak(ctx.voice_client, text, guild_id)
+            if spoke:
+                await ctx.send(
+                    embed=self.create_embed(
+                        "🎙️ Shoutout!",
+                        f"Giving a shoutout to **{user.display_name}** over the air!",
+                        discord.Color.purple(),
+                    )
+                )
+                return
+
+        # DJ not available — just send text
+        await ctx.send(
+            embed=self.create_embed(
+                "📢 Shoutout!",
+                f"🎵 Big shoutout to **{user.display_name}**! 🎵",
+                discord.Color.gold(),
+            )
+        )
+
+    # ── Bed Music (DJ Interlude) ──────────────────────────────────
+
+    async def _start_bed_music(self, voice_client, guild_id):
+        """Start playing ambient bed music under the DJ's voice.
+
+        Uses a loopable ambient track. The bed music is played at lower volume
+        and will be stopped by _stop_bed_music() when the actual song starts.
+        """
+        import os
+
+        bed_path = os.path.join("sounds", "bed_music.wav")
+        if not os.path.exists(bed_path):
+            # Try mp3
+            bed_path = os.path.join("sounds", "bed_music.mp3")
+        if not os.path.exists(bed_path):
+            logging.debug(f"DJ Bed: No bed music file found, skipping")
+            return False
+
+        if self._bed_playing.get(guild_id, False):
+            return True  # Already playing
+
+        try:
+            import discord
+
+            source = discord.FFmpegPCMAudio(
+                bed_path,
+                before_options="-nostdin -stream_loop -1",
+                options="-vn",
+            )
+            player = discord.PCMVolumeTransformer(source)
+            player.volume = self.current_volume.get(guild_id, 1.0) * 0.3  # 30% volume
+
+            voice_client.play(
+                player,
+                after=lambda e: self._on_bed_done(guild_id, e),
+            )
+            self._bed_playing[guild_id] = True
+            logging.info(f"DJ Bed: Started bed music for guild {guild_id}")
+            return True
+        except Exception as e:
+            logging.error(f"DJ Bed: Failed to start: {e}")
+            return False
+
+    def _on_bed_done(self, guild_id, error):
+        """Callback when bed music finishes (or is stopped)."""
+        self._bed_playing[guild_id] = False
+        if error:
+            logging.error(f"DJ Bed: Playback error for guild {guild_id}: {error}")
+
+    async def _stop_bed_music(self, guild_id):
+        """Stop bed music if it's playing."""
+        guild = self.bot.get_guild(guild_id)
+        if not guild or not guild.voice_client:
+            self._bed_playing[guild_id] = False
+            return
+        if self._bed_playing.get(guild_id, False) and guild.voice_client.is_playing():
+            guild.voice_client.stop()
+            self._bed_playing[guild_id] = False
+            logging.info(f"DJ Bed: Stopped for guild {guild_id}")
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction):

@@ -49,6 +49,7 @@ The radio dj music bot features a built-in web dashboard (powered by Flask) that
 - **🕰️ Recently Played:** See the last 30 tracks with album art and timestamps. Hit 🔁 Replay to instantly re-queue any of them.
 - **🔁 Auto-DJ / Radio Autoplay:** When the queue empties, the bot automatically refills it from a YouTube playlist URL, a saved preset (`preset:Name`), or randomly from your recently played history.
 - **🎧 Listener List:** Avatar pills showing exactly who is in the voice channel — live.
+- **📻 Dedicated Radio Page (`/radio`):** A focused side panel for all radio and DJ configuration — DJ voice selector, Auto-DJ source config, who's listening, the compact Now Playing display, and the full Recently Played history. Keeps the main dashboard clean.
 - **📊 Live Audio Visualizer:** A 48-bar animated frequency canvas that pulses while music plays. Toggle it on/off anytime.
 - **⏱️ Live Song Progress Bar:** A gradient-filled progress bar with a real-time JavaScript ticker that updates every second (respecting playback speed). Shows elapsed/total time (e.g. `1:23 / 3:45`). Unknown-duration songs get a smooth pulsing animation instead.
 - **📋 Queue & Session Duration:** The queue header shows total remaining playtime. Below the progress bar, a summary displays queue total and session total (current song + queue) so you always know how long the party lasts.
@@ -262,5 +263,29 @@ The HTML file upload button originally utilized a `display: none` style to hide 
 **2. Conditional Auto-Refreshes:**
 The `<meta http-equiv="refresh" content="30">` tag was indiscriminately reloading all pages every 30 seconds, ruthlessly interrupting ongoing audio file uploads and form submissions. The template architecture was upgraded to parse a Jinja conditional (`{% if auto_refresh %}`), ensuring only the live status dashboard (`/`) receives the periodic reload command, while interactive pages (`/soundboard` and `/dj-lines`) remain stable for user inputs.
 
-**3. Interactive Upload Feedback:**
-The upload button logic was hardened with an `uploadInProgress` guard to prevent double-submissions, and now provides interactive UI feedback (`⏳ Uploading...`) during the `fetch()` call. Non-OK responses immediately surface the precise HTTP error code and body fragment to explicitly diagnose failures, gracefully failing with proper state cleanup in a `finally` block.
+
+---
+
+### Dedicated Radio Page (`/radio`)
+
+All radio/DJ-related configuration panels have been consolidated into a dedicated `/radio` sidebar page to keep the main dashboard focused on playback control. This page now hosts:
+- 🗣️ **DJ Voice selector** — full dropdown with "DJ Active" status badge
+- 🔁 **Auto-DJ config** — large toggle, source input with help text (playlist URL / `preset:Name` / blank for history replay)
+- 🎧 **Listening Now** — live avatar chips for voice channel members
+- ▶ **Now Playing** — compact thumbnail + title + duration display
+- 🕰️ **Recently Played** — full 30-entry history with album art, timestamps, and 🔁 Replay buttons
+
+The main dashboard retains the Auto-DJ toggle button for quick access; the Quick Links bar was updated to point to Radio, DJ Lines, and Soundboard.
+
+---
+
+### Long Sound Effects Blocking Next Song Playback
+
+**Root Cause:**
+Several MyInstants sounds are long (e.g. `airhorn.mp3` ~20s, `dj_turn_it_up.mp3` ~13s). After TTS completed, the bot played the full sound effect. While it was still running, `_play_dj_sounds_then_song` timed out and tried to start the next song — causing `discord.py` to raise `"already playing audio"`.
+
+**Fixes Applied:**
+1. **3-second FFmpeg cap** — `MAX_SOUND_SECONDS = 3` in `config.py`. All DJ sounds and soundboard effects pass `-vn -t 3` to FFmpeg, trimming any clip to a crisp stinger.
+2. **Stop before play** — `voice_client.stop()` + `asyncio.sleep(0.1)` before each sound ensures clean transitions.
+3. **Shorter timeout** — Per-sound wait reduced from 10 → 5 seconds (safe since sounds cap at 3s).
+4. **Stale tag cleanup** — All `{sound:applause}` → `{sound:rave_cheer}` and `{sound:button_press}` → `{sound:uyuuui}` corrected after the `.wav` → `.mp3` library swap.

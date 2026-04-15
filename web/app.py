@@ -216,6 +216,81 @@ def dashboard():
     )
 
 
+# ── Radio Page ──────────────────────────────────────────────────
+
+
+@app.route("/radio")
+def radio():
+    """Radio / Auto-DJ control page with recently played history."""
+    music = _get_music_cog()
+    guilds_data = []
+
+    if bot and bot.guilds:
+        for guild in bot.guilds:
+            guild_id = guild.id
+            voice = guild.voice_client
+            current = None
+
+            if music:
+                current = music.current_song.get(guild_id)
+
+            guilds_data.append(
+                {
+                    "id": guild_id,
+                    "name": guild.name,
+                    "member_count": guild.member_count,
+                    "in_voice": voice is not None,
+                    "voice_channel": voice.channel.name if voice else None,
+                    "playing": voice.is_playing() if voice else False,
+                    "paused": voice.is_paused() if voice else False,
+                    "current_song": current.title if current else None,
+                    "current_song_url": current.webpage_url if current else None,
+                    "current_thumbnail": current.thumbnail if current else None,
+                    "current_duration": current.duration if current else None,
+                    "current_elapsed": (
+                        int(time.time() - music.song_start_time[guild_id])
+                        if music
+                        and guild_id in music.song_start_time
+                        and (voice and (voice.is_playing() or voice.is_paused()))
+                        else 0
+                    ),
+                    "queue_size": music.song_queues.get(
+                        guild_id, asyncio.Queue()
+                    ).qsize()
+                    if music
+                    else 0,
+                    "dj_enabled": music.dj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "autodj_enabled": music.autodj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "autodj_source": music.autodj_source.get(guild_id, "")
+                    if music
+                    else "",
+                    "recently_played": music.recently_played.get(guild_id, [])[:30]
+                    if music
+                    else [],
+                    "listeners": [
+                        {
+                            "id": m.id,
+                            "name": m.display_name,
+                            "avatar": m.display_avatar.url if m.avatar else None,
+                        }
+                        for m in (voice.channel.members if voice else [])
+                        if not m.bot
+                    ],
+                }
+            )
+
+    return render_template(
+        "radio.html",
+        guilds=guilds_data,
+        bot_user=str(bot.user) if bot else "Not connected",
+        guild_count=len(bot.guilds) if bot else 0,
+    )
+
+
 # ── API Endpoints (called via JavaScript from dashboard) ─────────
 
 
@@ -647,7 +722,12 @@ def api_sounds_delete():
 
 @app.route("/api/<int:guild_id>/soundboard", methods=["POST"])
 def api_soundboard(guild_id):
-    """Play a sound effect in a guild's voice channel."""
+    """Play a sound effect in a guild's voice channel.
+
+    Sounds are capped at 3 seconds to prevent long effects from
+    blocking subsequent audio (discord.py raises "already playing"
+    if a new source is played while one is still going).
+    """
     data = request.json or request.form
     sound_id = data.get("sound", "").strip()
     if not sound_id:
@@ -670,12 +750,19 @@ def api_soundboard(guild_id):
 
         discord.py voice_client.play() is synchronous and must be called
         from the bot's event loop thread to avoid thread-safety issues.
+        If something is already playing, stop it first.
         """
         try:
+            # Stop any currently playing audio before playing the new sound.
+            # Without this, discord.py raises "already playing audio".
+            if guild.voice_client.is_playing():
+                guild.voice_client.stop()
+                await asyncio.sleep(0.15)  # Brief pause for stop to take effect
+
             source = discord.FFmpegPCMAudio(
                 path,
                 before_options="-nostdin",
-                options="-vn",
+                options="-vn -t 3",  # Cap at 3 seconds max
             )
             guild.voice_client.play(source)
             return True

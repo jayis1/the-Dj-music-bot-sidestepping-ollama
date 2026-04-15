@@ -1727,7 +1727,9 @@ class Music(commands.Cog):
     async def _play_dj_sounds_then_song(self, guild_id, sound_ids):
         """
         Play a sequence of sound effects, then play the pending song.
-        Each sound plays one at a time — we wait for each to finish.
+        Each sound is capped at MAX_SOUND_SECONDS to prevent long sounds
+        from blocking the next song (discord.py raises "already playing"
+        if we try to start a song while a sound is still going).
         """
         from utils.soundboard import get_sound_path
         import discord
@@ -1745,13 +1747,23 @@ class Music(commands.Cog):
                 continue
 
             try:
+                # Cap sound duration at MAX_SOUND_SECONDS using FFmpeg -t flag.
+                # This prevents 20-second airhorn blasts from blocking the next song.
+                # DJ sound effects should be short stingers, not full soundscapes.
+                max_sec = getattr(config, "MAX_SOUND_SECONDS", 3)
+                ffmpeg_options = f"-vn -t {max_sec}"
                 source = discord.FFmpegPCMAudio(
                     path,
                     before_options="-nostdin",
-                    options="-vn",
+                    options=ffmpeg_options,
                 )
                 player = discord.PCMVolumeTransformer(source)
                 player.volume = self.current_volume.get(guild_id, 1.0)
+
+                # Stop anything currently playing before playing the sound
+                if guild.voice_client.is_playing():
+                    guild.voice_client.stop()
+                    await asyncio.sleep(0.1)  # Brief pause to let stop take effect
 
                 # Play and wait for this sound to finish
                 finished = asyncio.Event()
@@ -1766,11 +1778,13 @@ class Music(commands.Cog):
                     f"DJ: Playing sound effect '{sound_id}' in guild {guild_id}"
                 )
 
-                # Wait up to 10s for the sound to finish
+                # Wait up to 5s for the sound to finish (sounds are capped at 3s + margin)
                 try:
-                    await asyncio.wait_for(finished.wait(), timeout=10)
+                    await asyncio.wait_for(finished.wait(), timeout=5)
                 except asyncio.TimeoutError:
-                    logging.warning(f"DJ: Sound '{sound_id}' timed out")
+                    logging.warning(
+                        f"DJ: Sound '{sound_id}' timed out (may have been stopped)"
+                    )
 
             except Exception as e:
                 logging.error(f"DJ: Failed to play sound '{sound_id}': {e}")

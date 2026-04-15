@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+{% block title %}Radio{% endblock %}
+{% block content %}
+<h1 style="margin-bottom: 8px;">📻 {{ bot_name }} Radio</h1>
+<p style="color: var(--text-muted); margin-bottom: 24px;">Auto-DJ, voice settings, and play history</p>
+
+<!-- Toast notification -->
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; padding:12px 20px; border-radius:8px; font-size:14px; font-weight:500; z-index:9999; transition: opacity 0.3s;"></div>
+
+{% if not guilds %}
+<div class="card">
+    <p style="color: var(--text-muted); text-align: center; padding: 40px 0;">
+        {{ bot_name }} is not connected to any servers yet.
+    </p>
+</div>
+{% endif %}
+
+{% for g in guilds %}
+<div class="card" style="margin-bottom: 24px;">
+    <div class="guild-header">
+        <div class="guild-icon">{{ g.name[0] }}</div>
+        <div class="guild-info" style="flex: 1;">
+            <h3>{{ g.name }}</h3>
+            <div class="meta">
+                {{ g.member_count }} members
+                {% if g.in_voice %} · 🔊 {{ g.voice_channel }}{% endif %}
+            </div>
+        </div>
+        <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            {% if g.playing %}<span class="badge badge-playing">▶ Playing</span>
+            {% elif g.paused %}<span class="badge badge-paused">⏸ Paused</span>
+            {% elif g.in_voice %}<span class="badge badge-idle">Idle</span>
+            {% else %}<span class="badge badge-offline">Not Connected</span>{% endif %}
+            {% if g.dj_enabled %}<span class="badge badge-dj">🎙️ DJ</span>{% endif %}
+            {% if g.autodj_enabled %}<span class="badge badge-autodj">🔁 Auto</span>{% endif %}
+        </div>
+    </div>
+
+    {% if g.in_voice %}
+
+    <!-- ── DJ Voice ──────────────────────────────────────────── -->
+    <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice</h4>
+        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <select id="voice-{{ g.id }}" class="voice-select" onchange="setDjVoice('{{ g.id }}', this.value)">
+                <option value="">Loading voices...</option>
+            </select>
+            {% if g.dj_enabled %}
+            <span class="badge badge-dj" style="font-size: 11px;">DJ Active</span>
+            {% else %}
+            <span style="font-size: 11px; color: var(--text-muted);">Enable DJ mode from the dashboard</span>
+            {% endif %}
+        </div>
+        <script>
+        loadVoices('{{ g.id }}', "{{ g.dj_voice }}");
+        </script>
+    </div>
+
+    <!-- ── Auto-DJ ──────────────────────────────────────────── -->
+    <div style="margin-bottom: 20px; padding: 16px; background: {% if g.autodj_enabled %}rgba(34,197,94,0.06){% else %}var(--bg-primary){% endif %}; border: 1px solid {% if g.autodj_enabled %}rgba(34,197,94,0.3){% else %}var(--border){% endif %}; border-radius: var(--radius-lg);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="font-size: 22px;">🔁</span>
+                <div>
+                    <span style="font-size: 15px; font-weight: 600; {% if g.autodj_enabled %}color: var(--success);{% endif %}">Auto-DJ</span>
+                    <div style="font-size: 11px; color: var(--text-muted);">When the queue empties, keep the music going</div>
+                </div>
+            </div>
+            <button class="btn {% if g.autodj_enabled %}btn-success{% endif %}" onclick="toggleAutodj(this, '{{ g.id }}')" style="min-width: 100px;">
+                {% if g.autodj_enabled %}✅ Active{% else %}⚪ Off{% endif %}
+            </button>
+        </div>
+
+        {% if g.autodj_enabled %}
+        <div style="margin-top: 8px;">
+            <label style="font-size: 12px; color: var(--text-muted); display: block; margin-bottom: 6px;">
+                📡 Source — where Auto-DJ pulls music from when the queue runs dry
+            </label>
+            <div style="display: flex; gap: 8px; align-items: stretch;">
+                <input type="text" id="autodj-source-{{ g.id }}" value="{{ g.autodj_source }}" placeholder="YouTube playlist URL, preset:Name, or leave blank for history replay" style="flex: 1; min-width: 0; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 10px 14px; border-radius: var(--radius); font-size: 13px;">
+                <button class="btn btn-primary" onclick="setAutodjSource('{{ g.id }}')" style="white-space: nowrap;">Save</button>
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: var(--text-muted); line-height: 1.6;">
+                <strong>Options:</strong><br>
+                • <strong>Blank</strong> — shuffles your recently-played history<br>
+                • <strong>YouTube playlist URL</strong> — pulls songs from that playlist<br>
+                • <strong>preset:Name</strong> — loads a saved queue preset by name
+            </div>
+        </div>
+        {% else %}
+        <div style="font-size: 12px; color: var(--text-muted); padding: 8px 0;">
+            Enable Auto-DJ to configure a music source. When active, the station never goes silent.
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- ── Listeners ───────────────────────────────────────── -->
+    {% if g.listeners %}
+    <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🎧 Listening Now ({{ g.listeners|length }})</h4>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+        {% for listener in g.listeners %}
+            <div class="listener-chip">
+                {% if listener.avatar %}
+                <img src="{{ listener.avatar }}" alt="" style="width: 24px; height: 24px; border-radius: 50%; object-fit: cover;">
+                {% else %}
+                <div style="width: 24px; height: 24px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 12px; color: white; font-weight: 700;">{{ listener.name[0] }}</div>
+                {% endif %}
+                <span>{{ listener.name }}</span>
+            </div>
+        {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── Now Playing ─────────────────────────────────────── -->
+    {% if g.current_song %}
+    <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">▶ Now Playing</h4>
+        <div class="now-playing-card">
+            {% if g.current_thumbnail %}
+            <img src="{{ g.current_thumbnail }}" alt="" style="width: 64px; height: 64px; border-radius: 8px; object-fit: cover; flex-shrink: 0;">
+            {% else %}
+            <div style="width: 64px; height: 64px; border-radius: 8px; background: var(--bg-primary); display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0;">🎵</div>
+            {% endif %}
+            <div style="flex: 1; min-width: 0;">
+                <div style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                    {% if g.current_song_url %}<a href="{{ g.current_song_url }}" target="_blank" style="color: var(--accent); text-decoration: none;">{{ g.current_song }}</a>{% else %}{{ g.current_song }}{% endif %}
+                </div>
+                {% if g.current_duration and g.current_duration > 0 %}
+                <div style="font-size: 12px; color: var(--text-muted); margin-top: 4px;">
+                    {{ g.current_duration // 60 }}:{{ "%02d"|format(g.current_duration % 60) }}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ── Recently Played ──────────────────────────────────── -->
+    <div>
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🕰️ Recently Played {% if g.recently_played %}({{ g.recently_played|length }}){% endif %}</h4>
+        {% if g.recently_played %}
+        <div class="history-list">
+        {% for item in g.recently_played %}
+        <div class="history-item">
+            {% if item.thumbnail %}
+            <img src="{{ item.thumbnail }}" alt="" class="history-thumb">
+            {% else %}
+            <div class="history-thumb history-thumb-placeholder">🎵</div>
+            {% endif %}
+            <div class="history-info">
+                {% if item.url %}
+                <a href="{{ item.url }}" target="_blank" class="history-title">{{ item.title }}</a>
+                {% else %}
+                <span class="history-title">{{ item.title }}</span>
+                {% endif %}
+                <span class="history-meta">{{ item.played_at }}{% if item.duration %} · {{ item.duration // 60 }}:{{ "%02d"|format(item.duration % 60) }}{% endif %}</span>
+            </div>
+            {% if item.url %}
+            <button class="btn btn-replay" onclick="replayHistory('{{ g.id }}', {{ loop.index0 }})" title="Re-add to queue">🔁</button>
+            {% endif %}
+        </div>
+        {% endfor %}
+        </div>
+        {% else %}
+        <div style="text-align: center; padding: 32px 0; color: var(--text-muted);">
+            <p style="font-size: 28px; margin-bottom: 8px;">📻</p>
+            <p>No songs played yet in this session.</p>
+            <p style="font-size: 12px; margin-top: 4px;">Songs will appear here as they play.</p>
+        </div>
+        {% endif %}
+    </div>
+
+    {% else %}
+    <!-- Not connected -->
+    <div style="text-align: center; padding: 24px 0; color: var(--text-muted);">
+        <p>{{ bot_name }} is not connected to a voice channel in this server.</p>
+        <p style="font-size: 12px; margin-top: 4px;">Use <code>?join</code> in Discord to connect.</p>
+    </div>
+    {% endif %}
+</div>
+{% endfor %}
+
+<!-- ==================== STYLES ==================== -->
+<style>
+.guild-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+.guild-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--accent); display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: white; flex-shrink: 0; }
+.guild-info h3 { font-size: 16px; font-weight: 600; margin: 0; }
+.guild-info .meta { font-size: 12px; color: var(--text-muted); }
+.voice-select { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius); font-size: 13px; min-width: 260px; }
+.listener-chip { display: flex; align-items: center; gap: 6px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px 4px 4px; font-size: 13px; color: var(--text-secondary); }
+.now-playing-card { display: flex; gap: 12px; align-items: center; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; }
+
+/* History list */
+.history-list { max-height: 500px; overflow-y: auto; }
+.history-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+    transition: border-color 0.15s, background 0.15s;
+}
+.history-item:hover { border-color: var(--accent); background: var(--accent-glow); }
+.history-thumb { width: 40px; height: 40px; border-radius: 6px; object-fit: cover; flex-shrink: 0; }
+.history-thumb-placeholder { display: flex; align-items: center; justify-content: center; background: var(--bg-primary); font-size: 16px; }
+.history-info { flex: 1; min-width: 0; }
+.history-title { font-size: 13px; font-weight: 500; color: var(--text-primary); text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.history-title:hover { color: var(--accent-hover); }
+.history-meta { font-size: 11px; color: var(--text-muted); }
+.btn-replay { font-size: 13px !important; padding: 6px 12px !important; }
+.btn-success { background: transparent; color: var(--success); border-color: var(--success); }
+.btn-success:hover { background: var(--success); color: white; }
+
+.badge-autodj { background: rgba(34,197,94,0.15); color: var(--success); }
+</style>
+
+<!-- ==================== SCRIPTS ==================== -->
+<script>
+// ── Toast ─────────────────────────────────────────────────
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    t.style.background = type === 'error' ? 'var(--danger)' : 'var(--success)';
+    t.style.color = 'white';
+    t.style.border = type === 'error' ? '1px solid var(--danger)' : '1px solid var(--success)';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 2500);
+}
+
+// ── DJ Voice ──────────────────────────────────────────────
+async function setDjVoice(guildId, voice) {
+    try {
+        await fetch('/api/' + guildId + '/dj_voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voice: voice })
+        });
+        showToast('Voice: ' + voice.split('-').pop(), 'success');
+    } catch (e) { showToast('Voice change failed', 'error'); }
+}
+
+async function loadVoices(guildId, currentVoice) {
+    const select = document.getElementById('voice-' + guildId);
+    if (!select) return;
+    try {
+        const res = await fetch('/api/' + guildId + '/voices');
+        const data = await res.json();
+        select.innerHTML = '';
+        if (data.voices && data.voices.length > 0) {
+            data.voices.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.name;
+                opt.textContent = v.name + ' (' + v.gender + ', ' + v.locale + ')';
+                if (v.name === currentVoice) opt.selected = true;
+                select.appendChild(opt);
+            });
+        } else {
+            select.innerHTML = '<option value="">No voices available</option>';
+        }
+    } catch (e) {
+        select.innerHTML = '<option value="">Failed to load voices</option>';
+    }
+}
+
+// ── Auto-DJ ──────────────────────────────────────────────
+async function toggleAutodj(btn, guildId) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const res = await fetch('/api/' + guildId + '/autodj_toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.autodj_enabled ? '🔁 Auto-DJ On — never go silent' : '🔁 Auto-DJ Off', 'success');
+            setTimeout(() => location.reload(), 1200);
+        } else {
+            showToast(data.error || 'Auto-DJ toggle failed', 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    } catch (e) {
+        showToast('Request failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+}
+
+async function setAutodjSource(guildId) {
+    const input = document.getElementById('autodj-source-' + guildId);
+    if (!input) return;
+    const source = input.value.trim();
+    try {
+        const res = await fetch('/api/' + guildId + '/autodj_source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: source })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔁 Source saved: ' + (source || 'history replay'), 'success');
+        } else {
+            showToast(data.error || 'Failed to set source', 'error');
+        }
+    } catch (e) { showToast('Set source failed', 'error'); }
+}
+
+// ── Recently Played Replay ────────────────────────────────
+async function replayHistory(guildId, index) {
+    try {
+        const res = await fetch('/api/' + guildId + '/history/replay/' + index, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔁 Re-added: ' + data.title, 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Replay failed', 'error');
+        }
+    } catch (e) { showToast('Replay failed: ' + e.message, 'error'); }
+}
+</script>
+{% endblock %}

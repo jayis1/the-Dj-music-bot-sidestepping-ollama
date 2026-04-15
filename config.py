@@ -52,6 +52,12 @@ AUTODJ_DEFAULT_SOURCE = os.environ.get("AUTODJ_SOURCE", "")
 # Set to True to enable (if a bed music file exists).
 DJ_BED_MUSIC_ENABLED = True
 
+# Maximum duration for soundboard/DJ sound effects (seconds).
+# Sounds longer than this are truncated via FFmpeg to prevent blocking
+# the next song. Discord.py raises "already playing" if a long sound
+# overlaps with song playback.
+MAX_SOUND_SECONDS = 3
+
 # Web Dashboard
 WEB_HOST = os.environ.get("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.environ.get("WEB_PORT", 8080))

@@ -25,6 +25,9 @@
             <a href="{{ url_for('soundboard') }}" class="nav-item {% if request.endpoint == 'soundboard' %}active{% endif %}">
                 <span class="icon">🎛️</span> Soundboard
             </a>
+            <a href="{{ url_for('radio') }}" class="nav-item {% if request.endpoint == 'radio' %}active{% endif %}">
+                <span class="icon">📻</span> Radio
+            </a>
         </nav>
         <main class="main">
             {% with messages = get_flashed_messages(with_categories=true) %}

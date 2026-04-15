@@ -210,7 +210,7 @@ HYPE_INTROS = [
     "I'm your DJ and this is {title}! {sound:im_your_dj}",
     "The Django selects {title}! {sound:django}",
     "Turntables are spinning for {title}. {sound:dj_turn_it_up}",
-    "{title} — you already know! {sound:button_press}",
+    "{title} — you already know! {sound:uyuuui}",
 ]
 
 # Enthusiastic intros (randomly picked ~25% of the time for extra energy)
@@ -265,7 +265,7 @@ OUTROS = [
     "And that's a wrap on {title}. {sound:record_scratch}",
     "{title}. What a track! {sound:rave_cheer}",
     "And that was {title}. Not bad, right? {sound:mustard_drop}",
-    "{title} — done and dusted. {sound:button_press}",
+    "{title} — done and dusted. {sound:uyuuui}",
     "{title}. I'll let that one sink in. {sound:cool_dj_drop}",
     "That was {title}. Give it up! {sound:rave_cheer}",
     "Rewind moment! What a tune — {title}. {sound:dj_rewind}",
@@ -326,7 +326,7 @@ TRANSITIONS_HYPE = [
     "{prev_title} was fire! But {next_title}? EVEN HOTTER! {sound:air_raid}",
     "YES! {prev_title}! And we keep going with {next_title}! {sound:combo_hit}",
     "Going from {prev_title} straight into {next_title}! {sound:airhorn} No brakes!",
-    "{prev_title} was insane! And {next_title} is about to blow the roof off! {sound:applause}",
+    "{prev_title} was insane! And {next_title} is about to blow the roof off! {sound:rave_cheer}",
     "That was {prev_title}! Now brace yourself for {next_title}! {sound:dj_turn_it_up}",
     "Double trouble! {prev_title} done, {next_title} incoming! {sound:airhorn}",
 ]
@@ -358,13 +358,13 @@ OUTROS_FINAL = [
     "And that's {title}. We've burned through the whole queue! Great session, everyone. Until next time.",
     "{title} — and that's a wrap on tonight's set. The bar's open, the DJ's here, just no more songs. Yet.",
     # ── With sound tags ──
-    "That was {title}. And that's the show! {sound:applause} Until next time.",
+    "That was {title}. And that's the show! {sound:rave_cheer} Until next time.",
     "{title} — and we're done! {sound:record_scratch} But the DJ's still in the booth!",
-    "And that wraps it up with {title}! {sound:applause} Great session, everyone.",
+    "And that wraps it up with {title}! {sound:rave_cheer} Great session, everyone.",
     "End of the road with {title}. The station never sleeps though. {sound:dj_turn_it_up}",
     "That was {title}. Queue's empty! But I'll be right here. {sound:mustard_drop} Request anytime.",
     "{title} — final track! {sound:airhorn} What a session, everyone!",
-    "And that's {title}. Show's over! {sound:applause} But you know where to find me.",
+    "And that's {title}. Show's over! {sound:rave_cheer} But you know where to find me.",
 ]
 
 # Station IDs — randomly sprinkled in front of intros
@@ -403,16 +403,16 @@ CALLOUTS = [
     "The vibes are immaculate right now.",
     "This crowd never disappoints.",
     # ── With sound tags ──
-    "Shoutout to everyone listening right now! {sound:applause}",
-    "You guys are the best! {sound:applause} Seriously.",
+    "Shoutout to everyone listening right now! {sound:rave_cheer}",
+    "You guys are the best! {sound:rave_cheer} Seriously.",
     "Thanks for rocking with us! {sound:airhorn}",
     "Love having you all here! {sound:dj_stop}",
     "Glad you're tuning in! {sound:mustard_drop}",
     "Keep those requests coming! {sound:airhorn} I love it!",
-    "This crowd never disappoints! {sound:applause}",
+    "This crowd never disappoints! {sound:rave_cheer}",
     "Someone's got great taste tonight! {sound:combo_hit}",
     "Vibes are immaculate! {sound:dj_turn_it_up}",
-    "I see you out there! {sound:applause} Let's keep going!",
+    "I see you out there! {sound:rave_cheer} Let's keep going!",
 ]
 
 

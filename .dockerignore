@@ -1,0 +1,41 @@
+# Secrets — never bake into image
+.env
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Python cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+dist/
+build/
+
+# Logs
+bot_activity.log
+*.log
+
+# Runtime data (mounted as volumes)
+yt_dlp_cache/
+sounds/
+presets/
+
+# Dev tools
+.ruff_cache
+.ruff.toml
+tests/
+pytest.ini
+.pytest_cache
+
+# Docs (not needed in image)
+README.md
+GUIDE.md
+
+# OS
+.DS_Store
+Thumbs.db

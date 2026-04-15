@@ -22,6 +22,33 @@
 
 The radio dj music bot is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels, with a full radio DJ personality, web dashboard, soundboard, and way more than any sane bot should have.
 
+---
+
+## 🐳 Quick Install (Docker)
+
+The fastest way to get running — one command starts the bot **and** Kokoro TTS:
+
+```bash
+# 1. Grab the compose file + config template
+curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/docker-compose.yml
+curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/.env.example
+mv .env.example .env
+
+# 2. Set your Discord token (minimum required)
+nano .env    # set DISCORD_TOKEN=
+
+# 3. Start everything
+docker compose up -d
+
+# 4. Open Mission Control
+open http://your-server:8080
+```
+
+> **Kokoro TTS** starts automatically as a sidecar container on port 8880. The bot detects it and uses it immediately — no extra config needed.
+
+**Pre-built image:** `ghcr.io/jayis1/the-dj-music-bot:latest`  
+**Platforms:** `linux/amd64`, `linux/arm64`  
+**Releases:** [GitHub Releases page →](https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases)
 
 ## ✨ Features
 ### 🎧 Music & Playback

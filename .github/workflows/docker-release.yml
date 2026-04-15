@@ -1,0 +1,103 @@
+# ── Radio DJ Bot — Docker Build & GitHub Release ─────────────────────────────
+#
+# Triggers:
+#   - Push a version tag:  git tag v6.3.0 && git push --tags
+#   - This builds + pushes the Docker image to ghcr.io and creates a GitHub Release
+#
+# Image published: ghcr.io/jayis1/the-dj-music-bot:<version> + :latest
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: Docker Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"           # Triggers on v6.3.0, v6.3.1, etc.
+
+permissions:
+  contents: write      # For creating GitHub Releases
+  packages: write      # For pushing to ghcr.io
+
+jobs:
+  build-and-release:
+    name: Build, Push & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Checkout
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Extract version tag (strips the leading 'v')
+      - name: Get version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      # 3. Set up Docker Buildx (multi-arch builds)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 4. Log in to GitHub Container Registry
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 5. Extract Docker metadata (tags + labels)
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/jayis1/the-dj-music-bot
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      # 6. Build and push image (linux/amd64 + linux/arm64)
+      - name: Build & push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 7. Create GitHub Release with docker-compose.yml + .env.example as assets
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "🎵 Radio DJ Bot ${{ steps.version.outputs.VERSION }}"
+          generate_release_notes: true
+          files: |
+            docker-compose.yml
+            .env.example
+          body: |
+            ## 🐳 Quick Install (Docker)
+
+            ```bash
+            # 1. Download the config files (attached below)
+            curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/docker-compose.yml
+            curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/.env.example
+            mv .env.example .env
+            nano .env   # Set DISCORD_TOKEN at minimum
+
+            # 2. Start the bot + Kokoro TTS
+            docker compose up -d
+
+            # 3. Open Mission Control dashboard
+            open http://your-server:8080
+            ```
+
+            ## 📦 Docker Image
+            ```
+            ghcr.io/jayis1/the-dj-music-bot:${{ steps.version.outputs.VERSION }}
+            ghcr.io/jayis1/the-dj-music-bot:latest
+            ```
+
+            See [README](https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama#readme) for full documentation.

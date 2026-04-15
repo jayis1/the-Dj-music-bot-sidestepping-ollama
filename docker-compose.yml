@@ -1,0 +1,58 @@
+# ── Radio DJ Music Bot — Docker Compose ──────────────────────────────────────
+# Starts the bot + Kokoro TTS server together.
+#
+# Quick start:
+#   1. cp .env.example .env && nano .env   (set DISCORD_TOKEN at minimum)
+#   2. docker compose up -d
+#   3. Open http://your-server:8080 for Mission Control
+#
+# To use GPU for Kokoro TTS, change the kokoro image to:
+#   ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
+#   and add:  deploy: { resources: { reservations: { devices: [{ capabilities: [gpu] }] } } }
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Kokoro TTS server (CPU) ────────────────────────────────────────────────
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.1
+    container_name: kokoro-tts
+    restart: unless-stopped
+    ports:
+      - "8880:8880"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Radio DJ Bot ───────────────────────────────────────────────────────────
+  bot:
+    image: ghcr.io/jayis1/the-dj-music-bot:latest
+    # Uncomment to build locally instead:
+    # build: .
+    container_name: radio-dj-bot
+    restart: unless-stopped
+    depends_on:
+      kokoro:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Point the bot at the Kokoro container (override .env if set differently)
+      - KOKORO_TTS_URL=http://kokoro:8880
+      - TTS_MODE=kokoro
+    ports:
+      - "8080:8080"       # Mission Control web dashboard
+    volumes:
+      - ./sounds:/app/sounds           # Soundboard files (persisted)
+      - ./presets:/app/presets         # Auto-DJ presets (persisted)
+      - ./yt_dlp_cache:/app/yt_dlp_cache
+      - ./bot_activity.log:/app/bot_activity.log
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

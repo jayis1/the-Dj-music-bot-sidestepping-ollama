@@ -1,6 +1,6 @@
 # MBot 6.2.0 — Comprehensive Technical Guide
 
-> **Last Updated:** 2026-04-14
+> **Last Updated:** 2026-04-15
 > **Version:** 6.2.0
 > **License:** MIT
 
@@ -20,11 +20,14 @@
 10. [Admin Cog: cogs/admin.py](#10-admin-cog-cogsadminpy)
 11. [Logging Cog: cogs/logging.py](#11-logging-cog-cogsloggingpy)
 12. [Utility Modules](#12-utility-modules)
-13. [Test Suite](#13-test-suite)
-14. [Launcher Scripts](#14-launcher-scripts)
-15. [Complete Command Reference](#15-complete-command-reference)
-16. [Troubleshooting & Known Issues](#16-troubleshooting--known-issues)
-17. [Development Guide](#17-development-guide)
+13. [Web Dashboard: Mission Control](#13-web-dashboard-mission-control)
+14. [Soundboard System](#14-soundboard-system)
+15. [DJ Custom Lines](#15-dj-custom-lines)
+16. [Test Suite](#16-test-suite)
+17. [Launcher Scripts](#17-launcher-scripts)
+18. [Complete Command Reference](#18-complete-command-reference)
+19. [Troubleshooting & Known Issues](#19-troubleshooting--known-issues)
+20. [Development Guide](#20-development-guide)
 
 ---
 
@@ -45,6 +48,14 @@
 | **UI** | Now Playing embed with progress bar | Auto-updates every 40 seconds |
 | **UI** | Interactive button controls | Play, Pause, Skip, Stop, Queue buttons |
 | **DJ Mode** | Radio DJ between tracks | TTS voice commentary: intros, outros, transitions |
+| **DJ Mode** | Soundboard sound tags in DJ lines | `{sound:airhorn}` in any line plays a sound effect after the DJ speaks |
+| **DJ Mode** | 172 built-in DJ line templates | 74 with sound tags across 10 categories |
+| **DJ Mode** | Custom DJ lines | Add/remove via web dashboard, persisted in JSON |
+| **Soundboard** | Web-based sound effects board | 9 built-in sounds + upload your own via browser |
+| **Crossfade** | Fade-in on new songs | Configurable crossfade duration via `CROSSFADE_DURATION` |
+| **Lyrics** | Synced lyrics lookup | `syncedlyrics` (primary) + web scraping fallbacks |
+| **Presets** | Save/load playlist presets | Queue state persisted as JSON, loadable from web or Discord |
+| **Web Dashboard** | Mission Control | Flask web app: playback controls, queue drag-and-drop, volume/speed sliders, DJ voice picker, search-to-queue |
 | **Auto-Disconnect** | 60-second inactivity timer | Disconnects from voice when idle |
 | **Admin** | Remote shutdown & restart | Bot owner only |
 | **Admin** | Cookie management for yt-dlp | Fetch and set cookies from any HTTPS URL |
@@ -58,37 +69,62 @@
 
 ```
 this2.0/
-├── bot.py                  # Entry point — bot lifecycle, cog loading, logging
-├── config.py               # Configuration loader (env vars + constants)
+├── bot.py                  # Entry point — bot lifecycle, cog loading, web server thread, logging
+├── config.py               # Configuration loader (env vars + constants including DJ, crossfade, web)
 ├── .env.example            # Template for environment variables
-├── requirements.txt        # Python dependencies
+├── requirements.txt        # Python dependencies (flask, edge-tts, syncedlyrics added)
 ├── launch.sh               # Minimal launcher (setup/start/stop/restart/attach/doctor)
 ├── start.sh                # Interactive launcher with colored output & setup wizard
+├── GUIDE.md                # This comprehensive guide
 ├── LICENSE                 # MIT License
 │
 ├── cogs/                   # Discord.py extension modules (loaded at runtime)
 │   ├── __init__.py         # Auto-generated; makes cogs a Python package
-│   ├── music.py            # Music commands & playback engine (785 lines)
+│   ├── music.py            # Music commands & playback engine (~1900 lines) with DJ integration, PlaceholderTrack, crossfade
 │   ├── admin.py            # Admin/owner-only commands (shutdown, restart, cookies)
-│   ├── youtube.py          # YTDLSource — yt-dlp extraction wrapper
+│   ├── youtube.py          # YTDLSource, PlaceholderTrack — yt-dlp extraction + lazy resolution
 │   └── logging.py          # Message/command/error logging to file
 │
 ├── utils/                  # Helper modules
 │   ├── __init__.py         # Auto-generated; makes utils a Python package
-│   ├── discord_log_handler.py  # Ships log lines to a Discord channel
-│   ├── dj.py               # Radio DJ mode — TTS message generation & voice synthesis
+│   ├── dj.py               # Radio DJ mode — TTS message generation, 172 templates, sound tag support, _format_line
+│   ├── custom_lines.py     # JSON persistence for custom DJ lines (CRUD operations)
+│   ├── soundboard.py       # Sound listing, path resolution, directory traversal prevention
+│   ├── lyrics.py           # Synced lyrics lookup (syncedlyrics + web scraping fallbacks)
+│   ├── presets.py          # Save/load/delete playlist presets as JSON
 │   ├── suno.py             # Suno.com URL detection & audio resolution
-│   ├── cookie_parser.py    # Parses Set-Cookie headers → Netscape cookie file
+│   ├── discord_log_handler.py  # Ships log lines to a Discord channel (buffered)
+│   ├── cookie_parser.py    # Parses Set-Cookie headers → Netscape cookie file (NOTE: parse_all_cookies missing)
 │   └── import_parser.py    # Parses bot log files (timestamped entries)
 │
-├── tests/                  # pytest test suite
-│   ├── test_playlist.py    # Playlist & radio extraction tests
-│   ├── test_suno.py        # Suno URL detection & track resolution tests
-│   └── test_youtube.py     # YouTube single-video extraction test
+├── web/                    # Flask Mission Control Dashboard
+│   ├── app.py              # Flask app — 20+ API endpoints, template filters, soundboard/upload/delete
+│   ├── __init__.py
+│   ├── templates/          # Jinja2 HTML templates
+│   │   ├── base.html       # Dark layout, sidebar nav, dynamic bot name, conditional auto-refresh
+│   │   ├── dashboard.html  # Full interactive dashboard with all playback controls
+│   │   ├── soundboard.html # Dedicated soundboard page with upload, play, delete
+│   │   └── dj_lines.html   # DJ line CRUD with {sound:name} visual highlights
+│   └── static/
+│       └── style.css        # Dark mission control theme
 │
+├── sounds/                 # Soundboard audio files (9 generated .wav effects)
+│   ├── airhorn.wav         # Classic airhorn blast
+│   ├── air_raid.wav        # Siren/air raid alarm
+│   ├── applause.wav        # Crowd applause
+│   ├── button_press.wav    # UI button click
+│   ├── club_hit.wav        # Bass drop / club hit
+│   ├── dj_drop.wav         # DJ drop / station ID effect
+│   ├── in_the_mix.wav      # "In the mix" transition effect
+│   ├── record_scratch.wav  # Vinyl record scratch
+│   └── turntable_start.wav # Turntable motor spin-up
+│
+├── presets/                # Saved playlist JSON files (created at runtime)
+├── tests/                  # pytest test suite
 ├── yt_dlp_cache/           # yt-dlp metadata cache directory (auto-created)
 ├── bot_activity.log        # Runtime log file (auto-created)
 ├── bot.log                 # Screen session log (auto-created by launchers)
+├── dj_custom_lines.json    # Custom DJ lines persistence (auto-created)
 └── youtube_cookie.txt      # yt-dlp cookie file (created by ?fetch_and_set_cookies)
 ```
 
@@ -100,17 +136,35 @@ bot.py
   ├── loads → cogs/admin.py
   ├── skips → cogs/youtube.py (imported directly by music.py, NOT auto-loaded)
   ├── skips → cogs/logging.py (loaded manually, NOT auto-loaded)
-  └── initializes → utils/discord_log_handler.py
+  ├── initializes → utils/discord_log_handler.py
+  ├── starts → web/app.py (Flask dashboard in background thread)
+  └── creates → sounds/, presets/ directories
 
 cogs/music.py
-  ├── imports → cogs/youtube.py (YTDLSource, FFMPEG_OPTIONS, YTDL_FORMAT_OPTIONS)
+  ├── imports → cogs/youtube.py (YTDLSource, PlaceholderTrack, FFMPEG_OPTIONS, YTDL_FORMAT_OPTIONS)
   ├── imports → utils/suno.py (is_suno_url, get_suno_track)
-  ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, generate_intro, generate_outro, generate_tts, cleanup_tts_file, list_voices, DEFAULT_VOICE)
-  └── imports → config.py (emojis, prefix)
+  ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, generate_intro, generate_song_intro, generate_outro, generate_tts, cleanup_tts_file, extract_sound_tags, list_voices, DEFAULT_VOICE)
+  ├── imports → utils/lyrics.py (get_lyrics)
+  ├── imports → utils/presets.py (save_preset, load_preset, queue_to_tracks)
+  ├── imports → utils/soundboard.py (list_sounds, get_sound_path)
+  └── imports → config.py (emojis, prefix, CROSSFADE_DURATION, STATION_NAME, etc.)
 
 cogs/admin.py
-  ├── imports → utils/cookie_parser.py (parse_all_cookies)
+  ├── imports → utils/cookie_parser.py (parse_all_cookies) ⚠️ BUG: function not defined
   └── modifies → cogs/youtube.py (YTDL_FORMAT_OPTIONS["cookiefile"])
+
+web/app.py
+  ├── imports → utils/custom_lines.py (LINE_CATEGORIES, add_line, load_custom_lines, remove_line)
+  ├── imports → utils/soundboard.py (list_sounds, get_sound_path, SOUNDS_DIR)
+  ├── imports → utils/presets.py (list_presets, save_preset, load_preset, delete_preset)
+  ├── imports → utils/lyrics.py (get_lyrics)
+  ├── calls → cogs/music.py (via bot.get_cog("Music")) for playback state
+  └── renders → web/templates/*.html (Jinja2 with custom filters)
+
+utils/dj.py
+  ├── uses → utils/soundboard.py (list_sounds — for resolving {sound:name} tags)
+  ├── uses → utils/custom_lines.py (load_custom_lines — merges built-in + custom)
+  └── uses → config.py (STATION_NAME — for station IDs)
 ```
 
 > **Why are `youtube.py` and `logging.py` excluded from auto-loading?**
@@ -162,6 +216,8 @@ cogs/admin.py
 | `audioop-lts` | latest | Audio operations (Python 3.13+ compatibility) |
 | `aiohttp` | latest | Async HTTP client (Suno, admin cookie fetch) |
 | `edge-tts` | latest | Microsoft Edge TTS — generates DJ voice audio (optional but needed for DJ mode) |
+| `flask` | latest | Web dashboard (Mission Control) — serves interactive control panel |
+| `syncedlyrics` | latest | Fetches synced (LRC) lyrics for the currently playing song |
 | `pytest` | latest | Test framework |
 | `pytest-asyncio` | latest | Async test support for pytest |
 | `aioresponses` | latest | Mock aiohttp requests in tests |
@@ -243,6 +299,12 @@ LOG_CHANNEL_ID=1234567890
 
 # Optional — Discord user ID of the bot owner (for admin commands)
 BOT_OWNER_ID=24
+
+# Optional — Custom station name for DJ station IDs (default: "MBot")
+STATION_NAME=MyAwesomeRadio
+
+# Optional — Web dashboard port (default: 8080)
+WEB_PORT=8080
 ```
 
 | Variable | Required? | Source | Used By |
@@ -274,8 +336,17 @@ LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 |---|---|---|
 | `DJ_VOICE` | `en-US-AriaNeural` | Default TTS voice for DJ commentary |
 | `DJ_EMOJI` | 🎙️ | Emoji used in DJ command embeds |
+| `STATION_NAME` | From `.env` or `"MBot"` | Station name used in station ID lines ("You're tuned in to {STATION_NAME} Radio") |
+| `CROSSFADE_DURATION` | `3` (seconds) | Fade-in duration when a new song starts |
 
-> **Note:** DJ mode is off by default and must be enabled per-guild with `?dj`. The `DJ_VOICE` setting is just the default — users can override it per-guild with `?djvoice`.
+> **Note:** DJ mode is off by default and must be enabled per-guild with `?dj`. The `DJ_VOICE` setting is just the default — users can override it per-guild with `?djvoice` or via the web dashboard.
+
+### Web Dashboard Configuration (`config.py`)
+
+| Constant | Default | Purpose |
+|---|---|---|
+| `WEB_HOST` | `0.0.0.0` | Flask server listen address (all interfaces) |
+| `WEB_PORT` | From `.env` or `8080` | Flask server listen port |
 
 ### Emoji Configuration (`config.py`)
 
@@ -1182,19 +1253,48 @@ Queue empty?
 
 ### Message Templates
 
-| Category | Count | Example |
+The DJ has **172 built-in line templates** across 10 categories. 74 of these include `{sound:name}` tags that trigger sound effects after the DJ speaks.
+
+| Category | Count | With Sound Tags | Example |
+|---|---|---|---|
+| **Session Intros** | 23 | 11 | `"{greeting} We are LIVE! Let's kick it off with {title}. {sound:airhorn}"` |
+| **Song Intros** | 19 | 5 | `"Up next, {title}!", "Incoming! {title}! {sound:airhorn}"` |
+| **Hype Intros (Loud)** | 18 | 9 | `"YES! {title}! Let's go!", "Buckle up! {title}! {sound:air_raid}"` |
+| **Outros** | 13 | 5 | `"That was {title}.", "{title} — done and dusted. {sound:button_press}"` |
+| **Transitions** | 23 | 8 | `"That was {prev_title}. Next up, {next_title}.", "From {prev_title} to {next_title}. In the mix! {sound:in_the_mix}"` |
+| **Hype Transitions** | 12 | 7 | `"That was {prev_title}! And NOW — {next_title}! {sound:airhorn} LET'S GO!"` |
+| **Mellow Transitions** | 9 | 4 | `"Lovely track. Here's {next_title} to keep the vibe going. {sound:turntable_start}"` |
+| **Final Outros** | 17 | 7 | `"The queue's empty but the radio stays on.", "End of the road. {sound:applause}"` |
+| **Station IDs** | 18 | 8 | `"You're tuned in to MBot Radio.", "MBot Radio — on the air! {sound:air_raid}"` |
+| **Listener Callouts** | 20 | 10 | `"Shoutout to everyone listening right now.", "You guys are the best! {sound:applause}"` |
+| **Queue Banter** | 10+ | — | `"One more left in the queue.", "We are in it for the long haul, 20 more tracks!"` |
+
+### Sound Tags in DJ Lines (`{sound:name}`)
+
+Any DJ line can include a `{sound:name}` tag. When the DJ speaks that line, the text before the tag is spoken via TTS, then the sound effect plays in the voice channel after the TTS finishes.
+
+**Example:** `"In the mix! {sound:airhorn}"` → DJ says "In the mix!" → then the airhorn sound plays.
+
+**How it works:**
+1. `_format_line(template, **kwargs)` — Strips `{sound:...}` tags before calling `str.format()`, then re-appends them. This prevents `KeyError: 'sound'` from Python's format method.
+2. `extract_sound_tags(text)` — Called by `_dj_speak()`. Returns `(cleaned_text, [sound_ids])`. The cleaned text goes to TTS; the sound IDs are queued to play after TTS finishes.
+3. `_on_tts_done()` — Plays any pending sound effects from `{sound:name}` tags, then starts the next song.
+
+**Available sounds** (filenames in `sounds/` directory, referenced without extension):
+
+| Sound Tag | File | Description |
 |---|---|---|
-| **Session Intros** | 12 | "Good evening, everyone! Let's kick things off with {title}.", "Rise and shine, everyone! Our opening track is {title}." |
-| **Hype Intros** | 14 | "Up next, {title}!", "Oh, this is a good one. Here's {title}.", "Turn it up for {title}!" |
-| **Hype Intros (loud)** | 9 | "Oh yeah! It's time for {title}!", "This next one goes hard. {title}!", "Here. We. Go. {title}!" |
-| **Outros** | 8 | "That was {title}.", "Love that one. {title}.", "Mm, {title}. That hit the spot." |
-| **Transitions** | 15 | "That was {prev_title}. And up next, {next_title}.", "{prev_title} in the books. Up next, {next_title}!" |
-| **Hype Transitions** | 5 | "That was {prev_title} — and the next one is even better. {next_title}!" |
-| **Mellow Transitions** | 5 | "That was {prev_title}. Taking it easy with {next_title}.", "Lovely track. Here's {next_title} to keep the vibe going." |
-| **Final Outros** | 10 | "The queue's empty, but the radio stays on. I'll be right here.", "{title} — and that's a wrap on tonight's set." |
-| **Station IDs** | 10 | "You're tuned in to MBot Radio.", "This is your DJ on MBot Radio." |
-| **Listener Callouts** | 10 | "Shoutout to everyone listening right now.", "The vibes are immaculate right now." |
-| **Queue Banter** | 10+ | "One more left in the queue.", "We are in it for the long haul tonight, folks. 20 more tracks!" |
+| `{sound:airhorn}` | `airhorn.wav` | Classic airhorn blast |
+| `{sound:air_raid}` | `air_raid.wav` | Siren/alarm |
+| `{sound:applause}` | `applause.wav` | Crowd applause |
+| `{sound:button_press}` | `button_press.wav` | UI button click |
+| `{sound:club_hit}` | `club_hit.wav` | Bass drop |
+| `{sound:dj_drop}` | `dj_drop.wav` | DJ drop/station ID effect |
+| `{sound:in_the_mix}` | `in_the_mix.wav` | Transition effect |
+| `{sound:record_scratch}` | `record_scratch.wav` | Vinyl scratch |
+| `{sound:turntable_start}` | `turntable_start.wav` | Turntable spin-up |
+
+> **Important:** Station IDs (which use Python f-strings for `{config.STATION_NAME}`) must use **doubled braces** for sound tags: `{{sound:dj_drop}}` produces the literal `{sound:dj_drop}` at runtime.
 
 ### Time-Aware Behavior
 
@@ -1475,7 +1575,259 @@ Nearly identical to `cookie_parser.py`'s log parsing functionality, but:
 
 ---
 
-## 13. Test Suite
+### `utils/soundboard.py` — Soundboard System
+
+Manages the `sounds/` directory and provides sound listing/path resolution.
+
+| Function | Purpose |
+|---|---|
+| `list_sounds()` | Scans `sounds/` for audio files, returns `[{id, name, file}, ...]` |
+| `get_sound_path(sound_id)` | Returns file path for a sound ID (with directory traversal prevention via `os.path.basename()`) |
+| `create_default_sounds()` | Creates a `README.txt` in `sounds/` explaining where to drop files |
+| `SOUNDS_DIR` | Constant: `"sounds"` (relative to bot working directory) |
+
+---
+
+### `utils/custom_lines.py` — Custom DJ Line Persistence
+
+Stores user-added DJ lines in `dj_custom_lines.json` (same directory as bot.py).
+
+| Function | Purpose |
+|---|---|
+| `load_custom_lines()` | Load from JSON → `{category: [lines]}` |
+| `save_custom_lines(lines)` | Write to JSON |
+| `add_line(category, line)` | Append a line to a category |
+| `remove_line(category, index)` | Remove a specific custom line by index |
+| `LINE_CATEGORIES` | List of valid category keys |
+| `CATEGORY_LABELS` | Friendly labels (`"intros"` → `"Session Intros"`) |
+| `CATEGORY_PLACEHOLDERS` | Available placeholders per category (all include `{sound:name}`) |
+
+---
+
+### `utils/lyrics.py` — Lyrics Lookup
+
+Fetches lyrics for the currently playing song using multiple providers with fallbacks.
+
+1. **syncedlyrics** (primary) — Fetches synced (LRC format) lyrics
+2. **lyricslrc.co** (fallback 1) — Web scraping
+3. **Musixmatch** (fallback 2) — Web scraping
+
+Returns a string of lyrics, or `None` if no provider finds them.
+
+---
+
+### `utils/presets.py` — Playlist Presets
+
+Save and load queue state as JSON files in the `presets/` directory.
+
+| Function | Purpose |
+|---|---|
+| `save_preset(name, tracks)` | Save a list of track dicts as `presets/<name>.json` |
+| `load_preset(name)` | Load tracks from a preset JSON |
+| `list_presets()` | List all saved presets with `[{name, count}, ...]` |
+| `delete_preset(name)` | Delete a preset file |
+| `queue_to_tracks(queue)` | Serialize an asyncio.Queue of track objects to `[dict, ...]` |
+
+---
+
+## 13. Web Dashboard: Mission Control
+
+The Flask web dashboard runs alongside the Discord bot in a background thread, providing a browser-based "Mission Control" interface for remote control.
+
+### How It Starts
+
+In `bot.py`, the `run_web_server()` function runs in a daemon thread:
+```python
+web_thread = threading.Thread(target=run_web_server, daemon=True)
+web_thread.start()
+```
+
+The Flask app (`web/app.py`) receives the bot instance via `init_dashboard(bot)` so it can access the Music cog's state directly.
+
+### Pages
+
+| Page | Route | Purpose |
+|---|---|---|
+| **Dashboard** | `/` | Live status & remote control: playback buttons, volume/speed sliders, queue drag-and-drop, DJ voice picker, lyrics, presets, search-to-queue |
+| **DJ Lines** | `/dj-lines` | Browse, add, and remove custom DJ lines per category |
+| **Soundboard** | `/soundboard` | Play sound effects, upload new sounds, delete existing ones |
+
+### Navigation
+
+The sidebar in `base.html` provides navigation between all three pages. The bot's name is dynamically injected from `bot.user.name` (not hardcoded).
+
+### Auto-Refresh
+
+The dashboard page auto-refreshes every 30 seconds (`<meta http-equiv="refresh" content="30">`) to keep the live status current. The DJ Lines and Soundboard pages **do not** auto-refresh (they use `{% if auto_refresh %}` conditional in the base template) to prevent killing file uploads and form submissions mid-flight.
+
+### API Endpoints
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/<guild_id>/skip` | POST | Skip current song |
+| `/api/<guild_id>/pause` | POST | Toggle pause/resume |
+| `/api/<guild_id>/stop` | POST | Stop playback and clear queue |
+| `/api/<guild_id>/volume` | POST | Set volume (0–200) |
+| `/api/<guild_id>/speed` | POST | Set speed (0.25–2.0) |
+| `/api/<guild_id>/dj_toggle` | POST | Toggle DJ mode on/off |
+| `/api/<guild_id>/dj_voice` | POST | Set DJ TTS voice |
+| `/api/<guild_id>/voices` | GET | List available TTS voices |
+| `/api/<guild_id>/play` | POST | Add URL/search to queue and start playback |
+| `/api/<guild_id>/soundboard` | POST | Play a sound effect in voice |
+| `/api/<guild_id>/queue/<index>` | DELETE | Remove item from queue |
+| `/api/<guild_id>/queue/reorder` | POST | Reorder queue (expects `{"order": [2,0,1,3]}`) |
+| `/api/<guild_id>/queue/play_next/<index>` | POST | Move queue item to position 0 (next to play) |
+| `/api/<guild_id>/lyrics` | GET | Fetch lyrics for currently playing song |
+| `/api/<guild_id>/presets/save` | POST | Save current queue as named preset |
+| `/api/<guild_id>/presets/load` | POST | Load a preset into the queue |
+| `/api/sounds` | GET | List available soundboard sounds |
+| `/api/sounds/upload` | POST | Upload a sound file (multipart/form-data) |
+| `/api/sounds/delete` | POST | Delete a sound file |
+| `/api/presets` | GET | List all saved presets |
+| `/api/presets/delete` | POST | Delete a saved preset |
+
+### Flask ↔ Discord.py Bridge
+
+Flask runs synchronous request handlers on its own threads. Discord.py requires operations on its async event loop. The bridge is `_run_async()`:
+
+```python
+def _run_async(coro):
+    future = asyncio.run_coroutine_threadsafe(coro, bot.loop)
+    return future.result(timeout=10)
+```
+
+This submits a coroutine to the bot's event loop and blocks the Flask thread until it completes (with a 10-second timeout).
+
+### Template Filters
+
+| Filter | Purpose |
+|---|---|
+| `highlight_sound_tags` | Wraps `{sound:name}` in purple `<span class="sound-tag">🔊 name</span>` for visual highlighting |
+| `highlight_placeholders` | Highlights both `{sound:name}` (purple) and `{title}/{prev_title}/{next_title}/{greeting}` (blue) in DJ line display |
+
+### Discord Snowflake IDs in JavaScript
+
+Discord guild IDs are 64-bit integers (snowflakes) that exceed JavaScript's `Number.MAX_SAFE_INTEGER` (2^53 - 1). Passing them as bare numbers in JS truncates them. **All guild IDs in HTML/JS must be wrapped in single quotes** (`'{{ g.id }}'`), not rendered as bare numbers (`{{ g.id }}`). Flask's `<int:guild_id>` route correctly parses them server-side.
+
+---
+
+## 14. Soundboard System
+
+The soundboard lets users play sound effects in the bot's voice channel. It works both from the web dashboard and from `{sound:name}` tags in DJ lines.
+
+### Architecture
+
+```
+sounds/ directory
+  ├── airhorn.wav
+  ├── air_raid.wav
+  ├── applause.wav
+  └── ... (user-uploaded .mp3/.wav/.ogg/.flac files)
+
+utils/soundboard.py
+  ├── list_sounds() → [{"id": "airhorn.wav", "name": "Airhorn", "file": "sounds/airhorn.wav"}, ...]
+  └── get_sound_path(sound_id) → "sounds/airhorn.wav" or None
+
+web/app.py
+  ├── /api/<guild_id>/soundboard [POST]  → plays a sound
+  ├── /api/sounds/upload [POST]           → saves file to sounds/
+  └── /api/sounds/delete [POST]           → removes file from sounds/
+```
+
+### The 9 Built-in Sounds
+
+These were generated programmatically (sine waves, noise bursts) — no copyright issues:
+
+| File | Effect | Used In DJ Lines |
+|---|---|---|
+| `airhorn.wav` | Airhorn blast | Intros, hype intros, transitions, callouts |
+| `air_raid.wav` | Siren/alarm | Hype intros (loud), station IDs |
+| `applause.wav` | Crowd applause | Outros, final outros, callouts |
+| `button_press.wav` | UI click | Transitions, outros |
+| `club_hit.wav` | Bass drop | Intros, transitions, station IDs |
+| `dj_drop.wav` | DJ drop effect | Station IDs, transitions |
+| `in_the_mix.wav` | Transition effect | Intros, transitions, callouts |
+| `record_scratch.wav` | Vinyl scratch | Final outros |
+| `turntable_start.wav` | Turntable spin-up | Intros, mellow transitions |
+
+### Soundboard Play Endpoint
+
+The `/api/<guild_id>/soundboard` endpoint was rewritten to fix a `KeyError` and a JSON parse error:
+
+**Old (broken):**
+```python
+# Nested async mess — run_in_executor inside run_coroutine_threadsafe
+future = asyncio.run_coroutine_threadsafe(
+    bot.loop.run_in_executor(None, _play_sound), bot.loop
+)
+```
+
+**New (working):**
+```python
+async def _play_sound():
+    source = discord.FFmpegPCMAudio(path, before_options="-nostdin", options="-vn")
+    guild.voice_client.play(source)
+    return True
+
+result = _run_async(_play_sound())
+```
+
+`voice_client.play()` is synchronous but **must** run on the bot's event loop thread for thread safety. The `_run_async` helper ensures this.
+
+### Upload
+
+The soundboard page uses a hidden `<input type="file">` with `position:absolute; opacity:0; width:0; height:0` (not `display:none`, which some browsers reject for programmatic `.click()`). Maximum file size: 16MB (`MAX_CONTENT_LENGTH`). Allowed extensions: `.mp3`, `.wav`, `.ogg`, `.flac`.
+
+---
+
+## 15. DJ Custom Lines
+
+Users can add custom DJ lines alongside the 172 built-in ones. Custom lines are persisted in `dj_custom_lines.json` and merged at runtime.
+
+### Architecture
+
+```
+utils/custom_lines.py
+  ├── LINE_CATEGORIES = ["intros", "hype_intros", "hype_intros_loud", "outros", ...]
+  ├── CATEGORY_LABELS = {"intros": "Session Intros", ...}
+  ├── CATEGORY_PLACEHOLDERS = {"intros": ["{greeting}", "{title}", "{sound:name}"], ...}
+  ├── add_line(category, line) → bool
+  ├── remove_line(category, index) → bool
+  └── load_custom_lines() → {"intros": ["My custom intro!"], ...}
+
+dj_custom_lines.json (auto-created)
+  {"intros": ["My custom intro with {sound:airhorn}"], "transitions": [...]
+
+Web Dashboard (/dj-lines page)
+  ├── Shows built-in + custom lines per category
+  ├── Add form (category dropdown + text input)
+  ├── Delete button on custom lines
+  └── Visual highlights: {sound:name} in purple, {title} etc in blue
+```
+
+### Placeholders
+
+| Placeholder | Available In | Replaced With |
+|---|---|---|
+| `{greeting}` | Intros only | Time-based greeting ("Good evening, everyone!") |
+| `{title}` | Intros, outros, final outros | Current song title |
+| `{prev_title}` | Transitions (all 3 types) | Previous song title |
+| `{next_title}` | Transitions (all 3 types) | Next song title |
+| `{sound:name}` | ALL categories | Plays sound effect after DJ speaks |
+
+### Merging
+
+The `_pool(category)` function in `utils/dj.py` merges built-in + custom lines and deduplicates them. All `generate_*()` functions pick from this combined pool, so custom lines are mixed in naturally with built-in ones.
+
+### Web DJ Lines Page Features
+
+- **Sound tag reference card** — Shows all available sound names as clickable chips. Click a chip to copy `{sound:name}` to clipboard.
+- **Visual highlighting** — Built-in lines display `{sound:name}` tags in purple and `{title}` etc. in blue (via `highlight_placeholders` Jinja filter).
+- **Count badges** — Shows "X built-in · Y custom" per category.
+
+---
+
+## 16. Test Suite
 
 ### `tests/test_playlist.py`
 
@@ -1521,7 +1873,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 14. Launcher Scripts
+## 17. Launcher Scripts
 
 ### `launch.sh`
 
@@ -1580,7 +1932,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 15. Complete Command Reference
+## 18. Complete Command Reference
 
 **Default prefix:** `?` (configurable in `config.py`)
 
@@ -1638,7 +1990,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 16. Troubleshooting & Known Issues
+## 19. Troubleshooting & Known Issues
 
 ### Common Problems
 
@@ -1652,6 +2004,11 @@ venv/bin/python -m pytest tests/test_suno.py -v
 | **"Format not available" error** | YouTube changed formats or yt-dlp is outdated | Update: `pip install --upgrade yt-dlp`. The launchers do this automatically. |
 | **Bot crashes on speed change** | FFmpeg atempo filter out of range (below 0.5) | Use the `?speedhigher`/`?speedlower` commands instead of direct speed modification. They stay within YouTube's supported range. |
 | **Blank screen on `attach`** | Terminal incompatibility with `screen -r` | Workaround: `tail -f bot.log` in a separate terminal. |
+| **Soundboard "JSON parse" error** | Old endpoint used `run_in_executor` inside `run_coroutine_threadsafe` | Fixed — endpoint now uses `_run_async()` with a simple async wrapper. (Fixed in 6.2.0) |
+| **`KeyError: 'sound'` on playlist play** | DJ lines with `{sound:name}` crash Python's `.format()` | Fixed — `_format_line()` strips sound tags before `.format()`, re-appends after. (Fixed in 6.2.0) |
+| **Upload button doesn't work on Soundboard** | File input had `display:none`; auto-refresh killed uploads | Fixed — uses `opacity:0; position:absolute`; auto-refresh disabled on non-dashboard pages. (Fixed in 6.2.0) |
+| **"No closing quotation" FFmpeg error** | Crossfade filter string missing closing `"` on `atempo` | Fixed — crossfade filter now properly closes the FFmpeg quote. (Fixed in 6.2.0) |
+| **Dashboard buttons broken for some guilds** | Guild IDs passed as JS numbers instead of strings, truncating >53-bit snowflakes | Fixed — all guild IDs in HTML/JS wrapped in single quotes. (Fixed in 6.2.0) |
 
 ### Known Issues
 
@@ -1671,9 +2028,21 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 8. **Speed values below 0.5 may cause FFmpeg errors** — The `atempo` FFmpeg filter only supports 0.5–2.0 per instance. While the bot's speed ladder starts at 0.25x, attempting to play at that speed may cause FFmpeg to fail. Values below 0.5 require chaining multiple `atempo` filters (e.g., `atempo=0.5,atempo=0.5` for 0.25x).
 
+### Bugs Fixed in 6.2.0
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| **Soundboard `KeyError` / JSON parse error** | `run_in_executor(None, _play_sound)` nested inside `run_coroutine_threadsafe` — returned HTML error page instead of JSON | Replaced with `_run_async(_play_sound())` — simple async wrapper using the existing helper |
+| **`KeyError: 'sound'` on playlist play with DJ on** | `generate_intro().format(title=...)` interprets `{sound:airhorn}` as a Python format field named `sound` | Added `_format_line()` — extracts `{sound:...}` tags before `.format()`, re-appends after |
+| **Upload button not working on Soundboard page** | `<input type="file" style="display:none">` — browsers reject `.click()` on `display:none` file inputs; also page auto-refresh every 30s killed uploads | Changed to `position:absolute; opacity:0; width:0; height:0`; made auto-refresh conditional (dashboard only) |
+| **FFmpeg "No closing quotation" error** | Crossfade filter string `' -filter:a "atempo=...+afade=...'` was missing the closing `"` | Added closing `"'` to the crossfade FFmpeg options string |
+| **Dashboard buttons broken for large guild IDs** | Guild IDs rendered as bare JS numbers (`{{ g.id }}`) — Discord snowflakes exceed JS `Number.MAX_SAFE_INTEGER` (2^53-1), causing silent truncation | All guild IDs in HTML/JS wrapped in single quotes (`'{{ g.id }}'`) |
+| **PlaceholderTrack `webpage_url` set to bare video ID** | `yt-dlp` `extract_flat=True` returns bare IDs in `url` field (e.g., `"dQw4w9WgXcQ"`). The `or` fallback in `__init__` set `webpage_url` to the bare ID (truthy), preventing proper URL construction | Check if `url` starts with `http` before using it as `webpage_url` |
+| **Jinja `is none` check on JS variable** | Soundboard guild selection used Jinja `{% if soundboardGuild is none %}` on a JS variable — Jinja renders at template time | Build JS array of in-voice guild IDs and pick first one at runtime |
+
 ---
 
-## 17. Development Guide
+## 20. Development Guide
 
 ### Adding a New Cog
 

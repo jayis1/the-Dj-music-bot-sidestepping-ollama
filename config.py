@@ -64,7 +64,7 @@ MAX_SOUND_SECONDS = 8
 # The AI side host is a second radio personality powered by a local LLM.
 # It writes its own original banter, hot takes, shoutouts, and commentary
 # — like a co-host who chimes in alongside the main template DJ.
-# Requires Ollama running locally with a pulled model (e.g., `ollama pull llama3.2`).
+# Requires Ollama running locally with a pulled model (e.g., `ollama pull gemma4:latest`).
 
 # Enable the AI side host. Set to "true" in .env to activate.
 OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "true"
@@ -72,8 +72,9 @@ OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "tru
 # Ollama server URL (default: http://localhost:11434)
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
-# Ollama model to use for side host lines (default: llama3.2)
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+# Ollama model to use for side host lines (default: gemma4:latest)
+# Make sure you've pulled the model: ollama pull <model>
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest")
 
 # How often the side host chimes in (0.0–1.0).
 # 0.25 = ~25% chance after each template DJ line.

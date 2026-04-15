@@ -607,7 +607,7 @@ def api_ai_dj_status(guild_id):
             "voice": music.ai_dj_voice.get(
                 guild_id, getattr(cfg, "OLLAMA_DJ_VOICE", "en-US-GuyNeural")
             ),
-            "model": getattr(cfg, "OLLAMA_MODEL", "llama3.2"),
+            "model": getattr(cfg, "OLLAMA_MODEL", "gemma4:latest"),
             "chance": getattr(cfg, "OLLAMA_DJ_CHANCE", 0.25),
             "ollama_available": OLLAMA_DJ_AVAILABLE,
         }
@@ -722,26 +722,70 @@ def api_dj_voice(guild_id):
 
 @app.route("/api/<int:guild_id>/voices")
 def api_voices(guild_id):
+    """Return available TTS voices, with server-side caching to avoid repeated API calls.
+
+    The edge-tts voice list is fetched from Microsoft once (5-15s) and then cached
+    in memory for 30 minutes. Subsequent requests return the cached list instantly.
+    """
     from utils.dj import list_voices, EDGE_TTS_AVAILABLE
 
     if not EDGE_TTS_AVAILABLE:
-        return jsonify({"voices": [], "error": "edge-tts not installed"})
+        return jsonify(
+            {
+                "voices": [],
+                "error": "edge-tts not installed — install with: pip install edge-tts",
+            }
+        )
+
     lang = request.args.get("lang", "en")
-    voices = _run_async(list_voices(lang))
-    if voices is None:
-        voices = []
-    return jsonify(
+
+    # ── Server-side voice cache ──────────────────────────────────
+    # edge_tts.list_voices() makes a live HTTP request to Microsoft's TTS
+    # API every call (5-15 seconds). Caching prevents the Radio page
+    # from hanging on every load or every time the voice dropdown opens.
+    cache_key = f"_voice_cache_{lang}"
+    cache_timestamp_key = f"_voice_cache_ts_{lang}"
+
+    if not hasattr(api_voices, cache_key) or not hasattr(
+        api_voices, cache_timestamp_key
+    ):
+        setattr(api_voices, cache_key, None)
+        setattr(api_voices, cache_timestamp_key, 0)
+
+    cached_voices = getattr(api_voices, cache_key)
+    cache_ts = getattr(api_voices, cache_timestamp_key)
+    cache_ttl = 30 * 60  # 30 minutes
+
+    if cached_voices is not None and (time.time() - cache_ts) < cache_ttl:
+        return jsonify({"voices": cached_voices})
+
+    # Cache miss — fetch from edge-tts
+    raw_voices = _run_async(list_voices(lang))
+    if raw_voices is None:
+        # The async call timed out or failed — return stale cache if available
+        if cached_voices is not None:
+            return jsonify({"voices": cached_voices, "cached": True})
+        return jsonify(
+            {
+                "voices": [],
+                "error": "Failed to fetch voices (request timed out). edge-tts may not be installed or the Microsoft TTS API is unreachable.",
+            }
+        )
+
+    formatted = [
         {
-            "voices": [
-                {
-                    "name": v["ShortName"],
-                    "gender": v.get("Gender", "?"),
-                    "locale": v.get("Locale", "?"),
-                }
-                for v in voices
-            ]
+            "name": v["ShortName"],
+            "gender": v.get("Gender", "?"),
+            "locale": v.get("Locale", "?"),
         }
-    )
+        for v in raw_voices
+    ]
+
+    # Update cache
+    setattr(api_voices, cache_key, formatted)
+    setattr(api_voices, cache_timestamp_key, time.time())
+
+    return jsonify({"voices": formatted})
 
 
 @app.route("/api/<int:guild_id>/queue/<int:index>", methods=["DELETE"])
@@ -954,7 +998,7 @@ def api_ollama_status():
         return jsonify(
             {
                 "available": False,
-                "model": getattr(config, "OLLAMA_MODEL", "llama3.2"),
+                "model": getattr(config, "OLLAMA_MODEL", "gemma4:latest"),
                 "models": [],
                 "enabled": getattr(config, "OLLAMA_DJ_ENABLED", False),
                 "error": "llm_dj module not found",
@@ -969,14 +1013,14 @@ def api_ollama_status():
         except Exception as e:
             result = {
                 "available": False,
-                "model": getattr(config, "OLLAMA_MODEL", "llama3.2"),
+                "model": getattr(config, "OLLAMA_MODEL", "gemma4:latest"),
                 "models": [],
                 "error": f"Check timed out: {e}",
             }
     else:
         result = {
             "available": False,
-            "model": getattr(config, "OLLAMA_MODEL", "llama3.2"),
+            "model": getattr(config, "OLLAMA_MODEL", "gemma4:latest"),
             "models": [],
             "error": "Bot not connected",
         }

@@ -37,6 +37,7 @@ The radio dj music bot is a self-contained Discord music bot built with Python a
 - **🎛️ Soundboard Keyboard Shortcuts** — press 1–9 to instantly fire sound effects
 - **📊 Live Audio Visualizer** — animated frequency canvas on the dashboard while music plays
 - Fully configurable via interactive launcher scripts
+- **🤖 AI Side Host** — a second radio personality powered by a local LLM (Ollama) that writes its own spontaneous banter, hot takes, and shoutouts alongside the main DJ
 
 ---
 
@@ -55,6 +56,43 @@ The radio dj music bot includes a unique **Radio DJ Mode**. When activated, the 
 - Use `?dj` to toggle DJ Mode on or off for your server.
 - The default voice is a female American voice (`en-US-AriaNeural`). 
 - Change the DJ's voice anytime using `?djvoice <voice_name>`.
+
+---
+
+## 🤖 AI Side Host
+
+The AI Side Host is a second radio personality powered by a **local LLM via [Ollama](https://ollama.com)**. Unlike the main DJ (which picks from pre-written templates), the AI side host writes completely original banter from scratch — spontaneous shoutouts, hot takes, song roasts, vibe checks, and more.
+
+**How it works:**
+- The main DJ still handles structured moments (intros, transitions, outros) as usual.
+- The AI side host randomly chimes in with unstructured banter (controlled by `OLLAMA_DJ_CHANCE`).
+- Both hosts speak through the existing TTS → sound effects → playback pipeline.
+- The AI side host gets its **own separate TTS voice** so it sounds like a different person.
+
+**Banter types the AI can generate:**
+- Random funny thoughts / observations
+- Listener shoutouts & crowd hype
+- Gentle song roasts
+- Absurd station trivia
+- Queue hype commentary
+- Vibe checks
+- Spicy harmless music hot takes
+- Song request prompts
+
+**Quick Start:**
+1. [Install Ollama](https://ollama.com) and pull a model:
+   ```bash
+   ollama pull phi3:mini
+   ```
+2. Set in your `.env`:
+   ```env
+   OLLAMA_DJ_ENABLED=true
+   OLLAMA_MODEL=phi3:mini
+   ```
+3. Toggle on in Discord: `?aidj`
+
+> **Recommended models for low VRAM (4 GB):** `phi3:mini` (3.8B), `llama3.2:3b`, `gemma2:2b` — all fast and fit comfortably in 4 GB VRAM.
+
 ---
 
 ## 🌐 Web Dashboard & Custom DJ Lines
@@ -111,6 +149,20 @@ NOWPLAYING_CHANNEL_ID=0
 
 *(If Flask isn't installed, the bot will log a warning and continue running normally without the dashboard).*
 
+**AI Side Host Dashboard Controls:**
+- 🃏 **AI On/Off button** on the main dashboard (glows purple when active)
+- 🃏 **AI badge** on guild cards when the side host is enabled
+- **AI Side Host Voice selector** on the Radio page (visible when AI is enabled)
+- **Ollama status check** on the Settings page with setup instructions if Ollama isn't running
+
+**AI Side Host API Endpoints:**
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/<guild_id>/ai_dj_toggle` | POST | Toggle AI side host on/off |
+| `/api/<guild_id>/ai_dj_voice` | POST | Set the AI side host's TTS voice |
+| `/api/<guild_id>/ai_dj_status` | GET | Get current AI side host status |
+| `/api/ollama/status` | GET | Check Ollama connectivity and model availability |
+
 ---
 
 ## 📜 Full Command Reference
@@ -146,6 +198,12 @@ NOWPLAYING_CHANNEL_ID=0
 | `?djvoice` | `?djvoice [name]` | Shows the current DJ voice, or sets it to `<name>` |
 | `?djvoices` | `?djvoices [prefix]`| Lists available voices (e.g. `ja` for Japanese, or no prefix for English) |
 
+### 🤖 AI Side Host Commands
+| Command | Usage | Description |
+|---|---|---|
+| `?aidj` | `?aidj` | Toggles the AI side host on/off. Shows model, voice, and chime-in chance |
+| `?aidjvoice` | `?aidjvoice [name]` | Shows or sets the AI side host's separate TTS voice |
+
 ### ⚙️ Admin Commands (Bot Owner Only)
 | Command | Usage | Description |
 |---|---|---|
@@ -166,8 +224,8 @@ Don't worry if you aren't super technical! We have created an interactive setup 
 **Step 1: Download the Bot's Code**
 Open your terminal (command line) and type the following commands. Press `Enter` after each line:
 ```bash
-git clone https://github.com/jayis1/the-Dj-music-bot.git
-cd the-Dj-music-bot
+git clone https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama.git
+cd the-Dj-music-bot-sidestepping-ollama
 ```
 *(This tells your computer to copy the bot's code onto your machine and open the bot's folder.)*
 

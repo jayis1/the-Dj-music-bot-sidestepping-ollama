@@ -1589,7 +1589,7 @@ class Music(commands.Cog):
                     f"**Issue:** {error}\n\n"
                     f"**Setup:**\n"
                     f"1. Install Ollama: https://ollama.com\n"
-                    f"2. Pull a model: `ollama pull {getattr(config, 'OLLAMA_MODEL', 'llama3.2')}`\n"
+                    f"2. Pull a model: `ollama pull {getattr(config, 'OLLAMA_MODEL', 'gemma4:latest')}`\n"
                     f"3. Set `OLLAMA_DJ_ENABLED=true` in your `.env` file",
                     discord.Color.red(),
                 )
@@ -1610,7 +1610,7 @@ class Music(commands.Cog):
 
         ai_voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
         chance = getattr(config, "OLLAMA_DJ_CHANCE", 0.25)
-        model = getattr(config, "OLLAMA_MODEL", "llama3.2")
+        model = getattr(config, "OLLAMA_MODEL", "gemma4:latest")
 
         logging.info(f"AI Side Host {status} for {ctx.guild.name} (voice: {ai_voice})")
 

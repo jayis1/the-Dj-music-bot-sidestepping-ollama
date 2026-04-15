@@ -42,7 +42,7 @@
     <div style="margin-bottom: 20px;">
         <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice</h4>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <select id="voice-{{ g.id }}" class="voice-select" onchange="setDjVoice('{{ g.id }}', this.value)">
+            <select id="voice-{{ g.id }}" class="voice-select" onchange="setDjVoice('{{ g.id }}', this.value)" data-current="{{ g.dj_voice }}">
                 <option value="">Loading voices...</option>
             </select>
             {% if g.dj_enabled %}
@@ -51,9 +51,6 @@
             <span style="font-size: 11px; color: var(--text-muted);">Enable DJ mode from the dashboard</span>
             {% endif %}
         </div>
-        <script>
-        loadVoices('{{ g.id }}', "{{ g.dj_voice }}");
-        </script>
     </div>
 
     <!-- ── AI Side Host Voice ──────────────────────────────────── -->
@@ -61,14 +58,11 @@
     <div style="margin-bottom: 20px;">
         <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🃏 AI Side Host Voice</h4>
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <select id="ai-voice-{{ g.id }}" class="voice-select" onchange="setAiDjVoice('{{ g.id }}', this.value)">
+            <select id="ai-voice-{{ g.id }}" class="voice-select" onchange="setAiDjVoice('{{ g.id }}', this.value)" data-current="{{ g.ai_dj_voice }}">
                 <option value="">Loading voices...</option>
             </select>
             <span class="badge badge-ai-dj" style="font-size: 11px; background: rgba(168,85,247,0.15); color: var(--purple);">🃏 AI Active</span>
         </div>
-        <script>
-        loadAiVoices('{{ g.id }}', "{{ g.ai_dj_voice }}");
-        </script>
     </div>
     {% endif %}
 
@@ -315,8 +309,10 @@ async function setDjVoice(guildId, voice) {
 async function loadVoices(guildId, currentVoice) {
     const select = document.getElementById('voice-' + guildId);
     if (!select) return;
+    select.innerHTML = '<option value="">Loading voices...</option>';
     try {
         const res = await fetch('/api/' + guildId + '/voices');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         select.innerHTML = '';
         if (data.voices && data.voices.length > 0) {
@@ -327,11 +323,14 @@ async function loadVoices(guildId, currentVoice) {
                 if (v.name === currentVoice) opt.selected = true;
                 select.appendChild(opt);
             });
+        } else if (data.error) {
+            select.innerHTML = '<option value="">' + data.error + '</option>';
         } else {
-            select.innerHTML = '<option value="">No voices available</option>';
+            select.innerHTML = '<option value="">No voices available — is edge-tts installed?</option>';
         }
     } catch (e) {
-        select.innerHTML = '<option value="">Failed to load voices</option>';
+        select.innerHTML = '<option value="">Failed to load voices (network error). Click to retry.</option>';
+        select.onclick = function() { loadVoices(guildId, currentVoice); select.onclick = null; };
     }
 }
 
@@ -350,8 +349,10 @@ async function setAiDjVoice(guildId, voice) {
 async function loadAiVoices(guildId, currentVoice) {
     const select = document.getElementById('ai-voice-' + guildId);
     if (!select) return;
+    select.innerHTML = '<option value="">Loading voices...</option>';
     try {
         const res = await fetch('/api/' + guildId + '/voices');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         select.innerHTML = '';
         if (data.voices && data.voices.length > 0) {
@@ -362,11 +363,14 @@ async function loadAiVoices(guildId, currentVoice) {
                 if (v.name === currentVoice) opt.selected = true;
                 select.appendChild(opt);
             });
+        } else if (data.error) {
+            select.innerHTML = '<option value="">' + data.error + '</option>';
         } else {
-            select.innerHTML = '<option value="">No voices available</option>';
+            select.innerHTML = '<option value="">No voices available — is edge-tts installed?</option>';
         }
     } catch (e) {
-        select.innerHTML = '<option value="">Failed to load voices</option>';
+        select.innerHTML = '<option value="">Failed to load voices (network error). Click to retry.</option>';
+        select.onclick = function() { loadAiVoices(guildId, currentVoice); select.onclick = null; };
     }
 }
 
@@ -425,5 +429,23 @@ async function replayHistory(guildId, index) {
         }
     } catch (e) { showToast('Replay failed: ' + e.message, 'error'); }
 }
+
+// ── Initialize voice dropdowns on DOM ready ───────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    {% for g in guilds %}
+    {% if g.in_voice %}
+    const djSelect{{ g.id }} = document.getElementById('voice-{{ g.id }}');
+    if (djSelect{{ g.id }}) {
+        loadVoices('{{ g.id }}', djSelect{{ g.id }}.dataset.current || '');
+    }
+    {% if g.ai_dj_enabled %}
+    const aiSelect{{ g.id }} = document.getElementById('ai-voice-{{ g.id }}');
+    if (aiSelect{{ g.id }}) {
+        loadAiVoices('{{ g.id }}', aiSelect{{ g.id }}.dataset.current || '');
+    }
+    {% endif %}
+    {% endif %}
+    {% endfor %}
+});
 </script>
 {% endblock %}

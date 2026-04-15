@@ -48,7 +48,7 @@ OLLAMA_DJ_AVAILABLE = False
 if AIOHTTP_AVAILABLE and getattr(config, "OLLAMA_DJ_ENABLED", False):
     OLLAMA_DJ_AVAILABLE = True
     logging.info(
-        f"AI Side Host: Enabled (model={getattr(config, 'OLLAMA_MODEL', 'llama3.2')}, "
+        f"AI Side Host: Enabled (model={getattr(config, 'OLLAMA_MODEL', 'gemma4:latest')}, "
         f"host={getattr(config, 'OLLAMA_HOST', 'http://localhost:11434')})"
     )
 else:
@@ -264,6 +264,22 @@ async def _get_session():
     return _ollama_session
 
 
+async def _get_available_models(host: str, session) -> list[str]:
+    """Query Ollama /api/tags to list pulled models.
+
+    Used when /api/chat returns 404 so we can tell the user which
+    models are actually available. Returns an empty list on any error.
+    """
+    try:
+        async with session.get(f"{host}/api/tags") as resp:
+            if resp.status != 200:
+                return []
+            data = await resp.json(content_type=None)
+            return [m.get("name", "") for m in data.get("models", []) if m.get("name")]
+    except Exception:
+        return []
+
+
 async def call_ollama(
     prompt: str,
     system: str,
@@ -276,7 +292,7 @@ async def call_ollama(
         return None
 
     host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
-    model = model or getattr(config, "OLLAMA_MODEL", "llama3.2")
+    model = model or getattr(config, "OLLAMA_MODEL", "gemma4:latest")
 
     try:
         session = await _get_session()
@@ -295,7 +311,31 @@ async def call_ollama(
 
         async with session.post(f"{host}/api/chat", json=payload) as resp:
             if resp.status != 200:
-                logging.warning(f"AI Side Host: Ollama returned status {resp.status}")
+                # Provide a clear, actionable error message.
+                # 404 = model not found (not pulled yet).
+                # 400 = bad request (e.g., invalid model name).
+                # Anything else = server/transport issue.
+                if resp.status == 404:
+                    # Check what models ARE available so we can suggest a fix
+                    available = await _get_available_models(host, session)
+                    if available:
+                        logging.warning(
+                            f"AI Side Host: Model '{model}' not found (Ollama 404). "
+                            f"Run: ollama pull {model} | Available models: {', '.join(available[:5])}"
+                        )
+                    else:
+                        logging.warning(
+                            f"AI Side Host: Model '{model}' not found (Ollama 404). "
+                            f"Run: ollama pull {model}"
+                        )
+                elif resp.status == 400:
+                    logging.warning(
+                        f"AI Side Host: Bad request to Ollama (400) — model '{model}' may be invalid"
+                    )
+                else:
+                    logging.warning(
+                        f"AI Side Host: Ollama returned status {resp.status} (model={model})"
+                    )
                 return None
 
             data = await resp.json(content_type=None)
@@ -449,7 +489,7 @@ async def check_ollama_available() -> dict:
     Used by the dashboard and the ?aidj command.
     """
     host = getattr(config, "OLLAMA_HOST", "http://localhost:11434")
-    model = getattr(config, "OLLAMA_MODEL", "llama3.2")
+    model = getattr(config, "OLLAMA_MODEL", "gemma4:latest")
 
     if not AIOHTTP_AVAILABLE:
         return {
@@ -479,7 +519,7 @@ async def check_ollama_available() -> dict:
                 "error": (
                     None
                     if model_available
-                    else f"Model '{model}' not pulled. Available: {', '.join(models[:10]) or 'none'}"
+                    else f"Model '{model}' not pulled. Run: ollama pull {model} | Available: {', '.join(models[:10]) or 'none'}"
                 ),
             }
     except asyncio.TimeoutError:

@@ -203,12 +203,21 @@ Click **📋 Log** in the sidebar to open a live slide-out log panel:
 - Streams the same logs sent to your Discord log channel — **in real-time via SSE**
 - **Width:** 640px (responsive, max 90vw on small screens)
 - **Filter buttons:** All / Info / Warn / Error — `[📋 Copy] [All] [Info] [Warn] [Error] [✕]`
-- **📋 Copy button** — copies all currently visible (filtered) log entries to clipboard as plain text, one line per entry:
+- **📋 Copy button** — three-tier clipboard strategy (most reliable → least):
+
+  | Priority | Method | When it works |
+  |---|---|---|
+  | 1st | `execCommand('copy')` via visible `textarea` at opacity 0.01 | HTTP, HTTPS, all browsers |
+  | 2nd | `navigator.clipboard.writeText()` | HTTPS / localhost only |
+  | 3rd | **Copy modal** — full-screen popup with pre-selected `readonly textarea` | When both above fail — user does Ctrl+A → Ctrl+C |
+
+  Output format matches `bot_activity.log` exactly — uses the server's pre-formatted `message` field:
   ```
-  19:54:22 INFO     DJ: Generated TTS (kokoro) → /tmp/dj_kokoro_abc.wav
-  19:54:30 WARNING  DJ: Kokoro server is down, falling back to edge-tts
+  19:54:22,123:INFO:cogs.music: Playing Zeiten ändern dich (nicht) in the family
+  19:54:30,456:INFO:utils.dj: DJ: Generated TTS (kokoro) → /tmp/dj_kokoro_zd0v35ft.wav
+  19:55:28,789:ERROR:cogs.music: DJ: Failed to play TTS: Already playing audio.
   ```
-  Visual feedback: turns green + shows **✅ Copied 47 logs** for 2s → reverts. Shows **⚠ Empty** if nothing visible, **❌ Copy failed** on error. Falls back to `execCommand('copy')` on non-HTTPS.
+  Button feedback: **✅ Copied 47** (green, 2.5s) · **⚠ No logs** · **⚠ Empty text** · **📋 Manual copy** (modal opened)
 - Color-coded severity badges (INFO=blue, WARNING=amber, ERROR=red, DEBUG=gray)
 - Auto-reconnects if the connection drops
 - No new dependencies — uses native browser `EventSource` API

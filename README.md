@@ -70,11 +70,17 @@ The radio dj music bot features a built-in web dashboard (powered by Flask) that
 - Custom lines are saved instantly to `dj_custom_lines.json` and persist across reboots.
 
 **Configuration:**
-In your `.env` file, you can customize the host and port:
+In your `.env` file, you can customize the host, port, and now-playing channel:
 ```env
 WEB_HOST=0.0.0.0
 WEB_PORT=8080
+
+# Optional: bind all now-playing embeds to a specific Discord channel
+# Leave as 0 (or omit) to send embeds wherever the command was typed
+NOWPLAYING_CHANNEL_ID=0
 ```
+> **Tip:** To get a channel ID, enable **Developer Mode** in Discord settings, then right-click the channel → **Copy Channel ID**.
+
 *(If Flask isn't installed, the bot will log a warning and continue running normally without the dashboard).*
 
 ---

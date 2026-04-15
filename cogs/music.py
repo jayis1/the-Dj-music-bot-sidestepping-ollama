@@ -66,6 +66,22 @@ class Music(commands.Cog):
             self.song_queues[guild_id] = asyncio.Queue()
         return self.song_queues[guild_id]
 
+    def _get_np_channel(self, guild):
+        """Return the channel where now-playing messages should be sent.
+
+        If NOWPLAYING_CHANNEL_ID is configured and valid, always use that channel.
+        Otherwise return None (caller should fall back to ctx.channel).
+        """
+        np_id = getattr(config, "NOWPLAYING_CHANNEL_ID", 0)
+        if np_id:
+            channel = self.bot.get_channel(np_id)
+            if channel:
+                return channel
+            logging.warning(
+                f"NOWPLAYING_CHANNEL_ID={np_id} not found. Falling back to command channel."
+            )
+        return None
+
     def create_embed(self, title, description, color=discord.Color.blurple(), **kwargs):
         embed = discord.Embed(title=title, description=description, color=color)
         for key, value in kwargs.items():
@@ -992,6 +1008,12 @@ class Music(commands.Cog):
         )
         guild_id = ctx.guild.id
 
+        # Determine which channel to send the now-playing message to.
+        # If NOWPLAYING_CHANNEL_ID is set, always send there. Otherwise use ctx.channel.
+        np_channel = self._get_np_channel(ctx.guild)
+        target_channel = np_channel or ctx.channel
+        channel_id = target_channel.id
+
         # If invoked by a user, send a new message and store it for future updates
         if not silent:
             # Delete previous nowplaying message if it exists
@@ -1071,20 +1093,20 @@ class Music(commands.Cog):
                     )
                 )
 
-                self.nowplaying_message[guild_id] = await ctx.send(
+                self.nowplaying_message[guild_id] = await target_channel.send(
                     embed=embed, view=view
                 )
                 logging.info(
                     f"nowplaying: Sent initial message {self.nowplaying_message[guild_id].id} for {data.title} in {ctx.guild.name}"
                 )
             else:
-                self.nowplaying_message[guild_id] = await ctx.send(
+                self.nowplaying_message[guild_id] = await target_channel.send(
                     embed=self.create_embed(
                         "Not Playing", "The bot is not currently playing anything."
                     )
                 )
                 logging.info(
-                    f"nowplaying: Sent initial 'Not Playing' message for {ctx.guild.name}"
+                    f"nowplaying: Sent initial 'Not Playing' message for {ctx.guild.name} in #{target_channel.name}"
                 )
 
         # The background task will call _update_nowplaying_display silently
@@ -1815,12 +1837,27 @@ class Music(commands.Cog):
         # Now play the actual song
         await self._start_song_playback(ctx, data, channel_id)
 
-    async def _start_song_playback(self, ctx, data, channel_id):
+    async def _start_song_playback(self, ctx, data, channel_id=None):
         """
         Core song playback — creates the FFmpeg player and starts it.
         Extracted from play_next so DJ intro can call it after TTS finishes.
+
+        If NOWPLAYING_CHANNEL_ID is set in config, the now-playing embed
+        will always be sent to that channel. Otherwise it goes to the channel
+        where the play command was invoked (channel_id).
         """
         guild_id = ctx.guild.id
+
+        # Resolve the now-playing channel: use configured channel if set,
+        # otherwise fall back to the channel the command was invoked in.
+        np_channel = self._get_np_channel(ctx.guild)
+        if np_channel:
+            channel_id = np_channel.id
+            logging.info(
+                f"Now-playing bound to configured channel #{np_channel.name} ({np_channel.id}) for guild {guild_id}"
+            )
+        elif channel_id is None:
+            channel_id = ctx.channel.id
 
         if not ctx.voice_client or not ctx.voice_client.is_connected():
             logging.warning(f"DJ: Voice client gone for guild {guild_id}")

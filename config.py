@@ -34,7 +34,29 @@ LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 # DJ Mode — Default voice for the radio DJ (Microsoft Edge TTS voice name)
 # Change this if you want a different default voice.
 # Use ?djvoices in Discord to see available voices.
-DJ_VOICE = "en-US-AriaNeural"
+# When using a local TTS server (TTS_MODE=local), this should be a VibeVoice
+# voice name like "en-Carter_man" instead of an Edge TTS voice.
+DJ_VOICE = os.environ.get("DJ_VOICE", "en-US-AriaNeural")
+
+# ── TTS Engine ──────────────────────────────────────────────────────────
+# The bot supports two TTS engines:
+#
+# 1. "edge-tts" (default) — Uses Microsoft Edge TTS voices via the edge-tts
+#    Python package. Free, no server needed, 100+ voices in 40+ languages.
+#    Requires: pip install edge-tts
+#    Voice names like: en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural
+#
+# 2. "local" — Uses a locally-hosted VibeVoice-Realtime TTS server.
+#    Lower latency (~300ms first audio), runs on your GPU/CPU, no Microsoft API.
+#    Requires: VibeVoice server running (see https://github.com/microsoft/VibeVoice)
+#    Voice names like: en-Carter_man, en-Journalist_woman, de-Anna_woman
+#    The bot connects via WebSocket to stream audio in real-time.
+TTS_MODE = os.environ.get("TTS_MODE", "edge-tts").lower()
+
+# Local TTS server URL (only used when TTS_MODE=local).
+# This is the VibeVoice-Realtime WebSocket server address.
+# Start it with: python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B
+LOCAL_TTS_URL = os.environ.get("LOCAL_TTS_URL", "http://localhost:3000")
 
 # Emojis for DJ mode
 DJ_EMOJI = "🎙️"

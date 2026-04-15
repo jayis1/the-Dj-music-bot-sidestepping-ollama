@@ -390,6 +390,8 @@ def radio():
         guilds=guilds_data,
         bot_user=str(bot.user) if bot else "Not connected",
         guild_count=len(bot.guilds) if bot else 0,
+        tts_mode=getattr(config, "TTS_MODE", "edge-tts"),
+        config=config,
     )
 
 
@@ -724,15 +726,69 @@ def api_dj_voice(guild_id):
 def api_voices(guild_id):
     """Return available TTS voices, with server-side caching to avoid repeated API calls.
 
-    The edge-tts voice list is fetched from Microsoft once (5-15s) and then cached
-    in memory for 30 minutes. Subsequent requests return the cached list instantly.
+    When TTS_MODE is 'local', queries the VibeVoice-Realtime server's /config
+    endpoint and caches the result for 30 minutes. When TTS_MODE is 'edge-tts'
+    (default), fetches from Microsoft's TTS API and caches for 30 minutes.
     """
-    from utils.dj import list_voices, EDGE_TTS_AVAILABLE
+    from utils.dj import list_voices, EDGE_TTS_AVAILABLE, TTS_MODE as CURRENT_TTS_MODE
 
+    # ── Local TTS mode (VibeVoice-Realtime) ────────────────────────
+    if CURRENT_TTS_MODE == "local":
+        lang = request.args.get("lang", "en")
+
+        # Cache key for local voices
+        cache_key = "_local_voice_cache"
+        cache_timestamp_key = "_local_voice_cache_ts"
+
+        if not hasattr(api_voices, cache_key):
+            setattr(api_voices, cache_key, None)
+            setattr(api_voices, cache_timestamp_key, 0)
+
+        cached_voices = getattr(api_voices, cache_key)
+        cache_ts = getattr(api_voices, cache_timestamp_key)
+        cache_ttl = 30 * 60  # 30 minutes
+
+        if cached_voices is not None and (time.time() - cache_ts) < cache_ttl:
+            return jsonify({"voices": cached_voices, "tts_mode": "local"})
+
+        raw_voices = _run_async(list_voices(lang))
+        if raw_voices is None:
+            # Failed — return stale cache if available
+            if cached_voices is not None:
+                return jsonify(
+                    {"voices": cached_voices, "cached": True, "tts_mode": "local"}
+                )
+            return jsonify(
+                {
+                    "voices": [],
+                    "tts_mode": "local",
+                    "error": "Failed to fetch voices from local TTS server. "
+                    "Make sure VibeVoice-Realtime is running at {url}.".format(
+                        url=getattr(config, "LOCAL_TTS_URL", "http://localhost:3000")
+                    ),
+                }
+            )
+
+        formatted = [
+            {
+                "name": v.get("ShortName", v.get("name", "")),
+                "gender": v.get("Gender", v.get("gender", "?")),
+                "locale": v.get("Locale", v.get("locale", "?")),
+            }
+            for v in raw_voices
+        ]
+
+        setattr(api_voices, cache_key, formatted)
+        setattr(api_voices, cache_timestamp_key, time.time())
+
+        return jsonify({"voices": formatted, "tts_mode": "local"})
+
+    # ── Default: edge-tts mode ─────────────────────────────────────
     if not EDGE_TTS_AVAILABLE:
         return jsonify(
             {
                 "voices": [],
+                "tts_mode": "edge-tts",
                 "error": "edge-tts not installed — install with: pip install edge-tts",
             }
         )
@@ -757,17 +813,20 @@ def api_voices(guild_id):
     cache_ttl = 30 * 60  # 30 minutes
 
     if cached_voices is not None and (time.time() - cache_ts) < cache_ttl:
-        return jsonify({"voices": cached_voices})
+        return jsonify({"voices": cached_voices, "tts_mode": "edge-tts"})
 
     # Cache miss — fetch from edge-tts
     raw_voices = _run_async(list_voices(lang))
     if raw_voices is None:
         # The async call timed out or failed — return stale cache if available
         if cached_voices is not None:
-            return jsonify({"voices": cached_voices, "cached": True})
+            return jsonify(
+                {"voices": cached_voices, "cached": True, "tts_mode": "edge-tts"}
+            )
         return jsonify(
             {
                 "voices": [],
+                "tts_mode": "edge-tts",
                 "error": "Failed to fetch voices (request timed out). edge-tts may not be installed or the Microsoft TTS API is unreachable.",
             }
         )
@@ -785,7 +844,7 @@ def api_voices(guild_id):
     setattr(api_voices, cache_key, formatted)
     setattr(api_voices, cache_timestamp_key, time.time())
 
-    return jsonify({"voices": formatted})
+    return jsonify({"voices": formatted, "tts_mode": "edge-tts"})
 
 
 @app.route("/api/<int:guild_id>/queue/<int:index>", methods=["DELETE"])
@@ -1062,6 +1121,9 @@ def settings_page():
         mem_mb=mem_mb,
         cpu_pct=cpu_pct,
         auto_refresh=False,
+        tts_mode=getattr(config, "TTS_MODE", "edge-tts"),
+        local_tts_url=getattr(config, "LOCAL_TTS_URL", "http://localhost:3000"),
+        edge_tts_available=EDGE_TTS_AVAILABLE,
     )
 
 

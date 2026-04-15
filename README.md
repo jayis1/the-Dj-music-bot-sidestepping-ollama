@@ -1,23 +1,29 @@
 # 🎵 The Radio DJ Music Bot — v6.3.0
 
-> *"LADIES AND GENTLEMEN — This is not a music bot. This is a radio station. It has a DJ. It has a second AI co-host who roasts the music and drops hot takes. It has a web dashboard. A soundboard. A live activity log. And it never, ever lets the party end."* 🎚️🔥
+> *🎙️ "LADIES AND GENTLEMEN, boys and girls, Discord users of ALL ages — put your hands together, because tonight — TONIGHT — we have something truly, genuinely, historically SPECIAL for you.*
+>
+> *You've had music bots before. We all have. Those sad little bots that stutter, skip, and quietly give up on life halfway through a playlist. Bots that just... play audio. No soul. No personality. No FIRE.*
+>
+> ***This is not that bot.***
+>
+> *This — THIS — is the bot that woke up one day and said 'you know what? I want to be a RADIO STATION.' It has a DJ voice. It has OPINIONS about what time of day it is. It introduces your songs like it's auditioning for a Grammy. It drops airhorns. It plays BED MUSIC under its own voice-overs like a professional. It gives shoutouts to your friends ON THE AIR.*
+>
+> *It has a WEB DASHBOARD. It has a SOUNDBOARD. It has KEYBOARD SHORTCUTS on the soundboard because it respects your time. It tracks your listening history so you can replay bangers from three hours ago. It auto-fills the queue when you run out of songs SO THE PARTY NEVER HAS TO END.*
+>
+> *Speed control? Live. Volume control? Live. Queue reordering? Drag and drop, baby. Progress bar? Ticking every second, accurate to your playback speed. Crossfade? Gapless. Lyrics panel? Right there. Playlist support? THE WHOLE PLAYLIST — not just 25 tracks — THE WHOLE THING.*
+>
+> *It has 172 unique DJ broadcast lines. Seventy. Two. And 74 of them trigger actual sound effects. From the internet. It picked them itself.*
+>
+> ***You didn't come here for a music bot. You came for a radio station. And a radio station is exactly what you're gonna get.***
+>
+> *This is The Radio DJ Music Bot. And IT — IS — LIVE."* 🎚️🔥
 
 ---
 
-## 🆕 What's New in v6.3.0
+The radio dj music bot is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels, with a full radio DJ personality, web dashboard, soundboard, and way more than any sane bot should have.
 
-| Feature | Summary |
-|---|---|
-| 📋 **Activity Log Panel** | Live Discord-channel-style log panel in Mission Control — real-time SSE streaming, severity filters |
-| 🎙️ **Voice Dropdown Fixes** | DJ & AI voice dropdowns now load instantly (30-min server-side cache, DOMContentLoaded fix) |
-| 🃏 **AI Reactive Banter** | AI side host now *reacts* to what the main DJ just said — 4 new reactive banter categories |
-| 🔧 **Ollama Error Handling** | 404 errors now show the pull command + available models instead of just "status 404" |
-| 🔄 **Default Model Update** | Default Ollama model changed from `llama3.2` → `gemma4:latest` across all configs |
 
----
-
-## ✨ Features at a Glance
-
+## ✨ Features
 ### 🎧 Music & Playback
 - Play from **YouTube** (URLs, search queries, full playlists) and **Suno.com**
 - **Queue management** — add, remove, clear, shuffle, drag-and-drop reorder
@@ -26,6 +32,12 @@
 - **Auto-DJ / Radio mode** — queue auto-refills from a YouTube playlist, a preset, or recently played history
 - **Gapless crossfade** between tracks (configurable fade-in duration)
 
+### 🔊 TTS Engine
+- **Edge TTS** (default) — Microsoft voices, 100+ in 40+ languages, no server needed
+- **Local TTS** — routes to a [VibeVoice-Realtime](https://github.com/microsoft/VibeVoice) server on your hardware (~300ms, no cloud)
+- Switch modes with `TTS_MODE=local` in `.env` — zero code changes required
+- Settings page shows live TTS engine status
+
 ### 🎙️ DJ Mode
 - TTS voice commentary between every track (intro, transition, outro)
 - **172 built-in DJ lines** across 10 categories — 74 with embedded sound effect tags
@@ -33,29 +45,42 @@
 - **DJ bed music** — ambient pad plays softly under commentary for a real radio feel
 - **Shoutouts** — `?shoutout @user` fires a live on-air shoutout with TTS + sound effects
 - **Per-guild toggle** — `?dj` on/off per server, voice changeable with `?djvoice`
+- Works with **both TTS engines** — Edge TTS or Local VibeVoice
+- **🤖 AI Side Host** — a second radio personality powered by a local LLM (Ollama) that writes its own spontaneous banter, hot takes, and shoutouts alongside the main DJ
 
-### 🤖 AI Side Host *(new in v6.2.0, enhanced in v6.3.0)*
-- Powered by a **local LLM via [Ollama](https://ollama.com)** — writes completely original banter
-- **Reacts to the main DJ** — knows what was just said and responds like a real co-host
-- **8 independent banter types** — thoughts, shoutouts, song roasts, trivia, queue hype, vibe checks, hot takes, request prompts
-- **4 reactive banter types** — `react_agree`, `react_disagree`, `react_one_up`, `react_tangent`
-- **Separate TTS voice** — sounds like a different person from the main DJ
-- **Tunable chime-in rate** — `OLLAMA_DJ_CHANCE` (0.0–1.0)
-- **Graceful degradation** — if Ollama is down or times out, the bot continues normally with no errors
+---
 
-### 🌐 Web Dashboard (Mission Control)
-- **Live playback controls** — play, pause, skip, stop from the browser
-- **Drag-and-drop queue reorder** + Play Next shortcut
-- **Volume & Speed sliders** — changes apply immediately to the current song
-- **Soundboard** — 17 built-in DJ drops + upload your own `.mp3` files, keyboard shortcuts (1–9)
-- **Recently Played** — last 30 tracks with album art, timestamps, and 🔁 Replay buttons
-- **Live Lyrics panel** — auto-fetched via `syncedlyrics`
-- **Live Audio Visualizer** — 48-bar animated frequency canvas
-- **📋 Activity Log Panel** — real-time slide-out log panel with SSE streaming + severity filters *(new in v6.3.0)*
-- **Listener List** — live avatar pills showing who's in voice
-- **Password protection** — optional login via `WEB_PASSWORD` in `.env`
-- **Join / Leave voice** from the browser
-- **Settings page** — system info, Restart & Shutdown buttons, Ollama status check
+## 🔊 TTS Engine — Local vs Edge
+
+The bot supports two TTS engines, switchable via `.env` with no code changes.
+
+| | **Edge TTS** (default) | **Local TTS (VibeVoice-Realtime)** |
+|---|---|---|
+| Set via | `TTS_MODE=edge-tts` | `TTS_MODE=local` |
+| Latency | 2–5 seconds | ~300ms |
+| Requires | `pip install edge-tts` | VibeVoice server running locally |
+| Voices | 100+ in 40+ languages (e.g. `en-US-AriaNeural`) | Custom voices (e.g. `en-Carter_man`) |
+| Cloud | Microsoft TTS API | Fully local — GPU/CPU on your machine |
+| Internet | Required | Not required |
+
+### Setting Up Local TTS
+```bash
+# 1. Clone and start VibeVoice-Realtime
+git clone https://github.com/microsoft/VibeVoice
+cd VibeVoice
+pip install -r requirements.txt
+python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B
+
+# 2. Set in .env
+TTS_MODE=local
+LOCAL_TTS_URL=http://localhost:3000
+DJ_VOICE=en-Carter_man   # Use a VibeVoice voice name
+```
+
+Voice names for local mode look like: `en-Carter_man`, `en-Journalist_woman`, `de-Anna_woman`.  
+Use `?djvoices` in Discord or the voice dropdown on the Radio page to browse available voices.
+
+> The **Settings page** shows a live TTS Engine status card — green if the configured engine is reachable, red with instructions if it's not.
 
 ---
 
@@ -262,13 +287,20 @@ WEB_PORT=8080
 WEB_PASSWORD=             # Leave blank for open access
 ```
 
+### Optional — TTS Engine
+```env
+TTS_MODE=edge-tts         # "edge-tts" (default) or "local" (VibeVoice-Realtime)
+LOCAL_TTS_URL=http://localhost:3000   # Only used when TTS_MODE=local
+DJ_VOICE=en-US-AriaNeural # Edge TTS voice, or VibeVoice name if TTS_MODE=local
+```
+
 ### Optional — AI Side Host (Ollama)
 ```env
 OLLAMA_DJ_ENABLED=false           # Set to true to activate
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=gemma4:latest        # Recommended: phi3:mini for low VRAM
 OLLAMA_DJ_CHANCE=0.25             # Chime-in chance per transition (0.0–1.0)
-OLLAMA_DJ_VOICE=en-US-GuyNeural   # Separate TTS voice for the AI host
+OLLAMA_DJ_VOICE=en-US-GuyNeural  # Separate TTS voice for the AI host
 OLLAMA_DJ_TIMEOUT=15              # Seconds before skipping if Ollama is slow
 ```
 
@@ -320,6 +352,8 @@ nano .env           # Paste your DISCORD_TOKEN
 | `?aidj` says Ollama not running | Install Ollama: `curl https://ollama.ai/install.sh \| sh` and pull a model: `ollama pull phi3:mini` |
 | Ollama 404 error in logs | Model not pulled yet — the log now shows the exact `ollama pull <model>` command to run |
 | Speed slider doesn't apply | Set speed only after the song has started playing; setting at 1.0× before queuing avoids the race |
+| Local TTS not working | Ensure VibeVoice-Realtime is running at `LOCAL_TTS_URL` — Settings page shows live status |
+| Local TTS voice not found | Use voices like `en-Carter_man` (not Edge TTS names like `en-US-AriaNeural`) when `TTS_MODE=local` |
 | Dashboard 500 error | Check Jinja template `{% if %}`/`{% endif %}` balance — run `./launch.sh doctor` |
 | Age-restricted videos won't play | Use `?fetch_and_set_cookies <youtube_url>` to set cookies |
 | Bot appears stuck in voice after crash | Restart bot — `on_ready` forces disconnect from all stale voice sessions |
@@ -334,9 +368,14 @@ For full technical details — architecture, cog internals, all API endpoints, m
 
 ## 🐛 Bugs Fixed in v6.3.0
 
-- **Voice dropdowns stuck at "Loading voices..."** — Fixed script ordering (DOMContentLoaded) and added 30-min server-side TTS voice cache
-- **Ollama 404 shows no useful info** — Handler now queries `/api/tags`, logs available models, and includes the `ollama pull` command
-- **Wrong default model** — Default changed from `llama3.2` → `gemma4:latest` in `config.py`, `.env.example`, and all modules
+| Feature | Summary |
+|---|---|
+| 🔊 **Local TTS Engine** | `TTS_MODE=local` routes DJ speech to a VibeVoice-Realtime server — ~300ms latency, no cloud, runs on your GPU |
+| 📋 **Activity Log Panel** | Live Discord-channel-style log panel in Mission Control — real-time SSE streaming, severity filters |
+| 🎙️ **Voice Dropdown Fixes** | DJ & AI voice dropdowns now load instantly (30-min server-side cache, DOMContentLoaded fix) |
+| 🃏 **AI Reactive Banter** | AI side host now *reacts* to what the main DJ just said — 4 new reactive banter categories |
+| 🔧 **Ollama Error Handling** | 404 errors now show the pull command + available models instead of just "status 404" |
+| 🔄 **Default Model Update** | Default Ollama model changed from `llama3.2` → `gemma4:latest` across all configs |
 
 ---
 

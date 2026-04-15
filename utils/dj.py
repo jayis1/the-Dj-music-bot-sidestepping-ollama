@@ -1,11 +1,17 @@
 """
 utils/dj.py — Radio DJ mode for MBot.
 
-Generates Text-to-Speech DJ commentary between songs using Microsoft Edge TTS.
+Generates Text-to-Speech DJ commentary between songs using either:
+- Microsoft Edge TTS (default, cloud-based, pip install edge-tts)
+- VibeVoice-Realtime (local, GPU-accelerated, https://github.com/microsoft/VibeVoice)
+
 The DJ speaks like a real radio host — with energy, personality, time-aware
 greetings, listener callouts, weather-style banter, and natural transitions.
 
-Requires: pip install edge-tts
+TTS engine is selected via config.TTS_MODE:
+- "edge-tts" (default): Uses Microsoft Edge TTS voices. Free, no server needed.
+- "local": Uses a locally-hosted VibeVoice-Realtime WebSocket server.
+  Lower latency (~300ms), runs on your GPU/CPU, no Microsoft API dependency.
 """
 
 import asyncio
@@ -13,7 +19,9 @@ import logging
 import os
 import random
 import re
+import struct
 import tempfile
+import wave
 from datetime import datetime
 
 import config
@@ -27,6 +35,35 @@ except ImportError:
     logging.warning(
         "edge-tts not installed — DJ mode unavailable. Install with: pip install edge-tts"
     )
+
+try:
+    import aiohttp
+
+    AIOHTTP_AVAILABLE = True
+except ImportError:
+    AIOHTTP_AVAILABLE = False
+    # If aiohttp is missing, local TTS won't work either, but we don't
+    # block the bot from starting — we just log a warning later.
+
+
+# ── TTS Engine Detection ─────────────────────────────────────────────
+
+TTS_MODE = getattr(config, "TTS_MODE", "edge-tts").lower()
+LOCAL_TTS_URL = getattr(config, "LOCAL_TTS_URL", "http://localhost:3000")
+
+# Validate TTS mode and availability
+if TTS_MODE == "local":
+    if not AIOHTTP_AVAILABLE:
+        logging.warning(
+            "DJ: TTS_MODE=local but aiohttp not installed. "
+            "Install with: pip install aiohttp"
+        )
+        TTS_MODE = "edge-tts"  # Fall back to edge-tts
+    else:
+        logging.info(f"DJ: Using local TTS server at {LOCAL_TTS_URL}")
+elif TTS_MODE != "edge-tts":
+    logging.warning(f"DJ: Unknown TTS_MODE '{TTS_MODE}', falling back to edge-tts")
+    TTS_MODE = "edge-tts"
 
 
 # ── Time-of-day helpers ────────────────────────────────────────────
@@ -587,12 +624,27 @@ def generate_outro(
 
 DEFAULT_VOICE = "en-US-AriaNeural"
 
+# VibeVoice voices always default to Carter (male) since Edge TTS defaults to
+# Aria (female). This gives a natural gender contrast for the main DJ voice.
+DEFAULT_LOCAL_VOICE = "en-Carter_man"
+
+# VibeVoice-Realtime outputs raw PCM16 at 24kHz, mono.
+VIBEVOICE_SAMPLE_RATE = 24000
+
 
 async def list_voices(language: str = "en") -> list[dict]:
+    """Return available TTS voices.
+
+    When TTS_MODE is "local", queries the VibeVoice-Realtime server's /config
+    endpoint for its list of voice presets. When TTS_MODE is "edge-tts" (default),
+    queries the Microsoft Edge TTS voice list.
+
+    Each entry is a dict with keys: name, gender, locale.
     """
-    Return available TTS voices filtered by language prefix.
-    Each entry is a dict with keys: Name, ShortName, Gender, Locale, etc.
-    """
+    if TTS_MODE == "local":
+        return await _list_voices_local(language)
+
+    # Default: edge-tts
     if not EDGE_TTS_AVAILABLE:
         return []
     try:
@@ -603,17 +655,102 @@ async def list_voices(language: str = "en") -> list[dict]:
         return []
 
 
+async def _list_voices_local(language: str = "en") -> list[dict]:
+    """Fetch available voices from the VibeVoice-Realtime server.
+
+    Calls the /config endpoint which returns:
+    {"voices": ["en-Carter_man", ...], "default_voice": "en-Carter_man"}
+
+    Returns a list of dicts with keys: name, gender, locale — matching
+    the format expected by the web dashboard and ?djvoices command.
+    """
+    if not AIOHTTP_AVAILABLE:
+        logging.error("DJ: aiohttp not installed, cannot list local TTS voices")
+        return []
+
+    url = f"{LOCAL_TTS_URL}/config"
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=10)
+        ) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    logging.error(
+                        f"DJ: Local TTS /config returned status {resp.status}"
+                    )
+                    return []
+                data = await resp.json(content_type=None)
+    except Exception as e:
+        logging.error(
+            f"DJ: Failed to connect to local TTS server at {LOCAL_TTS_URL}: {e}"
+        )
+        return []
+
+    voice_names = data.get("voices", [])
+    default_voice = data.get("default_voice", "")
+
+    result = []
+    for name in voice_names:
+        # Parse voice name pattern: "en-Carter_man", "de-Anna_woman", "ja-Sakura_woman"
+        # Format: {lang}-{Name}_{gender_suffix}
+        parts = name.split("-", 1)
+        locale = parts[0] if len(parts) == 2 else "en"
+        gender = "female" if name.endswith(("_woman", "_girl")) else "male"
+
+        # Filter by language prefix
+        if language and not locale.lower().startswith(language.lower()):
+            continue
+
+        result.append(
+            {
+                "ShortName": name,
+                "Gender": gender.capitalize(),
+                "Locale": f"{locale}-US"
+                if locale == "en"
+                else f"{locale}-{locale.upper()}",
+                "name": name,  # For dashboard compatibility
+                "default": name == default_voice,
+            }
+        )
+
+    return result
+
+
 async def generate_tts(text: str, voice: str = DEFAULT_VOICE) -> str | None:
+    """Generate a TTS audio file and return its path.
+
+    Routes to the appropriate TTS engine based on config.TTS_MODE:
+    - "local": Uses VibeVoice-Realtime WebSocket server (low latency, local GPU)
+    - "edge-tts" (default): Uses Microsoft Edge TTS (cloud-based, no server needed)
+
+    Returns the path to a WAV file (local) or MP3 file (edge-tts).
+    The caller must delete the file after use via cleanup_tts_file().
+    Returns None if TTS is unavailable or generation fails.
     """
-    Generate a TTS audio file and return its path.
-    Returns None if edge-tts is unavailable or generation fails.
-    **The caller must delete the file after use via cleanup_tts_file().**
-    """
+    if not text or not text.strip():
+        return None
+
+    if TTS_MODE == "local":
+        result = await _generate_tts_local(text, voice)
+        if result is not None:
+            return result
+        # Local TTS failed — fall back to edge-tts if available
+        logging.warning("DJ: Local TTS failed, falling back to edge-tts")
+
+    # Default / fallback: edge-tts
     if not EDGE_TTS_AVAILABLE:
         logging.warning("DJ: edge-tts not available, skipping TTS.")
         return None
 
-    if not text or not text.strip():
+    return await _generate_tts_edge(text, voice)
+
+
+async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE) -> str | None:
+    """Generate TTS audio using Microsoft Edge TTS (cloud-based).
+
+    Returns the path to an MP3 file, or None on failure.
+    """
+    if not EDGE_TTS_AVAILABLE:
         return None
 
     path = None
@@ -624,15 +761,98 @@ async def generate_tts(text: str, voice: str = DEFAULT_VOICE) -> str | None:
         communicate = edge_tts.Communicate(text, voice)
         await communicate.save(path)
 
-        logging.info(f"DJ: Generated TTS → {path} ({len(text)} chars, voice={voice})")
+        logging.info(
+            f"DJ: Generated TTS (edge-tts) → {path} ({len(text)} chars, voice={voice})"
+        )
         return path
     except Exception as e:
-        logging.error(f"DJ: Failed to generate TTS: {e}")
+        logging.error(f"DJ: Failed to generate TTS (edge-tts): {e}")
         if path and os.path.exists(path):
             try:
                 os.remove(path)
             except Exception:
                 pass
+        return None
+
+
+async def _generate_tts_local(
+    text: str, voice: str = DEFAULT_LOCAL_VOICE
+) -> str | None:
+    """Generate TTS audio using a VibeVoice-Realtime WebSocket server.
+
+    Connects to the server's /stream WebSocket endpoint, sends the text,
+    and collects PCM16 audio chunks which are assembled into a WAV file.
+
+    Returns the path to a WAV file, or None on failure.
+    """
+    if not AIOHTTP_AVAILABLE:
+        logging.error("DJ: aiohttp not installed, cannot use local TTS")
+        return None
+
+    # Build the WebSocket URL with query parameters
+    # VibeVoice-Realtime: /stream?text=<text>&voice=<voice>
+    params = f"text={text.strip()}"
+    if voice:
+        params += f"&voice={voice}"
+
+    ws_url = f"{LOCAL_TTS_URL.replace('http://', 'ws://').replace('https://', 'wss://')}/stream?{params}"
+
+    audio_chunks = []
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=30)
+        ) as session:
+            try:
+                async with session.ws_connect(ws_url) as ws:
+                    # Collect PCM16 audio chunks from the WebSocket
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.BINARY:
+                            audio_chunks.append(msg.data)
+                        elif msg.type == aiohttp.WSMsgType.TEXT:
+                            # JSON status messages — ignore for now
+                            pass
+                        elif msg.type == aiohttp.WSMsgType.ERROR:
+                            logging.error(
+                                f"DJ: Local TTS WebSocket error: {ws.exception()}"
+                            )
+                            break
+            except aiohttp.WSError as e:
+                logging.error(
+                    f"DJ: Failed to connect to local TTS server at {LOCAL_TTS_URL}: {e}"
+                )
+                return None
+            except asyncio.TimeoutError:
+                logging.error(f"DJ: Local TTS connection timed out (30s)")
+                return None
+
+    except Exception as e:
+        logging.error(f"DJ: Local TTS unexpected error: {e}")
+        return None
+
+    if not audio_chunks:
+        logging.warning("DJ: Local TTS returned no audio data")
+        return None
+
+    # Combine all PCM16 chunks and write as a WAV file
+    try:
+        pcm_data = b"".join(audio_chunks)
+
+        fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="dj_")
+        os.close(fd)
+
+        with wave.open(wav_path, "wb") as wf:
+            wf.setnchannels(1)  # Mono
+            wf.setsampwidth(2)  # 16-bit = 2 bytes
+            wf.setframerate(VIBEVOICE_SAMPLE_RATE)  # 24000 Hz
+            wf.writeframes(pcm_data)
+
+        logging.info(
+            f"DJ: Generated TTS (local) → {wav_path} ({len(text)} chars, "
+            f"voice={voice}, {len(pcm_data) / VIBEVOICE_SAMPLE_RATE:.1f}s)"
+        )
+        return wav_path
+    except Exception as e:
+        logging.error(f"DJ: Failed to write local TTS WAV file: {e}")
         return None
 
 

@@ -39,8 +39,16 @@
     {% if g.in_voice %}
 
     <!-- ── DJ Voice ──────────────────────────────────────────── -->
+    {% if tts_mode == 'local' %}
+    <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">Local TTS</span></h4>
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+            Using VibeVoice-Realtime at <code>{{ config.LOCAL_TTS_URL }}</code>
+        </div>
+    {% else %}
     <div style="margin-bottom: 20px;">
         <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice</h4>
+    {% endif %}
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <select id="voice-{{ g.id }}" class="voice-select" onchange="setDjVoice('{{ g.id }}', this.value)" data-current="{{ g.dj_voice }}">
                 <option value="">Loading voices...</option>
@@ -314,19 +322,33 @@ async function loadVoices(guildId, currentVoice) {
         const res = await fetch('/api/' + guildId + '/voices');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
+        const ttsMode = data.tts_mode || 'edge-tts';
         select.innerHTML = '';
         if (data.voices && data.voices.length > 0) {
-            data.voices.forEach(v => {
+            // In local TTS mode, the default voice is marked with a "default" field
+            // Place it first in the list.
+            const sorted = [...data.voices].sort((a, b) => {
+                if (a.default) return -1;
+                if (b.default) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            sorted.forEach(v => {
                 const opt = document.createElement('option');
                 opt.value = v.name;
-                opt.textContent = v.name + ' (' + v.gender + ', ' + v.locale + ')';
+                const gender = v.gender || '?';
+                const locale = v.locale || '?';
+                opt.textContent = v.name + ' (' + gender + ', ' + locale + ')' + (v.default ? ' ★' : '');
                 if (v.name === currentVoice) opt.selected = true;
                 select.appendChild(opt);
             });
         } else if (data.error) {
-            select.innerHTML = '<option value="">' + data.error + '</option>';
+            const prefix = ttsMode === 'local' ? 'Local TTS error: ' : '';
+            select.innerHTML = '<option value="">' + prefix + data.error + '</option>';
         } else {
-            select.innerHTML = '<option value="">No voices available — is edge-tts installed?</option>';
+            const msg = ttsMode === 'local'
+                ? 'No local TTS voices. Is VibeVoice-Realtime running?'
+                : 'No voices available — is edge-tts installed?';
+            select.innerHTML = '<option value="">' + msg + '</option>';
         }
     } catch (e) {
         select.innerHTML = '<option value="">Failed to load voices (network error). Click to retry.</option>';
@@ -354,19 +376,31 @@ async function loadAiVoices(guildId, currentVoice) {
         const res = await fetch('/api/' + guildId + '/voices');
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
+        const ttsMode = data.tts_mode || 'edge-tts';
         select.innerHTML = '';
         if (data.voices && data.voices.length > 0) {
-            data.voices.forEach(v => {
+            const sorted = [...data.voices].sort((a, b) => {
+                if (a.default) return -1;
+                if (b.default) return 1;
+                return a.name.localeCompare(b.name);
+            });
+            sorted.forEach(v => {
                 const opt = document.createElement('option');
                 opt.value = v.name;
-                opt.textContent = v.name + ' (' + v.gender + ', ' + v.locale + ')';
+                const gender = v.gender || '?';
+                const locale = v.locale || '?';
+                opt.textContent = v.name + ' (' + gender + ', ' + locale + ')' + (v.default ? ' ★' : '');
                 if (v.name === currentVoice) opt.selected = true;
                 select.appendChild(opt);
             });
         } else if (data.error) {
-            select.innerHTML = '<option value="">' + data.error + '</option>';
+            const prefix = ttsMode === 'local' ? 'Local TTS error: ' : '';
+            select.innerHTML = '<option value="">' + prefix + data.error + '</option>';
         } else {
-            select.innerHTML = '<option value="">No voices available — is edge-tts installed?</option>';
+            const msg = ttsMode === 'local'
+                ? 'No local TTS voices. Is VibeVoice-Realtime running?'
+                : 'No voices available — is edge-tts installed?';
+            select.innerHTML = '<option value="">' + msg + '</option>';
         }
     } catch (e) {
         select.innerHTML = '<option value="">Failed to load voices (network error). Click to retry.</option>';

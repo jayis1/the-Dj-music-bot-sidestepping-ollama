@@ -1097,23 +1097,63 @@ async def _generate_tts_kokoro(
         logging.warning("DJ: Kokoro TTS returned empty or tiny audio data")
         return None
 
-    # Save the WAV data to a temp file
+    # Save the WAV data to a temp file.
+    # Kokoro-FastAPI may send WAV files with a streaming header where the
+    # data chunk size is 0xFFFFFFFF (unknown). Python's wave module and
+    # FFmpeg misread this as a ~24-hour file, which causes FFmpeg to hang
+    # waiting for data that never comes. We fix the header by re-writing
+    # the WAV with the correct data size.
     try:
         fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="dj_kokoro_")
         os.close(fd)
 
-        with open(wav_path, "wb") as f:
-            f.write(audio_data)
+        # Try to parse with wave module — if the header is sane, just save.
+        # If the header is broken (streaming-style), rewrite it.
+        import io as _io
 
-        # Log duration by reading the WAV header
-        duration = 0.0
         try:
-            with wave.open(wav_path, "rb") as wf:
-                frames = wf.getnframes()
+            with wave.open(_io.BytesIO(audio_data), "rb") as wf:
+                nframes = wf.getnframes()
                 rate = wf.getframerate()
-                duration = frames / rate if rate > 0 else 0
+                channels = wf.getnchannels()
+                sampwidth = wf.getsampwidth()
+                expected_size = 44 + nframes * channels * sampwidth
+
+                # If nframes claims a file bigger than what we actually received,
+                # the WAV has a broken streaming-style header (chunk size 0xFFFFFFFF).
+                # We need to rewrite it with the correct sizes so FFmpeg can play it.
+                actual_pcm_bytes = len(audio_data) - 44  # rough estimate
+                claimed_pcm_bytes = nframes * channels * sampwidth
+                if claimed_pcm_bytes > actual_pcm_bytes + 1024:
+                    # Header is broken — rewrite with correct data size
+                    raw_frames = wf.readframes(
+                        actual_pcm_bytes // (channels * sampwidth)
+                    )
+
+                    # Rewrite with correct header
+                    with wave.open(wav_path, "wb") as wf_out:
+                        wf_out.setnchannels(channels)
+                        wf_out.setsampwidth(sampwidth)
+                        wf_out.setframerate(rate)
+                        wf_out.writeframes(raw_frames)
+
+                    # Recalculate duration from actual file size
+                    pcm_bytes = len(raw_frames)
+                    duration = (
+                        pcm_bytes / (rate * channels * sampwidth) if rate > 0 else 0
+                    )
+                else:
+                    # Header is fine — just save as-is
+                    with open(wav_path, "wb") as f:
+                        f.write(audio_data)
+                    duration = nframes / rate if rate > 0 else 0
+
         except Exception:
-            pass
+            # wave.open failed entirely — just save the raw bytes and hope
+            # FFmpeg can handle it. This shouldn't happen with Kokoro output.
+            with open(wav_path, "wb") as f:
+                f.write(audio_data)
+            duration = 0.0
 
         logging.info(
             f"DJ: Generated TTS (kokoro) → {wav_path} "

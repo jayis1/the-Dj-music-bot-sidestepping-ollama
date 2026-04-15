@@ -8,6 +8,86 @@
 
 ## What's New in 6.3.0
 
+### 🧡 Kokoro-TTS Engine (New Default TTS)
+
+The bot now supports **three TTS engines** with Kokoro-TTS as the new default. Kokoro runs as a Docker container on your GPU via [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), providing truly local, open-weight TTS with ~300ms first-audio latency and zero cloud dependency.
+
+**Engine priority:** `kokoro` (default) → `vibevoice` → `edge-tts` (cloud fallback)
+
+**How it works:**
+- The bot sends `POST /v1/audio/speech` to the Kokoro-FastAPI Docker server (OpenAI-compatible REST API) and receives a WAV file.
+- A built-in health check (`GET /v1/audio/voices`) caches server reachability — if the server is down, the bot bails in ≤3 seconds and falls back to edge-tts instantly (not the old 30-second timeout).
+- Voice names: `af_heart`, `af_bella`, `am_adam`, `bm_george`, etc. (11 built-in voices).
+- The legacy `TTS_MODE=local` alias is still supported and maps to `vibevoice` with a deprecation warning.
+
+**Setup:**
+```bash
+docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
+```
+Then set in `.env`:
+```ini
+TTS_MODE=kokoro
+KOKORO_TTS_URL=http://localhost:8880
+DJ_VOICE=af_heart
+```
+
+### 🔧 Kokoro WAV Streaming Header Fix (Critical Bug Fix)
+
+The Kokoro-FastAPI server sends WAV files with **streaming-style headers** where the data chunk size is `0xFFFFFFFF` (unknown). This caused two cascading failures:
+
+1. Python's `wave` module read `nframes=2,147,483,647` → reported **89478.5s** duration (24 hours) for a 3-second clip.
+2. FFmpeg read the broken header and **hung waiting for data that never came** — the TTS `after` callback never fired, `is_playing()` stayed True forever, and every subsequent `play()` call failed with "Already playing audio", silently skipping the entire queue.
+
+**Fix (3 layers):**
+- **Layer 1 (root cause):** After downloading WAV data from Kokoro, the bot detects the broken streaming header (`nframes` claims more data than received) and **rewrites the WAV file** with correct chunk sizes using Python's `wave` module. Output now shows correct duration: `3.2s` instead of `89478.5s`.
+- **Layer 2 (defense in depth):** FFmpeg options for TTS playback now include `-t 30` — even if a header lies about duration, FFmpeg stops after 30 seconds and the `after` callback fires.
+- **Layer 3 (emergency recovery):** Before every `voice_client.play()` call (both TTS and song playback), the code now checks `is_playing()`. If the voice client is stuck playing something from a previous failed playback, it force-stops it with a 300ms cooldown. This prevents the "Already playing audio" cascade that was skipping through the entire queue with no audio output.
+
+### 🗣️ Three-Engine TTS Architecture
+
+The TTS system has been refactored from a 2-engine system (`edge-tts` / `local`) to a 3-engine system:
+
+| Priority | Engine | Where | When Used |
+|---|---|---|---|
+| 1st | **Kokoro-TTS** (`kokoro`) | Docker container on your GPU | Default — truly local, ~300ms latency |
+| 2nd | **VibeVoice** (`vibevoice`) | Separate WebSocket server | If explicitly configured |
+| 3rd | **Edge TTS** (`edge-tts`) | Microsoft Cloud | Automatic fallback when local engines fail |
+
+**New config variables:** `KOKORO_TTS_URL`, `KOKORO_VOICE`, `VIBEVOICE_TTS_URL`. The old `LOCAL_TTS_URL` still works as a backward-compatible alias.
+
+**How fallback works:**
+```
+TTS_MODE=kokoro → health check → server up? → generate WAV → ✅ success
+                                     ↓ server down (≤3s detection)
+                                     → log warning with docker command
+                                     → resolve voice name for edge-tts
+                                     → edge-tts generates MP3 → ✅ success
+```
+
+**Voice name auto-resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. passing `en-US-AriaNeural` when using Kokoro) and swaps them for the target engine's default — so switching `TTS_MODE` doesn't require changing `DJ_VOICE`.
+
+**The `TTS_AVAILABLE` flag:** A new boolean that's `True` when *any* TTS engine is available (not just edge-tts). The DJ mode and AI side host commands now gate on `TTS_AVAILABLE` instead of `EDGE_TTS_AVAILABLE`, so DJ works with Kokoro even if edge-tts isn't installed.
+
+### 📡 Mission Control: 30-Second Soft Refresh
+
+The Mission Control dashboard now auto-refreshes every **30 seconds** via AJAX, updating all guild data (DJ status, queue, listeners, controls) **without** touching the progress bar. The progress bar keeps ticking independently on its 1-second client-side timer with zero jitter.
+
+**How it works:**
+- Every 30 seconds, `fetch()` grabs fresh HTML from the server with a cache-busting param.
+- A `DOMParser` extracts updated content from each guild card.
+- Surgical DOM patching replaces: guild header (status badges), control buttons, song title, thumbnail, queue list, listener list, volume label.
+- **The progress bar is deliberately skipped** — the 1-second JS timer keeps it smooth. Only when a song *changes* (different title detected) does the progress bar get replaced and the JS timer reinitialized from the server's `current_elapsed`.
+- When a song ends (progress hits 100%), the soft refresh is triggered instead of `location.reload()`.
+- Guild cards now carry `data-guild-card`, `data-elapsed`, `data-duration`, `data-speed` attributes for the JS DOM patcher.
+
+**Three independent refresh systems:**
+
+| System | Interval | What | Method |
+|---|---|---|---|
+| Progress bar ticker | 1 second | Bar fill width + elapsed time | Client-side JS only |
+| Soft refresh | 30 seconds | All other dashboard data | AJAX + DOM patching |
+| Fallback full reload | 3 minutes | Full page | `location.reload()` (only when nothing is playing) |
+
 ### 📋 Activity Log Panel (Mission Control)
 
 A live, Discord-channel-style activity log panel now slides out from the right side of Mission Control when you click **📋 Log** in the sidebar. It streams the exact same log messages that are shipped to the Discord log channel — in real-time, with no Discord API round-trip.
@@ -81,7 +161,7 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 
 ## 1. Overview
 
-**MBot 6.2.0** is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. The bot is designed to run as a persistent background service on Debian-based Linux servers, managed through `screen` sessions.
+**MBot 6.3.0** is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. The bot is designed to run as a persistent background service on Debian-based Linux servers, managed through `screen` sessions.
 
 ### Key Features
 
@@ -97,7 +177,9 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 | **UI** | Interactive button controls | Play, Pause, Skip, Stop, Queue buttons |
 | **DJ Mode** | Radio DJ between tracks | TTS voice commentary: intros, outros, transitions |
 | **DJ Mode** | Soundboard sound tags in DJ lines | `{sound:airhorn}` in any line plays a sound effect after the DJ speaks |
-| **DJ Mode** | Local TTS engine (VibeVoice) | `TTS_MODE=local` — run VibeVoice-Realtime locally for ~300ms latency instead of cloud Edge TTS |
+| **DJ Mode** | **Kokoro-TTS (default)** | `TTS_MODE=kokoro` — Docker GPU server, ~300ms latency, 11 voices, zero cloud dependency |
+| **DJ Mode** | VibeVoice-Realtime | `TTS_MODE=vibevoice` — separate WebSocket server, ~300ms latency, `en-Carter_man` etc. |
+| **DJ Mode** | Edge TTS fallback | Automatic fallback to Microsoft cloud TTS when local engines fail |
 | **DJ Mode** | 172 built-in DJ line templates | 74 with sound tags across 10 categories |
 | **DJ Mode** | Custom DJ lines | Add/remove via web dashboard, persisted in JSON |
 | **AI Side Host** | Ollama-powered studio joker | Second radio personality with own voice, writes original banter, hot takes, and jokes |
@@ -148,7 +230,7 @@ this2.0/
 │
 ├── utils/                  # Helper modules
 │   ├── __init__.py         # Auto-generated; makes utils a Python package
-│   ├── dj.py               # Radio DJ mode — TTS message generation, 172 templates, sound tag support, _format_line
+│   ├── dj.py               # Radio DJ mode — 3-engine TTS (Kokoro/VibeVoice/Edge), 172 templates, WAV header fix, health check, sound tag support
 │   ├── llm_dj.py           # AI side host — Ollama client, studio joker personality, 8 banter categories
 │   ├── custom_lines.py     # JSON persistence for custom DJ lines (CRUD operations)
 │   ├── soundboard.py       # Sound listing, path resolution, directory traversal prevention
@@ -209,7 +291,7 @@ bot.py
 cogs/music.py
   ├── imports → cogs/youtube.py (YTDLSource, PlaceholderTrack, FFMPEG_OPTIONS, YTDL_FORMAT_OPTIONS)
   ├── imports → utils/suno.py (is_suno_url, get_suno_track)
-   ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, generate_intro, generate_song_intro, generate_outro, generate_tts, generate_tts_local, cleanup_tts_file, extract_sound_tags, list_voices, list_voices_local, DEFAULT_VOICE, DEFAULT_LOCAL_VOICE, TTS_MODE)
+   ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, TTS_MODE, TTS_AVAILABLE, generate_intro, generate_song_intro, generate_outro, generate_tts, cleanup_tts_file, extract_sound_tags, list_voices, KOKORO_TTS_URL, VIBEVOICE_TTS_URL)
    ├── imports → utils/lyrics.py (get_lyrics)
    ├── imports → utils/presets.py (save_preset, load_preset, queue_to_tracks)
    ├── imports → utils/soundboard.py (list_sounds, get_sound_path)
@@ -237,8 +319,13 @@ web/app.py
 utils/dj.py
    ├── uses → utils/soundboard.py (list_sounds — for resolving {sound:name} tags)
    ├── uses → utils/custom_lines.py (load_custom_lines — merges built-in + custom)
-   ├── uses → config.py (STATION_NAME, TTS_MODE, LOCAL_TTS_URL — for TTS engine selection)
-   └── TTS engines → edge_tts.Communicate (cloud) or VibeVoice-Realtime WebSocket (local)
+   ├── uses → config.py (STATION_NAME, TTS_MODE, KOKORO_TTS_URL, KOKORO_VOICE, VIBEVOICE_TTS_URL)
+   └── TTS engines → Kokoro-FastAPI REST (default), VibeVoice-Realtime WebSocket, or edge_tts.Communicate (cloud fallback)
+       ├── _generate_tts_kokoro() — POST /v1/audio/speech → WAV, with broken-header rewrite
+       ├── _generate_tts_vibevoice() — WebSocket /stream → PCM16 → WAV
+       ├── _generate_tts_edge() — edge_tts.Communicate → MP3
+       ├── _check_kokoro_health() — GET /v1/audio/voices (cached, 3s timeout)
+       └── generate_tts() — routes to active engine, falls back to edge-tts on failure
 ```
 
 > **Why are `youtube.py` and `logging.py` excluded from auto-loading?**
@@ -288,7 +375,7 @@ utils/dj.py
 | `PyNaCl` | ==1.5.0 | Audio encryption for Discord voice |
 | `python-dotenv` | latest | Load `.env` file into environment variables |
 | `audioop-lts` | latest | Audio operations (Python 3.13+ compatibility) |
-| `aiohttp` | latest | Async HTTP client (Suno, admin cookie fetch) |
+| `aiohttp` | latest | Async HTTP client (Suno, admin cookie fetch, Kokoro TTS, VibeVoice TTS) |
 | `edge-tts` | latest | Microsoft Edge TTS — generates DJ voice audio (optional but needed for DJ mode) |
 | `flask` | latest | Web dashboard (Mission Control) — serves interactive control panel |
 | `psutil` | latest | System/process monitoring — memory & CPU stats on the Settings page |
@@ -411,9 +498,13 @@ OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "tru
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest")
 OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
-OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "en-US-GuyNeural")
+OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "am_adam")
 OLLAMA_DJ_TIMEOUT = int(os.environ.get("OLLAMA_DJ_TIMEOUT", "15"))
 LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
+TTS_MODE = os.environ.get("TTS_MODE", "kokoro").lower()
+KOKORO_TTS_URL = os.environ.get("KOKORO_TTS_URL", "http://localhost:8880")
+KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "af_heart")
+VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
 ```
 
 | Constant | Default | Purpose |
@@ -427,44 +518,138 @@ LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `gemma4:latest` | Ollama model for side host lines |
 | `OLLAMA_DJ_CHANCE` | `0.25` | Side host chime-in probability (0.0–1.0) |
-| `OLLAMA_DJ_VOICE` | `en-US-GuyNeural` | TTS voice for the AI side host (separate from main DJ) |
+| `OLLAMA_DJ_VOICE` | `am_adam` | TTS voice for the AI side host (separate from main DJ, Kokoro `am_adam` by default) |
 | `OLLAMA_DJ_TIMEOUT` | `15` | Ollama API call timeout in seconds |
-| `TTS_MODE` | `edge-tts` | TTS engine: `"edge-tts"` (cloud) or `"local"` (VibeVoice) |
-| `LOCAL_TTS_URL` | `http://localhost:3000` | VibeVoice-Realtime server URL (only when `TTS_MODE=local`) |
+| `TTS_MODE` | `kokoro` | TTS engine: `"kokoro"` (local Docker), `"vibevoice"` (WebSocket), or `"edge-tts"` (cloud) |
+| `KOKORO_TTS_URL` | `http://localhost:8880` | Kokoro-FastAPI Docker server URL |
+| `KOKORO_VOICE` | `af_heart` | Default Kokoro voice |
+| `VIBEVOICE_TTS_URL` | `http://localhost:3000` | VibeVoice-Realtime server URL |
+| `LOCAL_TTS_URL` | `""` | Backward-compatible alias for older .env files |
 
 ### DJ Mode Configuration (`config.py`)
 
 | Constant | Default | Purpose |
 |---|---|---|
-| `DJ_VOICE` | `en-US-AriaNeural` | Default TTS voice for DJ commentary |
+| `DJ_VOICE` | `af_heart` | Default TTS voice for DJ commentary (Kokoro `af_heart`, VibeVoice `en-Carter_man`, or Edge TTS `en-US-AriaNeural`) |
 | `DJ_EMOJI` | 🎙️ | Emoji used in DJ command embeds |
 | `STATION_NAME` | From `.env` or `"MBot"` | Station name used in station ID lines ("You're tuned in to {STATION_NAME} Radio") |
 | `CROSSFADE_DURATION` | `3` (seconds) | Fade-in duration when a new song starts |
 
 ### TTS Engine Configuration (`config.py`)
 
-The DJ mode and AI side host voices can be generated by either **Microsoft Edge TTS** (cloud, default) or a **local VibeVoice-Realtime** server (on-premises, low-latency). This is controlled by the `TTS_MODE` setting.
+The DJ mode and AI side host voices can be generated by three TTS engines, controlled by the `TTS_MODE` setting:
 
 | Constant | Default | Purpose |
 |---|---|---|
-| `TTS_MODE` | `edge-tts` | Which TTS engine to use: `"edge-tts"` or `"local"` |
-| `LOCAL_TTS_URL` | `http://localhost:3000` | URL of the VibeVoice-Realtime server (only used when `TTS_MODE=local`) |
+| `TTS_MODE` | `kokoro` | Which TTS engine to use: `"kokoro"`, `"vibevoice"`, or `"edge-tts"` |
+| `KOKORO_TTS_URL` | `http://localhost:8880` | Kokoro-FastAPI Docker server URL (only when `TTS_MODE=kokoro`) |
+| `KOKORO_VOICE` | `af_heart` | Default Kokoro voice (only when `TTS_MODE=kokoro`) |
+| `VIBEVOICE_TTS_URL` | `http://localhost:3000` | VibeVoice-Realtime server URL (only when `TTS_MODE=vibevoice`) |
+| `LOCAL_TTS_URL` | `""` | Backward-compatible alias — if set, used as fallback for `KOKORO_TTS_URL` or `VIBEVOICE_TTS_URL` |
 
 ```ini
 # .env — TTS Engine
 
-# "edge-tts" (default) — Microsoft Edge TTS cloud voices. Free, 100+ voices.
-# "local" — VibeVoice-Realtime server (local GPU/CPU, ~300ms latency).
-TTS_MODE=edge-tts
+# "kokoro" (default) — Kokoro-TTS Docker server (local GPU, ~300ms latency).
+# "vibevoice" — VibeVoice-Realtime WebSocket server (local GPU/CPU).
+# "edge-tts" — Microsoft Edge TTS (cloud fallback, always available).
+TTS_MODE=kokoro
 
-# Local TTS server URL (only used when TTS_MODE=local).
-# Start the server with: python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B
-LOCAL_TTS_URL=http://localhost:3000
+# Kokoro-FastAPI server URL (only used when TTS_MODE=kokoro).
+# Start with: docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
+KOKORO_TTS_URL=http://localhost:8880
+
+# Default Kokoro voice. Popular: af_heart, af_bella, am_adam, bf_emma, bm_george
+KOKORO_VOICE=af_heart
+
+# VibeVoice server URL (only used when TTS_MODE=vibevoice).
+VIBEVOICE_TTS_URL=http://localhost:3000
 ```
+
+> **Fallback chain:** If the primary engine fails, the bot automatically falls back to edge-tts. For Kokoro, a quick health check (`GET /v1/audio/voices`, 3-second timeout) determines if the Docker container is reachable. If not, the fallback is nearly instant instead of waiting for a long timeout. The health check result is cached (30s for healthy, 10s for down) to avoid hammering the server on every TTS call.
+
+> **Voice name resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. `en-US-AriaNeural` when using Kokoro) and swaps them for the target engine's default. This means switching `TTS_MODE` doesn't require changing `DJ_VOICE` — the bot adapts automatically.
+
+> **Legacy alias:** `TTS_MODE=local` still works and maps to `vibevoice` with a deprecation warning in the logs. `LOCAL_TTS_URL` is used as a fallback URL if `KOKORO_TTS_URL` or `VIBEVOICE_TTS_URL` aren't set.
 
 > **Note:** DJ mode is off by default and must be enabled per-guild with `?dj`. The `DJ_VOICE` setting is just the default — users can override it per-guild with `?djvoice` or via the web dashboard.
 
-### VibeVoice-Realtime (Local TTS) Setup
+### Kokoro-TTS Setup (Default, Recommended)
+
+Kokoro-TTS is the default engine — it's the most local option with the best latency and no cloud dependency. It runs as a Docker container on your GPU.
+
+1. **Install Docker** with NVIDIA Container Toolkit (for GPU support):
+   ```bash
+   # Install Docker
+   curl -fsSL https://get.docker.com | sh
+   sudo usermod -aG docker $USER
+
+   # Install NVIDIA Container Toolkit
+   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
+   sudo nvidia-ctk runtime configure --runtime=docker
+   sudo systemctl restart docker
+   ```
+
+2. **Start the Kokoro-FastAPI server:**
+   ```bash
+   # GPU version (recommended):
+   docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
+
+   # CPU version (no GPU, slower):
+   docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+   ```
+
+3. **Verify it's running:**
+   ```bash
+   curl http://localhost:8880/v1/audio/voices
+   # Should return JSON with a "voices" list
+   ```
+
+4. **Configure MBot** — in your `.env` file:
+   ```ini
+   TTS_MODE=kokoro
+   KOKORO_TTS_URL=http://localhost:8880
+   DJ_VOICE=af_heart
+   OLLAMA_DJ_VOICE=am_adam
+   ```
+
+5. **Restart the bot.**
+
+**Available Kokoro voices:**
+
+| Voice Name | Description |
+|---|---|
+| `af_heart` | American Female — Heart (warm) — **default** |
+| `af_bella` | American Female — Bella |
+| `af_nicole` | American Female — Nicole |
+| `af_sarah` | American Female — Sarah |
+| `af_sky` | American Female — Sky |
+| `am_adam` | American Male — Adam |
+| `am_michael` | American Male — Michael |
+| `bf_emma` | British Female — Emma |
+| `bf_isabella` | British Female — Isabella |
+| `bm_george` | British Male — George |
+| `bm_lewis` | British Male — Lewis |
+
+> **Voice combos:** The Kokoro-FastAPI server supports voice mixing with `+` syntax, e.g. `af_bella+af_heart` for a 50/50 blend or `af_bella(2)+af_heart(1)` for a 67/33 weighted mix. These work in MBot too — just set `DJ_VOICE=af_bella+af_heart`.
+
+### Kokoro WAV Header Bug (Technical Detail)
+
+The Kokoro-FastAPI server sends WAV files with **streaming-style headers** where the RIFF and data chunk sizes are set to `0xFFFFFFFF` (meaning "unknown size"). This is valid for HTTP streaming but breaks consumers that expect correct sizes.
+
+**What the bot does:** After downloading the WAV from Kokoro, the `_generate_tts_kokoro()` function:
+1. Opens the raw bytes with Python's `wave` module in memory.
+2. Checks if `nframes` claims more data than what was actually received.
+3. If broken: calls `readframes()` to extract the actual PCM data, then rewrites the file with correct chunk sizes using `wave.open(path, 'wb')`.
+4. If fine: saves the bytes as-is.
+
+Additionally, FFmpeg options for TTS playback include `-t 30` as a duration cap — even if a header lies, FFmpeg stops after 30 seconds and the `after` callback fires normally.
+
+### VibeVoice-Realtime Setup (Alternative Local TTS)
 
 To use the local TTS engine instead of Microsoft Edge TTS:
 
@@ -487,33 +672,35 @@ To use the local TTS engine instead of Microsoft Edge TTS:
 4. **Configure MBot:**
    In your `.env` file:
    ```ini
-   TTS_MODE=local
-   LOCAL_TTS_URL=http://localhost:3000
+   TTS_MODE=vibevoice
+   VIBEVOICE_TTS_URL=http://localhost:3000
    DJ_VOICE=en-Carter_man
    OLLAMA_DJ_VOICE=en-Journalist_woman
    ```
 
 5. **Restart the bot.**
 
-**Key differences from Edge TTS:**
+**Key differences between TTS engines:**
 
-| Feature | Edge TTS (cloud) | VibeVoice-Realtime (local) |
-|---|---|---|
-| Latency | 2-5 seconds | ~300ms first audio |
-| Server needed | No | Yes (localhost:3000) |
-| GPU required | No | Recommended (NVIDIA or Apple Silicon) |
-| Voice names | `en-US-AriaNeural`, `en-US-GuyNeural`, etc. | `en-Carter_man`, `en-Journalist_woman`, etc. |
-| Multilingual | 40+ languages | English primary, 9 experimental (DE, FR, IT, JP, KR, NL, PL, PT, ES) |
-| Quality | Natural, consistent | Natural, expressive |
-| Cost | Free (no API key) | Free (runs locally) |
-| Internet required | Yes | No (after model download) |
+| Feature | Kokoro-TTS (Docker) | VibeVoice-Realtime | Edge TTS (cloud) |
+|---|---|---|---|
+| Latency | ~300ms first audio | ~300ms first audio | 2-5 seconds |
+| Server needed | Docker container (:8880) | WebSocket server (:3000) | No |
+| GPU required | Recommended (NVIDIA) | Recommended | No |
+| Voice names | `af_heart`, `am_adam`, etc. | `en-Carter_man`, etc. | `en-US-AriaNeural`, etc. |
+| Multilingual | English + British | English primary, 9 experimental | 40+ languages |
+| Quality | Natural, expressive | Natural, expressive | Natural, consistent |
+| Cost | Free (runs locally) | Free (runs locally) | Free (no API key) |
+| Internet required | No (after image pull) | No (after model download) | Yes |
+| Voice mixing | Yes (`af_bella+af_heart`) | No | No |
+| Open source | Yes (Apache 2.0) | Yes (MIT) | No (cloud service) |
 
 **Available VibeVoice voice presets:**
 - `en-Carter_man` — Male, warm (default)
 - `en-Journalist_woman` — Female, professional
 - Plus 9 experimental voices in German, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, and Spanish (download with `bash demo/download_experimental_voices.sh`)
 
-> **Note:** When `TTS_MODE=local` and the VibeVoice server is unreachable, MBot will fall back to Edge TTS automatically (if `edge-tts` is installed). This provides graceful degradation — if your local GPU server goes down, the DJ still works, just with higher latency.
+> **Note:** When any local TTS engine (Kokoro or VibeVoice) is unreachable, MBot will fall back to Edge TTS automatically (if `edge-tts` is installed). For Kokoro, a health check detects failures in ≤3 seconds. This provides graceful degradation — if your local GPU server goes down, the DJ still works, just with higher latency.
 
 ### Web Dashboard Configuration (`config.py`)
 

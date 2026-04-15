@@ -33,10 +33,11 @@ The radio dj music bot is a self-contained Discord music bot built with Python a
 - **Gapless crossfade** between tracks (configurable fade-in duration)
 
 ### 🔊 TTS Engine
-- **Edge TTS** (default) — Microsoft voices, 100+ in 40+ languages, no server needed
-- **Local TTS** — routes to a [VibeVoice-Realtime](https://github.com/microsoft/VibeVoice) server on your hardware (~300ms, no cloud)
-- Switch modes with `TTS_MODE=local` in `.env` — zero code changes required
-- Settings page shows live TTS engine status
+- **Kokoro TTS** (new default) — high-quality neural TTS via [kokoro-fastapi](https://github.com/remsky/kokoro-fastapi), GPU or CPU, ~300ms latency
+- **Edge TTS** (fallback) — Microsoft voices, 100+ in 40+ languages, zero server setup
+- **VibeVoice** — alternative local server (`TTS_MODE=vibevoice`)
+- Switch engines with `TTS_MODE` in `.env` — automatic fallback to Edge TTS if local server is unreachable
+- Settings page shows live health status for whichever engine is configured
 
 ### 🎙️ DJ Mode
 - TTS voice commentary between every track (intro, transition, outro)
@@ -45,36 +46,61 @@ The radio dj music bot is a self-contained Discord music bot built with Python a
 - **DJ bed music** — ambient pad plays softly under commentary for a real radio feel
 - **Shoutouts** — `?shoutout @user` fires a live on-air shoutout with TTS + sound effects
 - **Per-guild toggle** — `?dj` on/off per server, voice changeable with `?djvoice`
-- Works with **both TTS engines** — Edge TTS or Local VibeVoice
+- Works with **all three TTS engines** — Kokoro, VibeVoice, or Edge TTS fallback
 - **🤖 AI Side Host** — a second radio personality powered by a local LLM (Ollama) that writes its own spontaneous banter, hot takes, and shoutouts alongside the main DJ
 
 ---
 
-## 🔊 TTS Engine — Local vs Edge
+## 🔊 Three-Engine TTS Architecture
 
-The bot supports two TTS engines, switchable via `.env` with no code changes.
+The bot supports three TTS engines with automatic fallback. Configure via `.env` — no code changes needed.
 
-| | **Edge TTS** (default) | **Local TTS (VibeVoice-Realtime)** |
-|---|---|---|
-| Set via | `TTS_MODE=edge-tts` | `TTS_MODE=local` |
-| Latency | 2–5 seconds | ~300ms |
-| Requires | `pip install edge-tts` | VibeVoice server running locally |
-| Voices | 100+ in 40+ languages (e.g. `en-US-AriaNeural`) | Custom voices (e.g. `en-Carter_man`) |
-| Cloud | Microsoft TTS API | Fully local — GPU/CPU on your machine |
-| Internet | Required | Not required |
+| | **Kokoro** *(new default)* | **VibeVoice** | **Edge TTS** *(fallback)* |
+|---|---|---|---|
+| `TTS_MODE` | `kokoro` | `vibevoice` | `edge-tts` |
+| Latency | ~300ms | ~300ms | 2–5 seconds |
+| Server | kokoro-fastapi Docker | VibeVoice-Realtime | None |
+| Voices | `af_heart`, `am_michael`, etc. | `en-Carter_man`, etc. | `en-US-AriaNeural`, etc. |
+| GPU | Optional (CPU works great) | Required for speed | N/A |
+| Internet | Not required | Not required | Required |
+| Open source | ✅ | ✅ | ❌ |
 
-### Setting Up Local TTS
+**Fallback chain:** Kokoro → Edge TTS (if Kokoro unreachable) — the bot never goes silent.
+
+### 🍡 Setting Up Kokoro TTS *(recommended)*
 ```bash
-# 1. Clone and start VibeVoice-Realtime
+# GPU (if NVIDIA + Docker configured):
+docker run -d --gpus all --name kokoro-tts --restart unless-stopped \
+  -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
+
+# CPU (always works, no CUDA needed):
+docker run -d --name kokoro-tts --restart unless-stopped \
+  -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:v0.2.1
+
+# Verify:
+curl http://localhost:8880/v1/voices
+```
+
+Then set in `.env`:
+```env
+TTS_MODE=kokoro
+KOKORO_TTS_URL=http://your-server:8880
+DJ_VOICE=af_heart         # or: am_michael, af_bella, bm_george, bf_emma...
+OLLAMA_DJ_VOICE=am_adam   # different voice for AI side host
+```
+
+**Available Kokoro voices:** `af_heart`, `af_bella`, `af_nicole`, `af_sarah`, `af_sky`, `am_adam`, `am_michael`, `bf_emma`, `bf_isabella`, `bm_george`, `bm_lewis`
+
+### Setting Up VibeVoice
+```bash
 git clone https://github.com/microsoft/VibeVoice
 cd VibeVoice
-pip install -r requirements.txt
-python demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B
-
-# 2. Set in .env
-TTS_MODE=local
-LOCAL_TTS_URL=http://localhost:3000
-DJ_VOICE=en-Carter_man   # Use a VibeVoice voice name
+python3 demo/vibevoice_realtime_demo.py --model_path microsoft/VibeVoice-Realtime-0.5B --device cpu
+```
+```env
+TTS_MODE=vibevoice
+VIBEVOICE_TTS_URL=http://your-server:3000
+DJ_VOICE=en-Carter_man
 ```
 
 Voice names for local mode look like: `en-Carter_man`, `en-Journalist_woman`, `de-Anna_woman`.  
@@ -366,8 +392,10 @@ nano .env           # Paste your DISCORD_TOKEN
 | `?aidj` says Ollama not running | Install Ollama: `curl https://ollama.ai/install.sh \| sh` and pull a model: `ollama pull phi3:mini` |
 | Ollama 404 error in logs | Model not pulled yet — the log now shows the exact `ollama pull <model>` command to run |
 | Speed slider doesn't apply | Set speed only after the song has started playing; setting at 1.0× before queuing avoids the race |
-| Local TTS not working | Ensure VibeVoice-Realtime is running at `LOCAL_TTS_URL` — Settings page shows live status |
-| Local TTS voice not found | Use voices like `en-Carter_man` (not Edge TTS names like `en-US-AriaNeural`) when `TTS_MODE=local` |
+| Kokoro TTS not working | Ensure kokoro-fastapi is running: `curl http://your-server:8880/health` — Settings page shows live status |
+| Songs being skipped silently | Kokoro WAV header bug — update to latest (fixed in v6.3.0) |
+| DJ speaks for 89478 seconds | Same WAV header bug — update to latest |
+| VibeVoice voice not found | Use voices like `en-Carter_man` (not Edge TTS names like `en-US-AriaNeural`) when `TTS_MODE=vibevoice` |
 | Dashboard 500 error | Check Jinja template `{% if %}`/`{% endif %}` balance — run `./launch.sh doctor` |
 | Age-restricted videos won't play | Use `?fetch_and_set_cookies <youtube_url>` to set cookies |
 | Bot appears stuck in voice after crash | Restart bot — `on_ready` forces disconnect from all stale voice sessions |
@@ -380,16 +408,49 @@ For full technical details — architecture, cog internals, all API endpoints, m
 
 ---
 
-## 🐛 Bugs Fixed in v6.3.0
+## 🐛 Bugs Fixed & Features Added in v6.3.0
 
-| Feature | Summary |
+| | Summary |
 |---|---|
-| 🔊 **Local TTS Engine** | `TTS_MODE=local` routes DJ speech to a VibeVoice-Realtime server — ~300ms latency, no cloud, runs on your GPU |
-| 📋 **Activity Log Panel** | Live Discord-channel-style log panel in Mission Control — real-time SSE streaming, severity filters |
+| 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |
+| 🔧 **Kokoro WAV Header Fix** | Streaming WAV files had broken `0xFFFFFFFF` chunk sizes → 89478s duration → FFmpeg hung → entire queue skipped. Fixed with 3-layer solution (WAV rewrite + FFmpeg `-t 30` cap + stuck-state recovery) |
+| 🔄 **Dashboard 30s Soft Refresh** | Dashboard now refreshes guild state every 30s without touching the progress bar — smooth, jitter-free |
+| 📋 **Activity Log Panel** | Live slide-out log panel in Mission Control — real-time SSE streaming, severity filters |
 | 🎙️ **Voice Dropdown Fixes** | DJ & AI voice dropdowns now load instantly (30-min server-side cache, DOMContentLoaded fix) |
 | 🃏 **AI Reactive Banter** | AI side host now *reacts* to what the main DJ just said — 4 new reactive banter categories |
 | 🔧 **Ollama Error Handling** | 404 errors now show the pull command + available models instead of just "status 404" |
 | 🔄 **Default Model Update** | Default Ollama model changed from `llama3.2` → `gemma4:latest` across all configs |
+
+### 🔬 Kokoro WAV Streaming Header Fix — Technical Detail
+
+Kokoro-FastAPI sends WAV files with streaming headers where `RIFF` and `data` chunk sizes are set to `0xFFFFFFFF` ("unknown size"). This broke the bot in two ways:
+
+1. Python's `wave` module read `nframes=2,147,483,647` → reported **89,478 second duration** (24 hours)
+2. FFmpeg waited for 4GB of audio data that never arrived → hung forever → `is_playing()` returned `True` indefinitely → every `play()` call failed with **"Already playing audio"** → every song in the queue was skipped
+
+**Three-layer fix in `utils/dj.py` and `cogs/music.py`:**
+
+| Layer | Where | What it does |
+|---|---|---|
+| **WAV header rewrite** | `utils/dj.py` | Detects broken header, rewrites RIFF/data chunk sizes using actual received byte count |
+| **FFmpeg `-t 30` cap** | `cogs/music.py` | Hard 30-second limit on TTS playback — fires EOF even if header lies |
+| **Stuck-state recovery** | `cogs/music.py` | Before every `play()`, checks `is_playing()` — if stuck, force-`stop()` + 300ms wait before proceeding |
+
+**Log before fix:**
+```
+DJ: Generated TTS → ...89478.5s
+DJ: Failed to play TTS: Already playing audio
+DJ: TTS intro failed, playing song directly.
+Error playing song: Already playing audio
+(repeat for every song in queue)
+```
+**Log after fix:**
+```
+DJ: Generated TTS → ...3.2s
+DJ: Speaking...
+DJ: TTS done, scheduling song playback
+Playback initiated for Track Name
+```
 
 ---
 

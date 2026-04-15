@@ -1852,11 +1852,29 @@ class Music(commands.Cog):
         self._dj_pending_sounds[guild_id] = sound_ids
 
         try:
+            # ── Stuck-state recovery ──────────────────────────────────
+            # If the voice client thinks it's still playing something (e.g.
+            # a previous TTS with a broken WAV header that FFmpeg hangs on),
+            # force-stop it before trying to play the new TTS. Without this,
+            # every play() call fails with "Already playing audio" and the
+            # queue cascades through all songs with no audio output.
+            if voice_client.is_playing():
+                logging.warning(
+                    f"DJ: Voice client still playing in guild {guild_id} "
+                    f"before TTS — force-stopping stuck source"
+                )
+                voice_client.stop()
+                # Brief pause to let the old FFmpeg process fully terminate
+                await asyncio.sleep(0.3)
+
             # TTS audio — no reconnect options needed (local file), no video
+            # Add a 30-second duration cap as a safety net: if the WAV header
+            # is malformed (e.g. streaming-style 0xFFFFFFFF chunk size from
+            # Kokoro), FFmpeg won't hang waiting for non-existent data.
             tts_source = discord.FFmpegPCMAudio(
                 tts_path,
                 before_options="-nostdin",
-                options="-vn",
+                options="-vn -t 30",
             )
             tts_player = discord.PCMVolumeTransformer(tts_source)
             tts_player.volume = self.current_volume.get(guild_id, 1.0)
@@ -2145,6 +2163,19 @@ class Music(commands.Cog):
         if not ctx.voice_client or not ctx.voice_client.is_connected():
             logging.warning(f"DJ: Voice client gone for guild {guild_id}")
             return
+
+        # ── Stuck-state recovery ──────────────────────────────────
+        # If the voice client is stuck playing something from a previous
+        # failed playback (e.g. a broken TTS that never finished), force-
+        # stop it. Otherwise play() raises "Already playing audio" and
+        # the entire queue gets silently skipped.
+        if ctx.voice_client.is_playing():
+            logging.warning(
+                f"Song playback: Voice client still playing in guild {guild_id} "
+                f"— force-stopping stuck source before starting new song"
+            )
+            ctx.voice_client.stop()
+            await asyncio.sleep(0.3)
 
         # Stop any bed music before the song starts
         await self._stop_bed_music(guild_id)

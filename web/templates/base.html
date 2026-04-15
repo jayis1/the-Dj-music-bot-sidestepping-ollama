@@ -60,6 +60,7 @@
             <div class="log-panel-header">
                 <h3><span class="icon">📋</span> Bot Activity Log</h3>
                 <div class="log-panel-controls">
+                    <button class="log-copy-btn" onclick="copyLogEntries()" title="Copy all visible log entries to clipboard">📋 Copy</button>
                     <div class="log-filter-btns">
                         <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL', this)">All</button>
                         <button class="log-filter-btn" data-level="INFO" onclick="setLogFilter('INFO', this)">Info</button>
@@ -110,6 +111,69 @@
             btn.classList.add('active');
             renderLogs();
         };
+
+        // ── Copy visible log entries to clipboard ────────────────────
+        // Copies whatever is currently shown (respects the active filter).
+        // Format: "TIMESTAMP LEVEL  Message" per line — same style as the log file.
+        window.copyLogEntries = function() {
+            let filtered = logEntries;
+            if (logFilter !== 'ALL') {
+                filtered = logEntries.filter(e => {
+                    const level = (e.level || 'INFO').toUpperCase();
+                    if (logFilter === level) return true;
+                    if (logFilter === 'WARNING' && level === 'WARN') return true;
+                    if (logFilter === 'INFO' && level === 'INFO') return true;
+                    return false;
+                });
+            }
+
+            if (filtered.length === 0) {
+                flashCopyButton('⚠ Empty');
+                return;
+            }
+
+            // Build plain-text log lines: "19:54:22 INFO  DJ: Generated TTS..."
+            const lines = filtered.map(e => {
+                const ts = e.timestamp || '';
+                const level = (e.level || 'INFO').toUpperCase();
+                const msg = e.message || '';
+                return ts + ' ' + level.padEnd(7) + ' ' + msg;
+            });
+
+            const text = lines.join('\n');
+
+            navigator.clipboard.writeText(text).then(function() {
+                flashCopyButton('✅ Copied ' + filtered.length + ' logs');
+            }).catch(function(err) {
+                // Fallback: create a temporary textarea and copy from it
+                // (some browsers block clipboard API on non-HTTPS)
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                ta.style.position = 'fixed';
+                ta.style.left = '-9999px';
+                document.body.appendChild(ta);
+                ta.select();
+                try {
+                    document.execCommand('copy');
+                    flashCopyButton('✅ Copied ' + filtered.length + ' logs');
+                } catch(e) {
+                    flashCopyButton('❌ Copy failed');
+                }
+                document.body.removeChild(ta);
+            });
+        };
+
+        function flashCopyButton(label) {
+            const btn = document.querySelector('.log-copy-btn');
+            if (!btn) return;
+            const origHTML = btn.innerHTML;
+            btn.classList.add('copied');
+            btn.textContent = label;
+            setTimeout(function() {
+                btn.classList.remove('copied');
+                btn.innerHTML = origHTML;
+            }, 2000);
+        }
 
         function loadRecentLogs() {
             fetch('/api/logs/recent?count=100')

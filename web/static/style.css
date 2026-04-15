@@ -558,7 +558,8 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
     position: fixed;
     top: 0;
     right: 0;
-    width: 420px;
+    width: 640px;
+    max-width: 90vw;
     height: 100vh;
     background: var(--bg-secondary);
     border-left: 1px solid var(--border);
@@ -613,7 +614,36 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
 .log-panel-controls {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.log-copy-btn {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    transition: background 0.15s, color 0.15s;
+}
+
+.log-copy-btn:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.log-copy-btn.copied {
+    background: var(--success);
+    color: white;
+    border-color: var(--success);
 }
 
 .log-filter-btns {
@@ -744,9 +774,10 @@ a:hover { color: var(--accent-hover); text-decoration: underline; }
     min-width: 0;
 }
 
-/* Responsive: full-width log panel on small screens */
+/* Responsive: log panel already capped at 90vw via max-width */
 @media (max-width: 768px) {
     .log-panel {
         width: 100%;
+        max-width: 100vw;
     }
 }

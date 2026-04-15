@@ -201,7 +201,14 @@ Available at `http://your-server:8080/`
 ### 📋 Activity Log Panel *(new in v6.3.0)*
 Click **📋 Log** in the sidebar to open a live slide-out log panel:
 - Streams the same logs sent to your Discord log channel — **in real-time via SSE**
-- **Filter buttons:** All / Info / Warn / Error
+- **Width:** 640px (responsive, max 90vw on small screens)
+- **Filter buttons:** All / Info / Warn / Error — `[📋 Copy] [All] [Info] [Warn] [Error] [✕]`
+- **📋 Copy button** — copies all currently visible (filtered) log entries to clipboard as plain text, one line per entry:
+  ```
+  19:54:22 INFO     DJ: Generated TTS (kokoro) → /tmp/dj_kokoro_abc.wav
+  19:54:30 WARNING  DJ: Kokoro server is down, falling back to edge-tts
+  ```
+  Visual feedback: turns green + shows **✅ Copied 47 logs** for 2s → reverts. Shows **⚠ Empty** if nothing visible, **❌ Copy failed** on error. Falls back to `execCommand('copy')` on non-HTTPS.
 - Color-coded severity badges (INFO=blue, WARNING=amber, ERROR=red, DEBUG=gray)
 - Auto-reconnects if the connection drops
 - No new dependencies — uses native browser `EventSource` API

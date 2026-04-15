@@ -332,6 +332,8 @@ The endpoint now calls `_apply_speed()` if audio is playing:
 
 If nothing is playing it returns `{"note": "saved for next song"}`.
 
+> **⚠️ Known Bug:** If a non-1.0× speed is set and you start playing a new song, the bot may throw `"already playing audio"` internally and **skip the song**. This happens because the speed-change restart (`stop()` → new FFmpeg source) races with the initial playback start. **Workaround:** Set speed back to `1.0×` before queuing a new song, or change speed only after the song has already started playing.
+
 ---
 
 ### FFmpeg `atempo` Full-Range Filter Chain (0.25×–4.0×)

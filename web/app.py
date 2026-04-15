@@ -183,6 +183,7 @@ def dashboard():
         bot_user=str(bot.user) if bot else "Not connected",
         bot_avatar=bot.user.display_avatar.url if bot and bot.user else None,
         guild_count=len(bot.guilds) if bot else 0,
+        auto_refresh=True,
     )
 
 

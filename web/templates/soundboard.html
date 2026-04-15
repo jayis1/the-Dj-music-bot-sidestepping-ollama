@@ -17,8 +17,9 @@
         <span style="font-size: 12px; color: var(--text-muted);">.mp3 · .wav · .ogg · .flac · max 16MB</span>
     </div>
     <div style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-        <input type="file" id="sound-upload-input" accept=".mp3,.wav,.ogg,.flac" onchange="uploadSound(this)" style="display:none;">
-        <button class="btn btn-primary" onclick="document.getElementById('sound-upload-input').click()">📎 Choose File</button>
+        <!-- Hidden file input: use opacity+position instead of display:none for broad browser compat -->
+        <input type="file" id="sound-upload-input" accept=".mp3,.wav,.ogg,.flac" onchange="uploadSound(this)" style="position:absolute; opacity:0; width:0; height:0; overflow:hidden; pointer-events:none;">
+        <button class="btn btn-primary" id="upload-btn" onclick="document.getElementById('sound-upload-input').click()">📎 Choose File</button>
         <span id="upload-status" style="font-size: 13px; color: var(--text-muted);">No file selected</span>
     </div>
 </div>
@@ -115,7 +116,7 @@ function showToast(msg, type) {
     t.style.color = 'white';
     t.style.border = type === 'error' ? '1px solid var(--danger)' : '1px solid var(--success)';
     clearTimeout(t._timer);
-    t._timer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 2500);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 3000);
 }
 
 // ── Soundboard Guild Detection ────────────────────────────
@@ -155,19 +156,40 @@ async function playSound(soundId) {
     }
 }
 
+let uploadInProgress = false;
+
 async function uploadSound(input) {
-    if (!input.files || !input.files[0]) return;
+    if (!input.files || !input.files[0]) {
+        console.log('Upload: no file selected');
+        return;
+    }
+    if (uploadInProgress) {
+        console.log('Upload: already in progress, skipping');
+        return;
+    }
+    uploadInProgress = true;
     const file = input.files[0];
+    console.log('Upload: starting upload of', file.name, '(', file.size, 'bytes)');
     const formData = new FormData();
     formData.append('file', file);
 
     const status = document.getElementById('upload-status');
+    const btn = document.getElementById('upload-btn');
     status.textContent = '📤 Uploading ' + file.name + '...';
     status.style.color = 'var(--warning)';
+    btn.disabled = true;
+    btn.textContent = '⏳ Uploading...';
 
     try {
         const res = await fetch('/api/sounds/upload', { method: 'POST', body: formData });
+        console.log('Upload: response status', res.status, res.statusText);
+        if (!res.ok) {
+            const text = await res.text();
+            console.error('Upload: HTTP error', res.status, text);
+            throw new Error('Server returned ' + res.status + ': ' + text.substring(0, 200));
+        }
         const data = await res.json();
+        console.log('Upload: response data', data);
         if (data.ok) {
             status.textContent = '✅ Uploaded: ' + data.name;
             status.style.color = 'var(--success)';
@@ -179,11 +201,16 @@ async function uploadSound(input) {
             showToast(data.error || 'Upload failed', 'error');
         }
     } catch (e) {
+        console.error('Upload: caught error', e);
         status.textContent = '❌ Upload failed: ' + e.message;
         status.style.color = 'var(--danger)';
         showToast('Upload failed: ' + e.message, 'error');
+    } finally {
+        uploadInProgress = false;
+        btn.disabled = false;
+        btn.textContent = '📎 Choose File';
+        input.value = '';
     }
-    input.value = '';
 }
 
 async function deleteSound(soundId) {

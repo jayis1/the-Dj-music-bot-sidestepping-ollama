@@ -237,3 +237,16 @@ A new `_format_line(template, **kwargs)` wrapper function was implemented to saf
 4. Finally, it re-appends the preserved `{sound:...}` tags onto the tail end of the newly formatted broadcast line.
 
 This ensures that format collisions no longer occur and the DJ correctly triggers the sound effects at the end of their introductory broadcast!
+
+---
+
+### Dashboard UX & Upload Bug Fixes
+
+**1. Upload Button Reliability (Firefox/WebKit):**
+The HTML file upload button originally utilized a `display: none` style to hide the `<input type="file">` tag. However, modern browsers (especially Firefox) will silently block programmatic `.click()` events on `display: none` elements for security reasons. This was mitigated by applying a modern CSS workaround (`position: absolute; opacity: 0; pointer-events: none;`), restoring file upload selection functionality across all browsers. 
+
+**2. Conditional Auto-Refreshes:**
+The `<meta http-equiv="refresh" content="30">` tag was indiscriminately reloading all pages every 30 seconds, ruthlessly interrupting ongoing audio file uploads and form submissions. The template architecture was upgraded to parse a Jinja conditional (`{% if auto_refresh %}`), ensuring only the live status dashboard (`/`) receives the periodic reload command, while interactive pages (`/soundboard` and `/dj-lines`) remain stable for user inputs.
+
+**3. Interactive Upload Feedback:**
+The upload button logic was hardened with an `uploadInProgress` guard to prevent double-submissions, and now provides interactive UI feedback (`⏳ Uploading...`) during the `fetch()` call. Non-OK responses immediately surface the precise HTTP error code and body fragment to explicitly diagnose failures, gracefully failing with proper state cleanup in a `finally` block.

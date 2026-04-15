@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Mission Control{% endblock %} — {{ bot_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% if auto_refresh %}
+    <meta http-equiv="refresh" content="30">
+    {% endif %}
 </head>
 <body>
     <div class="layout">
@@ -36,6 +39,5 @@
             {% block content %}{% endblock %}
         </main>
     </div>
-    <meta id="refresh" http-equiv="refresh" content="30">
 </body>
 </html>

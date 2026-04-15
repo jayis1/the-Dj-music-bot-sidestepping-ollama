@@ -307,6 +307,34 @@ The dashboard uses 4 independent refresh layers that never interfere with each o
 - **AI Side Host Voice selector** on the Radio page
 - **Ollama status check** on the Settings page with setup instructions
 
+### 🔀 Reverse Proxy Support *(Settings page)*
+
+Enable the **🔀 Reverse Proxy** card on the Settings page to safely expose Mission Control behind Nginx or Nginx Proxy Manager:
+
+| UI Element | Purpose |
+|---|---|
+| Toggle checkbox | Enables/disables `REVERSE_PROXY` in `.env` with one click |
+| Active / Disabled badge | Shows current state |
+| Trusted Proxies count | Shows `TRUSTED_PROXY_COUNT` (usually 1) |
+| Nginx config snippet | Ready-to-paste `server {}` block with WebSocket support for SSE |
+| Nginx Proxy Manager guide | Step-by-step: Domain, Scheme, Forward IP/Port, required headers |
+| Restart prompt | Modal appears after toggle — ProxyFix requires a restart to apply |
+
+**When enabled**, Flask's `ProxyFix` middleware intercepts:
+
+| Header | What it fixes |
+|---|---|
+| `X-Forwarded-For` | Real client IP (otherwise every request shows as `127.0.0.1`) |
+| `X-Forwarded-Proto` | HTTPS awareness — fixes `url_for`, redirects, secure cookies |
+| `X-Forwarded-Host` | Correct hostname in generated URLs |
+| `X-Forwarded-Prefix` | Subpath support (e.g. `yourdomain.com/radio/`) |
+
+Set in `.env`:
+```env
+REVERSE_PROXY=true
+TRUSTED_PROXY_COUNT=1
+```
+
 ### API Endpoints (selected)
 | Endpoint | Method | Description |
 |---|---|---|
@@ -321,6 +349,7 @@ The dashboard uses 4 independent refresh layers that never interfere with each o
 | `/api/logs/recent` | GET | Last N log entries as JSON |
 | `/api/logs/stream` | GET | SSE stream of live log entries |
 | `/api/voices` | GET | List TTS voices (30-min cached) |
+| `/api/reverse-proxy` | POST | Toggle `REVERSE_PROXY` on/off in `.env` |
 
 ### Configuration
 ```env
@@ -497,6 +526,7 @@ For full technical details — architecture, cog internals, all API endpoints, m
 | 🎵 **DJ Bed Race Condition** | Fixed "Already playing audio" crash — bed music now starts after TTS finishes, not simultaneously |
 | 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation via JSON API failed — fixed by switching `SYSTEM """..."""` to `MESSAGE system` format which survives JSON serialization |
 | 🎛️ **Multi Sound Effects** | AI side host can now use multiple `{sound:name}` tags per line (char limit raised 150→200) — the pipeline already supported it, only the prompt restricted it |
+| 🔀 **Reverse Proxy Support** | Settings panel now has an Nginx/NPM config card — one-click toggle for `ProxyFix` middleware (real IPs, HTTPS awareness, subpath support) |
 | 👤 **Bot Name as Station Name** | AI side host now uses the bot's actual Discord display name (e.g. `musicBOT2`) instead of the generic `STATION_NAME` config value |
 | 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
 | 🍡 **Kokoro TTS Engine** | New primary TTS engine — `TTS_MODE=kokoro`, OpenAI-compatible, GPU or CPU, ~300ms |

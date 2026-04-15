@@ -1843,7 +1843,11 @@ class Music(commands.Cog):
             self._last_dj_line[guild_id] = clean_text if clean_text else text
 
         voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
-        tts_path = await generate_tts(clean_text if clean_text else text, voice)
+        tts_path = await generate_tts(
+            clean_text if clean_text else text,
+            voice,
+            source="AI Side Host" if is_ai else "DJ",
+        )
 
         if not tts_path:
             logging.warning(f"DJ: TTS generation returned None for guild {guild_id}")

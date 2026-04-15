@@ -53,6 +53,28 @@ app.secret_key = os.environ.get(
 )
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max upload
 
+# ── Reverse Proxy Support ────────────────────────────────────────────
+# When the dashboard runs behind a reverse proxy (Nginx Proxy Manager,
+# Caddy, Traefik, Cloudflare Tunnel, etc.), enable REVERSE_PROXY in .env
+# so Flask correctly handles X-Forwarded-* headers. This fixes:
+# - HTTPS redirects (proxy terminates TLS, Flask sees HTTP without this)
+# - Real client IPs in logs (otherwise every request appears from 127.0.0.1)
+# - Correct URL generation (url_for, redirect) with the external hostname
+if getattr(config, "REVERSE_PROXY", False):
+    from werkzeug.middleware.proxy_fix import ProxyFix
+
+    proxy_count = getattr(config, "TRUSTED_PROXY_COUNT", 1)
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=proxy_count,  # Trust X-Forwarded-For
+        x_proto=proxy_count,  # Trust X-Forwarded-Proto (HTTP → HTTPS)
+        x_host=proxy_count,  # Trust X-Forwarded-Host (correct hostname)
+        x_prefix=proxy_count,  # Trust X-Forwarded-Prefix (subpath support)
+    )
+    logging.info(
+        f"Dashboard: Reverse proxy support enabled (trusted proxies: {proxy_count})"
+    )
+
 
 # ── Authentication ────────────────────────────────────────────────────
 
@@ -1174,6 +1196,10 @@ def settings_page():
         kokoro_tts_url=getattr(config, "KOKORO_TTS_URL", "http://localhost:8880"),
         vibevoice_tts_url=getattr(config, "VIBEVOICE_TTS_URL", "http://localhost:3000"),
         edge_tts_available=EDGE_TTS_AVAILABLE,
+        reverse_proxy=getattr(config, "REVERSE_PROXY", False),
+        trusted_proxy_count=getattr(config, "TRUSTED_PROXY_COUNT", 1),
+        web_host=getattr(config, "WEB_HOST", "0.0.0.0"),
+        web_port=getattr(config, "WEB_PORT", 8080),
     )
 
 
@@ -1209,6 +1235,65 @@ def api_shutdown():
 
     threading.Thread(target=_do_shutdown, daemon=True).start()
     return jsonify({"ok": True, "message": "Shutting down..."})
+
+
+@app.route("/api/reverse-proxy", methods=["POST"])
+def api_toggle_reverse_proxy():
+    """Toggle REVERSE_PROXY in the .env file.
+
+    Writes the new value to .env and returns the updated state.
+    Requires a bot restart for ProxyFix middleware to take effect.
+    """
+    data = request.get_json(silent=True) or {}
+    enabled = data.get("enabled", False)
+
+    env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.exists(env_path):
+        return jsonify({"ok": False, "error": ".env file not found"}), 404
+
+    try:
+        with open(env_path, "r") as f:
+            lines = f.readlines()
+
+        found = False
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped.startswith("REVERSE_PROXY="):
+                new_lines.append(f"REVERSE_PROXY={'true' if enabled else 'false'}\n")
+                found = True
+            else:
+                new_lines.append(line)
+
+        if not found:
+            # Add at the end of the Web Dashboard section
+            new_lines.append("\n# Reverse Proxy Support\n")
+            new_lines.append(f"REVERSE_PROXY={'true' if enabled else 'false'}\n")
+
+        with open(env_path, "w") as f:
+            f.writelines(new_lines)
+
+        # Update config in-memory so the status reflects immediately
+        config.REVERSE_PROXY = enabled
+
+        status = "enabled" if enabled else "disabled"
+        logging.info(
+            f"Dashboard: Reverse proxy support {status} "
+            f"(restart required for ProxyFix middleware to apply)"
+        )
+
+        return jsonify(
+            {
+                "ok": True,
+                "enabled": enabled,
+                "message": f"Reverse proxy support {status}. "
+                "Restart the bot for the change to take full effect.",
+                "restart_required": True,
+            }
+        )
+    except Exception as e:
+        logging.error(f"Dashboard: Failed to toggle reverse proxy: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ── Soundboard API ─────────────────────────────────────────────────

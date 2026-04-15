@@ -115,6 +115,110 @@
     {% endif %}
 </div>
 
+<!-- ── Reverse Proxy ─────────────────────────────────────────── -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2><span class="icon">🔀</span> Reverse Proxy</h2>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+        Enable this if you access Mission Control through a reverse proxy like
+        <strong>Nginx Proxy Manager</strong>, <strong>Nginx</strong>, <strong>Caddy</strong>,
+        <strong>Traefik</strong>, or <strong>Cloudflare Tunnel</strong>.
+        This applies Flask's <code>ProxyFix</code> middleware so the dashboard
+        correctly handles <code>X-Forwarded-*</code> headers — fixing HTTPS redirects,
+        real client IPs, and correct URL generation.
+    </p>
+    <div class="settings-grid">
+        <div class="settings-item" style="grid-column: 1 / -1;">
+            <div style="display: flex; align-items: center; gap: 12px; width: 100%;">
+                <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; flex: 1;">
+                    <input type="checkbox" id="reverse-proxy-toggle"
+                        style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent);"
+                        {% if reverse_proxy %}checked{% endif %}
+                        onchange="toggleReverseProxy(this.checked)">
+                    <div>
+                        <span style="font-size: 14px; font-weight: 600; color: var(--text-primary);">
+                            Enable Reverse Proxy Support
+                        </span>
+                        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">
+                            Applies <code>ProxyFix</code> middleware — requires bot restart to take effect
+                        </div>
+                    </div>
+                </label>
+                <span id="reverse-proxy-status" style="font-size: 13px; font-weight: 600; white-space: nowrap;
+                    {% if reverse_proxy %}color: var(--success);{% else %}color: var(--text-muted);{% endif %}">
+                    {% if reverse_proxy %}✅ Active{% else %}⚪ Disabled{% endif %}
+                </span>
+            </div>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Trusted Proxies</span>
+            <span class="settings-value">{{ trusted_proxy_count }}</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Config Key</span>
+            <span class="settings-value" style="font-size: 12px; font-family: monospace;">REVERSE_PROXY</span>
+        </div>
+    </div>
+
+    <!-- Nginx config snippet (collapsible) -->
+    <details style="margin-top: 16px;">
+        <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); padding: 8px 0;">
+            📄 Example Nginx Config
+        </summary>
+        <pre style="background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius);
+            padding: 16px; font-size: 12px; overflow-x: auto; margin-top: 8px; color: var(--text-secondary); line-height: 1.6;">server {
+    listen 443 ssl http2;
+    server_name radio.yourdomain.com;
+
+    ssl_certificate     /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://<span style="color: var(--accent);">{{ web_host }}</span>:<span style="color: var(--accent);">{{ web_port }}</span>;
+
+        # ── Required headers for ProxyFix ──
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host  $host;
+        proxy_set_header X-Forwarded-Prefix /;
+
+        # ── WebSocket support (for Activity Log SSE) ──
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # ── Timeouts ──
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+}</pre>
+    </details>
+
+    <!-- NPM instructions (collapsible) -->
+    <details style="margin-top: 8px;">
+        <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); padding: 8px 0;">
+            🛠️ Nginx Proxy Manager Setup
+        </summary>
+        <div style="margin-top: 8px; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; color: var(--text-secondary); line-height: 1.8;">
+            <ol style="margin: 0; padding-left: 20px;">
+                <li>In NPM, go to <strong>Proxy Hosts → Add Proxy Host</strong></li>
+                <li><strong>Domain:</strong> <code>radio.yourdomain.com</code></li>
+                <li><strong>Scheme:</strong> <code>http</code></li>
+                <li><strong>Forward Hostname/IP:</strong> <code>{{ web_host }}</code> (your bot's IP)</li>
+                <li><strong>Forward Port:</strong> <code>{{ web_port }}</code></li>
+                <li>Enable <strong>Block Common Exploits</strong> and <strong>Websockets Support</strong> ✅</li>
+                <li>Under <strong>Advanced</strong> tab, add these headers:
+                    <pre style="background: var(--bg-secondary); padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 4px;">proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host  $host;</pre>
+                </li>
+                <li>Enable <strong>REVERSE_PROXY=true</strong> in your <code>.env</code> and restart the bot</li>
+            </ol>
+        </div>
+    </details>
+</div>
+
 <!-- ── Danger Zone ───────────────────────────────────────────── -->
 <div class="card" style="border-color: var(--danger); margin-bottom: 24px;">
     <div class="card-header">
@@ -289,6 +393,52 @@ async function doShutdown() {
     } catch (e) {
         // Network error is expected during shutdown
         showToast('🔴 Bot is shutting down.', 'success');
+    }
+}
+
+// ── Reverse Proxy Toggle ──────────────────────────────────
+async function toggleReverseProxy(enabled) {
+    const statusEl = document.getElementById('reverse-proxy-status');
+    statusEl.textContent = '⏳ Saving...';
+    statusEl.style.color = 'var(--text-muted)';
+
+    try {
+        const res = await fetch('/api/reverse-proxy', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: enabled })
+        });
+        const data = await res.json();
+
+        if (data.ok) {
+            statusEl.textContent = enabled ? '✅ Active' : '⚪ Disabled';
+            statusEl.style.color = enabled ? 'var(--success)' : 'var(--text-muted)';
+            showToast(data.message, 'success');
+
+            // Prompt restart if needed
+            if (data.restart_required) {
+                setTimeout(() => {
+                    showModal(
+                        '🔄',
+                        'Restart Required',
+                        'Reverse proxy setting changed. Restart the bot for ProxyFix middleware to take effect.',
+                        'Restart Now',
+                        doRestart
+                    );
+                }, 500);
+            }
+        } else {
+            statusEl.textContent = '❌ Error';
+            statusEl.style.color = 'var(--danger)';
+            showToast(data.error || 'Failed to update reverse proxy setting', 'error');
+            // Revert checkbox
+            document.getElementById('reverse-proxy-toggle').checked = !enabled;
+        }
+    } catch (e) {
+        statusEl.textContent = '❌ Failed';
+        statusEl.style.color = 'var(--danger)';
+        showToast('Network error: ' + e.message, 'error');
+        document.getElementById('reverse-proxy-toggle').checked = !enabled;
     }
 }
 

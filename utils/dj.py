@@ -959,7 +959,7 @@ async def _check_kokoro_health() -> bool:
         return False
 
 
-async def generate_tts(text: str, voice: str = None) -> str | None:
+async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str | None:
     """Generate a TTS audio file and return its path.
 
     Routes to the appropriate TTS engine based on config.TTS_MODE:
@@ -971,6 +971,12 @@ async def generate_tts(text: str, voice: str = None) -> str | None:
     For Kokoro, a quick health check is done first — if the server is
     unreachable, the fallback is nearly instant instead of waiting for
     a long timeout.
+
+    Args:
+        text: The text to synthesize.
+        voice: Voice name. Auto-resolved per engine if None.
+        source: Who is speaking — e.g. "DJ" or "AI Side Host".
+            Used in log messages to distinguish who generated the TTS.
 
     Returns the path to a WAV file (kokoro/vibevoice) or MP3 file (edge-tts).
     The caller must delete the file after use via cleanup_tts_file().
@@ -993,16 +999,16 @@ async def generate_tts(text: str, voice: str = None) -> str | None:
         healthy = await _check_kokoro_health()
         if healthy:
             resolved = _resolve_voice(voice, "kokoro")
-            result = await _generate_tts_kokoro(text, resolved)
+            result = await _generate_tts_kokoro(text, resolved, source=source)
             if result is not None:
                 return result
             logging.warning(
-                "DJ: Kokoro TTS generation failed despite server being up. "
+                f"{source}: Kokoro TTS generation failed despite server being up. "
                 "Falling back to edge-tts."
             )
         else:
             logging.warning(
-                "DJ: Kokoro server is down, falling back to edge-tts. "
+                f"{source}: Kokoro server is down, falling back to edge-tts. "
                 "Start it with: docker run --gpus all -p 8880:8880 "
                 "ghcr.io/remsky/kokoro-fastapi-gpu:latest"
             )
@@ -1011,10 +1017,10 @@ async def generate_tts(text: str, voice: str = None) -> str | None:
 
     elif TTS_MODE == "vibevoice":
         resolved = _resolve_voice(voice, "vibevoice")
-        result = await _generate_tts_vibevoice(text, resolved)
+        result = await _generate_tts_vibevoice(text, resolved, source=source)
         if result is not None:
             return result
-        logging.warning("DJ: VibeVoice TTS failed, falling back to edge-tts")
+        logging.warning(f"{source}: VibeVoice TTS failed, falling back to edge-tts")
         edge_voice = _resolve_voice(voice, "edge-tts")
 
     else:
@@ -1024,17 +1030,17 @@ async def generate_tts(text: str, voice: str = None) -> str | None:
     # Final fallback: edge-tts
     if not EDGE_TTS_AVAILABLE:
         logging.error(
-            "DJ: edge-tts not installed — cannot fall back! "
+            f"{source}: edge-tts not installed — cannot fall back! "
             "Install with: pip install edge-tts"
         )
         return None
 
-    logging.info(f"DJ: Using edge-tts fallback (voice={edge_voice})")
-    return await _generate_tts_edge(text, edge_voice)
+    logging.info(f"{source}: Using edge-tts fallback (voice={edge_voice})")
+    return await _generate_tts_edge(text, edge_voice, source=source)
 
 
 async def _generate_tts_kokoro(
-    text: str, voice: str = DEFAULT_VOICE_KOKORO
+    text: str, voice: str = DEFAULT_VOICE_KOKORO, source: str = "DJ"
 ) -> str | None:
     """Generate TTS audio using a Kokoro-FastAPI Docker server.
 
@@ -1085,16 +1091,16 @@ async def _generate_tts_kokoro(
         return None
     except asyncio.TimeoutError:
         logging.error(
-            "DJ: Kokoro TTS timed out (15s). "
+            f"{source}: Kokoro TTS timed out (15s). "
             "The server may be overloaded or starting up. Falling back."
         )
         return None
     except Exception as e:
-        logging.error(f"DJ: Kokoro TTS unexpected error: {e}")
+        logging.error(f"{source}: Kokoro TTS unexpected error: {e}")
         return None
 
     if not audio_data or len(audio_data) < 44:
-        logging.warning("DJ: Kokoro TTS returned empty or tiny audio data")
+        logging.warning(f"{source}: Kokoro TTS returned empty or tiny audio data")
         return None
 
     # Save the WAV data to a temp file.
@@ -1156,16 +1162,18 @@ async def _generate_tts_kokoro(
             duration = 0.0
 
         logging.info(
-            f"DJ: Generated TTS (kokoro) → {wav_path} "
+            f"{source}: Generated TTS (kokoro) → {wav_path} "
             f"({len(text)} chars, voice={voice}, {duration:.1f}s)"
         )
         return wav_path
     except Exception as e:
-        logging.error(f"DJ: Failed to write Kokoro TTS WAV file: {e}")
+        logging.error(f"{source}: Failed to write Kokoro TTS WAV file: {e}")
         return None
 
 
-async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE_EDGE) -> str | None:
+async def _generate_tts_edge(
+    text: str, voice: str = DEFAULT_VOICE_EDGE, source: str = "DJ"
+) -> str | None:
     """Generate TTS audio using Microsoft Edge TTS (cloud-based).
 
     Returns the path to an MP3 file, or None on failure.
@@ -1182,11 +1190,11 @@ async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE_EDGE) -> str 
         await communicate.save(path)
 
         logging.info(
-            f"DJ: Generated TTS (edge-tts) → {path} ({len(text)} chars, voice={voice})"
+            f"{source}: Generated TTS (edge-tts) → {path} ({len(text)} chars, voice={voice})"
         )
         return path
     except Exception as e:
-        logging.error(f"DJ: Failed to generate TTS (edge-tts): {e}")
+        logging.error(f"{source}: Failed to generate TTS (edge-tts): {e}")
         if path and os.path.exists(path):
             try:
                 os.remove(path)
@@ -1196,7 +1204,7 @@ async def _generate_tts_edge(text: str, voice: str = DEFAULT_VOICE_EDGE) -> str 
 
 
 async def _generate_tts_vibevoice(
-    text: str, voice: str = DEFAULT_VOICE_VIBEVOICE
+    text: str, voice: str = DEFAULT_VOICE_VIBEVOICE, source: str = "DJ"
 ) -> str | None:
     """Generate TTS audio using a VibeVoice-Realtime WebSocket server.
 
@@ -1206,7 +1214,7 @@ async def _generate_tts_vibevoice(
     Returns the path to a WAV file, or None on failure.
     """
     if not AIOHTTP_AVAILABLE:
-        logging.error("DJ: aiohttp not installed, cannot use VibeVoice TTS")
+        logging.error(f"{source}: aiohttp not installed, cannot use VibeVoice TTS")
         return None
 
     # Build the WebSocket URL with query parameters
@@ -1232,24 +1240,24 @@ async def _generate_tts_vibevoice(
                             pass
                         elif msg.type == aiohttp.WSMsgType.ERROR:
                             logging.error(
-                                f"DJ: VibeVoice WebSocket error: {ws.exception()}"
+                                f"{source}: VibeVoice WebSocket error: {ws.exception()}"
                             )
                             break
             except aiohttp.WSError as e:
                 logging.error(
-                    f"DJ: Failed to connect to VibeVoice server at {VIBEVOICE_TTS_URL}: {e}"
+                    f"{source}: Failed to connect to VibeVoice server at {VIBEVOICE_TTS_URL}: {e}"
                 )
                 return None
             except asyncio.TimeoutError:
-                logging.error("DJ: VibeVoice TTS connection timed out (30s)")
+                logging.error(f"{source}: VibeVoice TTS connection timed out (30s)")
                 return None
 
     except Exception as e:
-        logging.error(f"DJ: VibeVoice TTS unexpected error: {e}")
+        logging.error(f"{source}: VibeVoice TTS unexpected error: {e}")
         return None
 
     if not audio_chunks:
-        logging.warning("DJ: VibeVoice TTS returned no audio data")
+        logging.warning(f"{source}: VibeVoice TTS returned no audio data")
         return None
 
     # Combine all PCM16 chunks and write as a WAV file
@@ -1266,12 +1274,12 @@ async def _generate_tts_vibevoice(
             wf.writeframes(pcm_data)
 
         logging.info(
-            f"DJ: Generated TTS (vibevoice) → {wav_path} ({len(text)} chars, "
+            f"{source}: Generated TTS (vibevoice) → {wav_path} ({len(text)} chars, "
             f"voice={voice}, {len(pcm_data) / VIBEVOICE_SAMPLE_RATE:.1f}s)"
         )
         return wav_path
     except Exception as e:
-        logging.error(f"DJ: Failed to write VibeVoice TTS WAV file: {e}")
+        logging.error(f"{source}: Failed to write VibeVoice TTS WAV file: {e}")
         return None
 
 

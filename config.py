@@ -151,6 +151,21 @@ WEB_PORT = int(os.environ.get("WEB_PORT", 8080))
 
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 
+# Reverse Proxy support (e.g. Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel).
+# When enabled, Flask's ProxyFix middleware is applied so the dashboard
+# correctly respects X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host
+# headers. This fixes HTTPS redirects, real client IPs in logs, and
+# correct URL generation when the dashboard is behind a reverse proxy.
+# Set to "true" if you access the dashboard through Nginx, Caddy, Traefik,
+# Nginx Proxy Manager, Cloudflare Tunnel, or any other reverse proxy.
+REVERSE_PROXY = os.environ.get("REVERSE_PROXY", "false").lower() == "true"
+
+# Number of reverse proxy hops to trust (only used when REVERSE_PROXY=true).
+# Set this to the number of proxies in front of the bot. Most setups have 1
+# (e.g. Nginx Proxy Manager → Bot). Set to 2 if you have two proxies
+# (e.g. Cloudflare Tunnel → Nginx → Bot).
+TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))
+
 # Now-Playing Channel — Discord channel ID where the bot sends its
 # now-playing embed. If set, all now-playing messages go to this one
 # channel regardless of which channel the user typed the command in.

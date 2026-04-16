@@ -2135,7 +2135,8 @@ class Music(commands.Cog):
             return
 
         ctx, data, channel_id = pending
-        del self._dj_pending[guild_id]
+        # Don't delete pending yet — keep it alive in case AI side host
+        # needs to reference it. _start_song_playback will consume it.
 
         # ── AI Side Host: chime in after the main DJ, before the song ──
         ai_enabled = self.ai_dj_enabled.get(guild_id, False)
@@ -2146,8 +2147,18 @@ class Music(commands.Cog):
         if ai_enabled and OLLAMA_DJ_AVAILABLE and TTS_AVAILABLE:
             # Pass what the main DJ just said so the AI can react to it
             dj_line = self._last_dj_line.get(guild_id, "")
-            ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
+            logging.info(
+                f"AI Side Host: awaiting line generation for guild {guild_id}..."
+            )
+            try:
+                ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
+            except Exception as e:
+                logging.error(f"AI Side Host: error generating line: {e}")
+                ai_line = None
             if ai_line:
+                logging.info(
+                    f"AI Side Host: got line for guild {guild_id}, speaking..."
+                )
                 # Get context for the AI side host
                 voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
                 spoke = await self._dj_speak(
@@ -2155,22 +2166,29 @@ class Music(commands.Cog):
                 )
                 if spoke:
                     # AI side host spoke — the 'after' callback on this TTS
-                    # will handle song playback via _on_tts_done. But we need
-                    # to make sure it does NOT try to speak AGAIN. Set a flag
-                    # so _on_tts_done knows to go straight to the song.
+                    # will handle song playback via _on_tts_done. Store the
+                    # pending data so _on_tts_done can play the song.
+                    self._dj_pending[guild_id] = (ctx, data, channel_id)
                     self._ai_dj_pending_line.pop(guild_id, None)
-                    # Wait for the AI TTS to finish, then play the song.
-                    # We can't just await here because TTS is played via
-                    # voice_client.play(after=callback). Instead, let the
-                    # normal _on_tts_done flow handle it — it will see no
-                    # AI pending line and no pending sounds, and call
-                    # _play_song_after_dj directly. But the pending song data
-                    # is still stored, so _play_song_after_dj will pick it up.
-                    logging.info(f"AI Side Host: Spoke in guild {guild_id}")
+                    logging.info(
+                        f"AI Side Host: Spoke in guild {guild_id}, song will play after TTS"
+                    )
                     return
+                else:
+                    logging.warning(
+                        f"AI Side Host: TTS failed for guild {guild_id}, playing song directly"
+                    )
                 # If TTS failed, fall through to play the song directly
+            else:
+                logging.info(f"AI Side Host: no line generated for guild {guild_id}")
+
+        # Remove pending data now that we're done with it
+        self._dj_pending.pop(guild_id, None)
 
         # Now play the actual song
+        logging.info(
+            f"AI Side Host: skipping AI side host, playing song directly for guild {guild_id}"
+        )
         await self._start_song_playback(ctx, data, channel_id)
 
     async def _try_ai_side_host(self, guild_id, dj_line: str = "") -> str | None:
@@ -2672,6 +2690,12 @@ class Music(commands.Cog):
             logging.info(
                 f"Interaction received: {custom_id} by {interaction.user} in {interaction.guild.name}"
             )
+
+            # Battle of the Beats vote buttons are handled by BattleView
+            # — skip them here to avoid double-acknowledging
+            if custom_id in ("battle_vote_a", "battle_vote_b"):
+                return
+
             ctx = await self.bot.get_context(interaction.message)
             if custom_id == "play":
                 await self.resume(ctx)
@@ -2960,7 +2984,20 @@ class Music(commands.Cog):
         try:
             from cogs.youtube import PlaceholderTrack
 
-            winner_track = PlaceholderTrack(title=winner_title, url=winner_url)
+            # PlaceholderTrack expects a dict with at least "title" and "url"/"id"
+            winner_data = {"title": winner_title, "url": winner_url}
+            # If the URL looks like a YouTube video, also set the id and webpage_url
+            if "youtube.com" in winner_url or "youtu.be" in winner_url:
+                import urllib.parse
+
+                parsed = urllib.parse.urlparse(winner_url)
+                qs = urllib.parse.parse_qs(parsed.query)
+                vid_id = qs.get("v", [None])[0]
+                if vid_id:
+                    winner_data["id"] = vid_id
+                winner_data["webpage_url"] = winner_url
+
+            winner_track = PlaceholderTrack(winner_data)
             if guild_id not in self.song_queues:
                 self.song_queues[guild_id] = asyncio.Queue()
             await self.song_queues[guild_id].put(winner_track)

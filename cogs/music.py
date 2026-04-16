@@ -3002,10 +3002,24 @@ class BattleView(discord.ui.View):
         self.music_cog = music_cog
         self.guild_id = guild_id
 
-    @discord.ui.Button(
-        label="🅰️ Song A", style=discord.ButtonStyle.primary, custom_id="battle_vote_a"
-    )
-    async def vote_a(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Add vote buttons programmatically
+        btn_a = discord.ui.Button(
+            label="🅰️ Song A",
+            style=discord.ButtonStyle.primary,
+            custom_id="battle_vote_a",
+        )
+        btn_a.callback = self._vote_a
+        self.add_item(btn_a)
+
+        btn_b = discord.ui.Button(
+            label="🅱️ Song B",
+            style=discord.ButtonStyle.danger,
+            custom_id="battle_vote_b",
+        )
+        btn_b.callback = self._vote_b
+        self.add_item(btn_b)
+
+    async def _vote_a(self, interaction: discord.Interaction):
         battle = self.music_cog._battles.get(self.guild_id)
         if not battle or not battle.get("active"):
             await interaction.response.send_message(
@@ -3026,10 +3040,7 @@ class BattleView(discord.ui.View):
             ephemeral=True,
         )
 
-    @discord.ui.Button(
-        label="🅱️ Song B", style=discord.ButtonStyle.danger, custom_id="battle_vote_b"
-    )
-    async def vote_b(self, interaction: discord.Interaction, button: discord.ui.Button):
+    async def _vote_b(self, interaction: discord.Interaction):
         battle = self.music_cog._battles.get(self.guild_id)
         if not battle or not battle.get("active"):
             await interaction.response.send_message(

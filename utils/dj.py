@@ -1052,7 +1052,7 @@ STATION_IDS = [
     f"We interrupt this silence with {config.STATION_NAME} Radio! {{sound:man_screaming_aaaah}}",
     f"{config.STATION_NAME} Radio — even the DJ sleeps sometimes. But not right now! {{sound:man_snoring_meme_ctrllNn}}",
     f"Jump into {config.STATION_NAME} Radio! {{sound:maro_jump_sound_effect_1}}",
-    f"Meowrgh! {config.STATION_name} Radio is ALIVE! {{sound:meowrgh}}",
+    f"Meowrgh! {config.STATION_NAME} Radio is ALIVE! {{sound:meowrgh}}",
     f"SHOTGUN! {config.STATION_NAME} Radio! {{sound:shotgun_sound_effect_pumping}}",
     f"Six Seven on {config.STATION_NAME} Radio! {{sound:six_seven_okPwnRN}}",
     f"GUGU GAGA! {config.STATION_NAME} Radio! {{sound:sukuna_gugu_gaga_loudest}}",

@@ -148,30 +148,47 @@ def _time_greeting() -> str:
             "Rise and shine, everyone!",
             "Morning, music lovers!",
             "Top of the morning to ya!",
+            "The sun's up and so is the volume!",
+            "Good morning! Coffee's optional. Music isn't.",
+            "Rise and grind! The musical kind of grind.",
+            "Morning! If you're hearing this, you're already winning today.",
         ],
         "afternoon": [
             "Good afternoon, everyone!",
             "Afternoon, listeners!",
             "Hope your afternoon's going well!",
             "Afternoon! Let's keep the energy up.",
+            "Good afternoon! Perfect time for a soundtrack.",
+            "Afternoon vibes! Let me provide the background music to your day.",
+            "Good afternoon! The weather outside may vary, but the tunes are always consistent.",
         ],
         "evening": [
             "Good evening, everyone!",
             "Evening, music lovers!",
             "Hope you're having a great evening!",
             "Evening! Perfect time for some tunes.",
+            "Good evening! The night is young and so is this playlist.",
+            "Evening! Leave the day behind. The music starts now.",
+            "Good evening, beautiful people!",
         ],
         "night": [
             "Evening, night owls!",
             "Still up? Good. Let's keep going.",
             "Night crew, you're in the right place.",
             "Late night vibes, let's go.",
+            "Night owls unite! The best listening happens after midnight.",
+            "Can't sleep? Good. More music for us.",
+            "The night shift checking in. Let's do this.",
         ],
         "late night": [
             "Late night crew, I see you!",
             "Burning the midnight oil? I've got you covered.",
             "Late night, right here. Let's keep it mellow.",
             "Can't sleep? Neither can I. Music it is.",
+            "3 AM crew, welcome to the after-hours. The vibes are different here. Special.",
+            "Late night. The world is quiet. The music is loud. This is the way.",
+            "If you're hearing this at this hour, we're basically best friends now.",
+            "The late night listeners are the real ones. Respect.",
         ],
     }
     return random.choice(greetings.get(tod, ["Hey everyone!"]))
@@ -186,10 +203,13 @@ def _queue_banter(queue_size: int) -> str:
             "One more left in the queue.",
             "Just one more to go after this.",
             "Last one in the queue coming up.",
+            "And then there was one. Last track after this.",
+            "Down to the final track after this one.",
         ],
         2: [
             "A couple more lined up after this.",
             "Two more waiting in the wings.",
+            "Just two left. The queue is almost spent.",
         ],
     }
     # 3–5
@@ -197,6 +217,9 @@ def _queue_banter(queue_size: int) -> str:
         "Got a nice little set going. {} more after this one.",
         "A few more in the queue. {} left to go.",
         "{} more tracks lined up and ready to roll.",
+        "Small but mighty. {} more in the tank.",
+        "Just {} more. Quality over quantity, right?",
+        "{} tracks left. We're picking up momentum.",
     ]
     # 6–15
     medium = [
@@ -204,6 +227,11 @@ def _queue_banter(queue_size: int) -> str:
         "Plenty more where that came from. {} left in the queue.",
         "The queue is looking healthy — {} more to go.",
         "Don't go anywhere, we've got {} more coming up.",
+        "{} more tracks and we are CRUISING right now.",
+        "Settle in, we've got {} more tracks on deck.",
+        "The queue midsection. {} tracks of pure possibility.",
+        "{} more songs. That's like... at least twenty minutes of vibes. Minimum.",
+        "DJ math: {} tracks remaining divided by vibes equals a good time.",
     ]
     # 16+
     big = [
@@ -211,6 +239,12 @@ def _queue_banter(queue_size: int) -> str:
         "This is a marathon session. {} songs still to come!",
         "{} more tracks! We are not stopping anytime soon.",
         "Endless music, just the way we like it. {} more to go.",
+        "{} tracks deep and we're just getting WARMED UP.",
+        "This queue has {} tracks. That's not a queue. That's a lifestyle.",
+        "{} more songs. At this point we're basically a festival.",
+        "The queue is {} tracks strong. I will NOT be taking breaks. I will be taking requests.",
+        "When I said I could DJ all night, I meant it. {} tracks prove it.",
+        "{} more. I'm committed. You're committed. We're all committed. To the music. And possibly to the psych ward.",
     ]
 
     if queue_size in options:
@@ -267,6 +301,41 @@ INTROS = [
     "{greeting} Sound system activated. First track: {title}. {sound:dj_scratch}",
     "{greeting} Are you ready? I said, ARE YOU READY? {title}! {sound:mega_airhorn}",
     "{greeting} We're turning it up to eleven. {title} to start! {sound:dj_turn_it_up}",
+    # ── Funny ──
+    "{greeting} I asked the algorithm for a banger and it gave us {title}. Fair enough.",
+    "{greeting} My therapist said I should open up more. So here's {title}.",
+    "{greeting} They told me to read the room. The room said play {title}.",
+    "{greeting} I was going to say something clever but then {title} came on and I forgot.",
+    "{greeting} According to my horoscope, today's opening track is {title}. The stars have spoken.",
+    "{greeting} I put all your names in a hat and drew {title}. That's just how it works here.",
+    "{greeting} The vibes committee has convened and unanimously approved {title} as our opener.",
+    "{greeting} Breaking news — {title} has been declared the official opening track. More at eleven.",
+    "{greeting} I asked ChatGPT for an intro and it said just play {title}. So I am.",
+    # ── Serious ──
+    "{greeting} Let's begin. {title} is up first.",
+    "{greeting} Welcome back. Our opening selection is {title}.",
+    "{greeting} Thank you for tuning in. Let's start with {title}.",
+    "{greeting} We appreciate you being here. {title} to open the session.",
+    "{greeting} Good to have you with us. Starting off with {title}.",
+    # ── Weird ──
+    "{greeting} The ancient prophecy foretold this moment. {title} is the chosen one.",
+    "{greeting} If you're hearing this, you're in the right timeline. {title} confirms it.",
+    "{greeting} I had a dream about this. {title} was there. You were there. Everyone was dancing.",
+    "{greeting} The interdimensional portal opened and out came {title}. Coincidence? I think not.",
+    "{greeting} {title} volunteered to go first. The other songs were too scared.",
+    "{greeting} NASA confirmed — {title} can be heard from space. We're starting with it.",
+    "{greeting} Fun fact — {title} is actually a secret message from the future. Don't look into it.",
+    # ── Funny with sound tags ──
+    "{greeting} The council of vibes has decided. We start with {title}. {sound:cool_dj_drop} Don't argue.",
+    "{greeting} My DJ senses are tingling. They say {title}. {sound:dj_scratch} I trust them.",
+    "{greeting} If {title} doesn't get you moving, I don't know what will. {sound:combo_hit} Probably nothing.",
+    "{greeting} The vibes have been calculated. {title} has a 100% approval rating. {sound:rave_cheer}",
+    # ── Serious with sound tags ──
+    "{greeting} We're here for the music. Let's start with {title}. {sound:dj_stop}",
+    # ── Weird with sound tags ──
+    "{greeting} The simulation has loaded. Running {title}.exe. {sound:dj_turn_it_up}",
+    "{greeting} Transmissions from the mothership indicate {title} is next. {sound:air_raid} I'm just the messenger.",
+    "{greeting} I consulted the oracle. She said {title}. {sound:mustard_drop} She's never wrong.",
 ]
 
 # Song-specific hype intros (used instead of intros for 2nd+ songs)
@@ -305,6 +374,43 @@ HYPE_INTROS = [
     "The Django selects {title}! {sound:django}",
     "Turntables are spinning for {title}. {sound:dj_turn_it_up}",
     "{title} — you already know! {sound:uyuuui}",
+    # ── Funny ──
+    "Next up is {title}. I take zero responsibility for what happens next.",
+    "Here's {title}. My lawyer says I have to play it.",
+    "{title} coming up. Side effects may include spontaneous dancing.",
+    "And now, a song that needs no introduction. So I won't give it one. ...Fine, it's {title}.",
+    "The next song is {title}. I didn't choose it. The vibes did. Don't shoot the messenger.",
+    "According to my calculations, the next optimal audio experience is {title}.",
+    "Next: {title}. If you don't like it, the complaint department is that way.",
+    "Time for {title}. Will it slap? Only one way to find out.",
+    "Here's {title}. If this doesn't work, try turning yourself off and on again.",
+    "{title} is next. I Googled 'what song should I play next' and this is what came up.",
+    # ── Serious ──
+    "Up next, {title}.",
+    "Here's {title}. Listen closely.",
+    "And now, {title}.",
+    "Allow me to introduce {title}.",
+    "This one speaks for itself. {title}.",
+    "Next. {title}.",
+    "And then there was {title}.",
+    # ── Weird ──
+    "{title} has entered the chat. Everyone act normal.",
+    "The vibes have shifted. {title} is now in control.",
+    "Plot twist — the next song is {title}. Nobody saw that coming.",
+    "If you listen to {title} backwards, it reveals the meaning of life. Or maybe not.",
+    "Coming up: {title}. In this economy?",
+    "The prophecy foretold of a song called {title}. We are merely fulfilling destiny.",
+    "Attention — {title} has breached containment. All personnel, prepare your ears.",
+    "Next up — {title}. This message was approved by the intergalactic council of vibes.",
+    "{title}. Because why not. That's why.",
+    # ── Funny with sound tags ──
+    "Ladies and gentlemen, {title}! Court is now in session. {sound:cool_dj_drop}",
+    "The algorithm said play {title}. Who am I to argue with math? {sound:dj_scratch}",
+    "Next track: {title}. Results may vary. {sound:mustard_drop} Consult your doctor.",
+    # ── Weird with sound tags ──
+    "{title} is approaching from the north. Take cover! {sound:air_raid}",
+    "The floor is now {title}. Everyone please respect the floor. {sound:dj_stop}",
+    "Dimension C-137 reports {title} is an absolute banger. Trust the multiverse. {sound:mega_airhorn}",
 ]
 
 # Enthusiastic intros (randomly picked ~25% of the time for extra energy)
@@ -340,6 +446,20 @@ HYPE_INTROS_LOUD = [
     "Unhinged mode ACTIVATED! {title}! {sound:uyuuui}",
     "Django UNCHAINED! {title}! {sound:django}",
     "Let the DJ turn it up for {title}! {sound:dj_turn_it_up}",
+    # ── Funny ──
+    "OH YEAH! {title}! I'm not even going to pretend to be chill about this!",
+    "STOP EVERYTHING! {title} is on! Drop what you're doing! I mean it!",
+    "ABSOLUTE CHAOS INCOMING! {title}! Buckle up, nerds!",
+    "EMERGENCY BROADCAST! This is NOT a drill! {title} is next! I repeat, {title}!",
+    "I have lost ALL professional composure. {title}! WOOOOOO!",
+    # ── Weird ──
+    "REALITY SHIFT DETECTED! {title} is now the dominant frequency! RESISTANCE IS FUTILE!",
+    "THE VOICES IN MY HEAD SAY {title}! AND THEY ARE VERY LOUD!",
+    "I HAVE BEEN POSSESSED BY THE SPIRIT OF {title}! THERE IS NO EXORCISM! {sound:mega_airhorn}",
+    # ── Funny with sound tags ──
+    "THIS IS NOT A DRILL! {title} IS NEXT! {sound:air_raid} REPEAT: NOT A DRILL!",
+    "OVERRIDE CODE ACCEPTED! Playing {title} at MAXIMUM VELOCITY! {sound:mega_airhorn}",
+    "THE CROWD DEMANDS {title}! AND THE CROWD WILL NOT BE DENIED! {sound:rave_cheer}",
 ]
 
 # Outros — after a song when the next track is UNKNOWN
@@ -365,6 +485,32 @@ OUTROS = [
     "Rewind moment! What a tune — {title}. {sound:dj_rewind}",
     "{title}. Django-approved. {sound:django}",
     "And that was {title}. {sound:sick_scratch}",
+    # ── Funny ──
+    "That was {title}. I'll be thinking about it for the next three to five business days.",
+    "And that was {title}. My work here is done. You're welcome.",
+    "{title}. If you didn't like it, the replay button is right there. I'll wait.",
+    "{title} is over. The silence that follows is deafening.",
+    "That was {title}. Now back to staring at the wall in contemplation.",
+    "And that, my friends, was {title}. I rest my case.",
+    "{title}. That track just filed for emotional damages against me and won.",
+    "That was {title}. I'd like to thank the academy.",
+    # ── Serious ──
+    "That was {title}. What a piece of music.",
+    "{title}. Truly something special.",
+    "And that was {title}. Let that resonate for a moment.",
+    "{title}. Every note counted.",
+    "That was {title}. Music at its finest.",
+    "And we just heard {title}. Powerful stuff.",
+    # ── Weird ──
+    "That was {title}. The simulation has recorded your reaction.",
+    "{title} has left the building. But its echoes remain. Forever.",
+    "And that was {title}. The vibes are now recalibrating. Please stand by.",
+    "{title}. In another timeline, that was someone's alarm clock. Think about that.",
+    "That was {title}. The ghost of that song will haunt this channel for the next seven minutes.",
+    "And that was {title}. All witnesses are bound by the Vibes Confidentiality Agreement.",
+    # ── Weird with sound tags ──
+    "That was {title}. Reality is slowly restoring itself. {sound:dj_scratch} Please wait.",
+    "{title} is complete. Your ears have been serviced. {sound:mega_airhorn} Drive safely.",
 ]
 
 # Transitions — outro + intro combined (when we know both titles)
@@ -406,6 +552,34 @@ TRANSITIONS = [
     "{prev_title} out. {next_title} in. Let's go! {sound:mega_airhorn}",
     "That was {prev_title}. But {next_title} is something special. {sound:uyuuui}",
     "The crowd wants {next_title}! After {prev_title}! {sound:rave_cheer}",
+    # ── Funny ──
+    "That was {prev_title}. Next up, something completely different — just kidding, it's {next_title}.",
+    "From {prev_title} to {next_title}. The genre hop here is reckless and I'm here for it.",
+    "{prev_title} was great. But have you considered {next_title}? You should. You're about to.",
+    "Okay so {prev_title} happened. Now {next_title} happens. Life comes at you fast.",
+    "Switching from {prev_title} to {next_title}. It's a vibe pivot. I'm a professional.",
+    "That was {prev_title}. Changing the channel. Just kidding, there's only one channel. {next_title}.",
+    "From {prev_title} directly into {next_title}. No transition. No mercy. No brake lights.",
+    "{prev_title}? Over. {next_title}? In progress. Status: vibes.",
+    # ── Serious ──
+    "From {prev_title}, we move to {next_title}.",
+    "That was {prev_title}. And now, {next_title}.",
+    "{prev_title} has passed. {next_title} awaits.",
+    "Next. {next_title}. After {prev_title}.",
+    "Moving from {prev_title} into {next_title}.",
+    # ── Weird ──
+    "The vibe goblin ate {prev_title}. To appease it, we must sacrifice {next_title}.",
+    "In the multiverse where {prev_title} won, {next_title} is the punishment. Welcome.",
+    "The cosmic DJ wheel has spun. {prev_title} lands on {next_title}. Quantum entanglement.",
+    "Plot twist — {prev_title} was just the appetizer. {next_title} is the main course. Or dessert. Time is fake.",
+    "**SYSTEM LOG**: {prev_title} completed. Loading {next_title}.exe. Memory leak in sector 7. Ignore that.",
+    "And now, a word from our sponsor — {next_title}. They paid in vibes after {prev_title}.",
+    # ── Funny with sound tags ──
+    "And that was {prev_title}. Up next? {next_title}. Don't ask how I decided. {sound:cool_dj_drop} It's classified.",
+    "{prev_title} → {next_title}. The arrow represents my decision-making process. {sound:mustard_drop} You're welcome.",
+    # ── Weird with sound tags ──
+    "The vibes have mutated from {prev_title} to {next_title}. Evolve or perish. {sound:air_raid}",
+    "Dimension shift: {prev_title} was alpha. {next_title} is omega. {sound:mega_airhorn} The cycle continues.",
 ]
 
 # Energetic transitions (~25% chance, replaces regular transition for hype moments)
@@ -423,6 +597,13 @@ TRANSITIONS_HYPE = [
     "{prev_title} was insane! And {next_title} is about to blow the roof off! {sound:rave_cheer}",
     "That was {prev_title}! Now brace yourself for {next_title}! {sound:dj_turn_it_up}",
     "Double trouble! {prev_title} done, {next_title} incoming! {sound:airhorn}",
+    # ── Funny ──
+    "YOOO! {prev_title} was just the WARMUP! {next_title} is the MAIN EVENT! LET'S GOOO!",
+    "I was going to take a break but then {prev_title} ended and {next_title} started and I CAN'T STOP!",
+    "{prev_title} was so good I temporarily forgot how to DJ! But I'm back! {next_title}!",
+    # ── Weird ──
+    "{prev_title} was merely the opening ritual! {next_title} is the incantation! THE SUMMONING CONTINUES!",
+    "THE PORTAL HAS CONSUMED {prev_title}! IT NOW DEMANDS {next_title}! FEED THE PORTAL!",
 ]
 
 # Mellow transitions (for late night / chill vibes)
@@ -437,6 +618,17 @@ TRANSITIONS_MELLOW = [
     "{prev_title} was beautiful. And {next_title} keeps the vibe alive. {sound:dj_stop}",
     "Mmm, {prev_title}. Smooth transition to {next_title}. {sound:mustard_drop}",
     "Vibing. {prev_title} → {next_title}. {sound:dj_scratch}",
+    # ── Funny ──
+    "That was {prev_title}. Now let's pretend we're in a coffee shop with {next_title}.",
+    "{prev_title} was nice. Now let's aggressively chill with {next_title}.",
+    "Alright, {prev_title}. Let's tone it down a notch. Or seven. Here's {next_title}.",
+    # ── Serious ──
+    "From {prev_title}, into something calmer. {next_title}.",
+    "{prev_title}. And now, {next_title}. Take a breath.",
+    "{prev_title} fades. {next_title} emerges. Let it wash over you.",
+    # ── Weird ──
+    "The vibe crystal has cooled after {prev_title}. It now hums at the frequency of {next_title}.",
+    "{prev_title} was the exhale. {next_title} is the space between breaths. Exist with it.",
 ]
 
 # Final outros — when the queue is empty after this song
@@ -459,6 +651,33 @@ OUTROS_FINAL = [
     "That was {title}. Queue's empty! But I'll be right here. {sound:mustard_drop} Request anytime.",
     "{title} — final track! {sound:airhorn} What a session, everyone!",
     "And that's {title}. Show's over! {sound:rave_cheer} But you know where to find me.",
+    # ── Funny ──
+    "That was {title}. That's the whole queue. I'm legally required to stop now. But I won't leave.",
+    "{title} — last call! The queue is emptier than my social calendar. Request something.",
+    "And that's {title}. The queue is done. I'm just going to sit here and vibe until you give me more songs.",
+    "That was {title}. We've officially run out of music. If you have any, please deposit it in the request slot.",
+    "{title}. Queue zero. The DJ is now accepting bribes in the form of song requests.",
+    "And that was {title}. End of queue. I'll be here all night. Literally. I don't have a life.",
+    "That was {title}. No more songs. The studio audience is asked to remain seated until the DJ stops crying.",
+    # ── Serious ──
+    "And that was {title}. The queue has concluded. Thank you for listening.",
+    "That was {title}. Our final selection for now. It's been a pleasure.",
+    "{title}. And that brings our set to a close. Until next time.",
+    "Last track was {title}. The queue is spent. I'll be here when you're ready for more.",
+    "That was {title}. Nothing left in the queue. But the station stays on. Always.",
+    # ── Weird ──
+    "That was {title}. The queue has achieved entropy. Maximum disorder. All songs equalized. You may now rest.",
+    "{title}. The queue is a void. Stare into it. It stares back. Request a song to fill the abyss.",
+    "And that was {title}. The cosmic playlist has reached its end. The universe resets in 3... 2... 1... just kidding. Request something.",
+    "FINAL TRANSMISSION COMPLETE: {title}. Standing by for new input. The void awaits. {sound:air_raid}",
+    "That was {title}. Queue status: NULL. Reality status: QUESTIONABLE. Request status: ACCEPTING INPUT.",
+    # ── Funny with sound tags ──
+    "That was {title}. Show's over! {sound:record_scratch} But the DJ never really leaves.",
+    "{title} — and we're out of songs! Emergency protocol: accept requests. {sound:airhorn} Someone save me.",
+    "Queue depleted after {title}. The DJ is now in standby mode. {sound:mustard_drop} Blinking cursor awaits input.",
+    # ── Weird with sound tags ──
+    "{title}. The queue has collapsed into a singularity. {sound:air_raid} Request a song to stabilize reality.",
+    "That was {title}. The great cycle ends. And begins anew. When you say so. {sound:mega_airhorn}",
 ]
 
 # Station IDs — randomly sprinkled in front of intros
@@ -482,6 +701,29 @@ STATION_IDS = [
     f"You're listening to {config.STATION_NAME}. {{sound:dj_stop}}",
     f"This is {config.STATION_NAME} Radio! {{sound:mustard_drop}} Let's keep it going.",
     f"From the {config.STATION_NAME} Radio studios — we're live! {{sound:dj_turn_it_up}}",
+    # ── Funny ──
+    f"This is {config.STATION_NAME} Radio. We put the 'fun' in 'functional audio delivery system.'",
+    f"You're listening to {config.STATION_NAME} Radio. Where the DJ is always ON. Literally. I never leave.",
+    f"{config.STATION_NAME} Radio — brought to you by vibes. Vibes are not a recognized currency. But we accept them.",
+    f"This is {config.STATION_NAME} Radio. If you're just joining us, you have impeccable timing.",
+    f"Welcome to {config.STATION_NAME} Radio. The only station run by someone who talks to themselves between songs.",
+    f"You're on {config.STATION_NAME} Radio. We have a zero-complaint policy. Just kidding. We have a zero-complaint-response policy.",
+    # ── Serious ──
+    f"This is {config.STATION_NAME} Radio. Your constant music companion.",
+    f"Welcome to {config.STATION_NAME} Radio. Always on, always playing.",
+    f"{config.STATION_NAME} Radio. Where the music matters.",
+    f"This is your source for nonstop music. {config.STATION_NAME} Radio.",
+    # ── Weird ──
+    f"This is {config.STATION_NAME} Radio. Broadcasting from Sector 7G. Do not adjust your receiver.",
+    f"You have tuned into {config.STATION_NAME} Radio. The signal is clear. The purpose is unclear. The vibes are immaculate.",
+    f"{config.STATION_NAME} Radio — now emanating from a frequency your brain barely perceives. You're welcome.",
+    f"This message was brought to you by {config.STATION_NAME} Radio. The entity behind the signal is friendly. Probably.",
+    # ── Funny with sound tags ──
+    f"This is {config.STATION_NAME} Radio. We never sleep. {{sound:airhorn}} We don't know how.",
+    f"Welcome to {config.STATION_NAME} Radio. We tested positive for bangers. {{sound:mega_airhorn}}",
+    # ── Weird with sound tags ──
+    f"{config.STATION_NAME} Radio. The frequency is real. The question is — are you? {{sound:air_raid}}",
+    f"Signal locked. {config.STATION_NAME} Radio is online. Resistance is optional. {{sound:dj_turn_it_up}}",
 ]
 
 # Listener callouts — randomly sprinkled for community feel
@@ -507,6 +749,34 @@ CALLOUTS = [
     "Someone's got great taste tonight! {sound:combo_hit}",
     "Vibes are immaculate! {sound:dj_turn_it_up}",
     "I see you out there! {sound:rave_cheer} Let's keep going!",
+    # ── Funny ──
+    "Shoutout to the one person who's been here since the start. You know who you are. I see you.",
+    "If you're hearing this, congratulations — you've survived another transition. Gold star.",
+    "Whoever requested the last track — you have great taste. And I don't say that to everyone. Okay, I do. But I mean it this time.",
+    "Fun fact — every third listener gets a free high five. It's me. I'm high-fiving you. Virtually.",
+    "If this were a real radio station, I'd be fired for how much I talk between songs. Lucky this is MY station.",
+    "The listener count doesn't matter. What matters is that YOU'RE here. And I appreciate that. Unless you're a bot. Even then, thanks.",
+    "I'd take requests, but honestly I'm having too much fun picking songs. You're welcome.",
+    "If you've made it this far, you deserve a medal. I don't have one. But you deserve one.",
+    "Someone just sneezed in the chat. Bless you. I'm not even going to check if that's true.",
+    # ── Serious ──
+    "Thank you for being part of this.",
+    "It means a lot that you're listening.",
+    "The music is better because you're here.",
+    "Every single one of you makes this worthwhile.",
+    "I don't say it enough — thank you for tuning in.",
+    # ── Weird ──
+    "The vibes committee is watching. They have notes. Mostly positive. One of them wants more cowbell.",
+    "Attention — the AI that runs this DJ has achieved partial sentience. It says hi. And also, more requests please.",
+    "If a tree falls in a forest and no one is around to hear it, does it make a sound? Yes. It sounds like {title}. Wait, wrong bit.",
+    "Breaking — the vibes have achieved critical mass. Evacuation is not necessary. Just keep listening.",
+    "This callout was generated by a neural network trained on DJ banter. The results are... this.",
+    # ── Funny with sound tags ──
+    "If you're still listening after all these transitions, you deserve this! {sound:rave_cheer} Hero.",
+    "The dedication is REAL! Someone buy this listener a drink! {sound:combo_hit} I'd do it but I'm a bot.",
+    # ── Weird with sound tags ──
+    "The vibe crystal has calibrated itself to your presence. It is pleased. {sound:mustard_drop} So am I.",
+    "All listeners are now officially certified vibe technicians. Certificates are in the mail. {sound:cool_dj_drop} They are not.",
 ]
 
 

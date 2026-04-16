@@ -2,11 +2,12 @@ import asyncio
 import discord
 from discord.ext import commands
 from googleapiclient.discovery import build
+import json
+import os
 import random
 import re
 import logging
 import time
-
 import config
 
 from cogs.youtube import (

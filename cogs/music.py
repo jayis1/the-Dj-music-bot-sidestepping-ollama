@@ -1956,6 +1956,23 @@ class Music(commands.Cog):
                 self._play_song_after_dj(guild_id),
                 loop=self.bot.loop,
             )
+
+    async def _play_dj_sounds_then_song(self, guild_id, sound_ids):
+        """
+        Play a sequence of sound effects, then play the pending song.
+        Each sound is capped at MAX_SOUND_SECONDS to prevent long sounds
+        from blocking the next song.
+        """
+        from utils.soundboard import get_sound_path
+        import discord
+
+        guild = self.bot.get_guild(guild_id)
+        if not guild or not guild.voice_client:
+            # Voice gone — skip sounds, go straight to song
+            await self._play_song_after_dj(guild_id)
+            return
+
+        for sound_id in sound_ids:
             path = get_sound_path(sound_id)
             if not path:
                 logging.warning(f"DJ: Sound '{sound_id}' not found, skipping")

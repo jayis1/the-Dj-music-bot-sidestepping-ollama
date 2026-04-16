@@ -1,0 +1,28 @@
+MOSS-TTS-Nano Voice Prompts
+============================
+
+This directory contains .wav prompt audio files used by MOSS-TTS-Nano
+for voice cloning. Each .wav file defines a "voice" — the TTS engine
+clones the speaker's voice from the prompt audio and generates new
+speech in that voice.
+
+How it works:
+- Each .wav file in this directory is a voice.
+- The voice name is the filename without .wav (e.g. en_warm_female.wav → "en_warm_female").
+- The .wav file should be 5-30 seconds of clean speech from the speaker you want to clone.
+- Use ?djvoices in Discord to see available voices.
+
+Adding custom voices:
+1. Record or obtain a clean speech sample (5-30 seconds, no background music/noise)
+2. Save it as a .wav file in this directory (e.g. my_voice.wav)
+3. Set DJ_VOICE=my_voice in your .env (or use ?djvoice my_voice in Discord)
+4. The bot will use this as the prompt audio for voice cloning
+
+Naming convention:
+- Use language prefix: en_, zh_, ja_, ko_, de_, es_, fr_, etc.
+- Then voice description: en_warm_female, en_news_male, zh_gentle_female
+- Keep filenames lowercase with underscores
+
+Available voices:
+- en_warm_female: Default DJ voice (warm, friendly female English voice)
+- en_news_male: News anchor style male English voice (good for AI side host)

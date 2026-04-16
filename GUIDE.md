@@ -1,47 +1,41 @@
-# MBot 6.3.0 — Comprehensive Technical Guide
+# MBot 6.4.0 — Comprehensive Technical Guide
 
-> **Last Updated:** 2026-04-15
-> **Version:** 6.3.0
+> **Last Updated:** 2026-04-16
+> **Version:** 6.4.0
 > **License:** MIT
 
 ---
 
-## What's New in 6.3.0
+## What's New in 6.4.0
 
-### 🧡 Kokoro-TTS Engine (New Default TTS)
+### 🧡 MOSS-TTS-Nano Engine (New Default TTS)
 
-The bot now supports **three TTS engines** with Kokoro-TTS as the new default. Kokoro runs as a Docker container on your GPU via [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI), providing truly local, open-weight TTS with ~300ms first-audio latency and zero cloud dependency.
+The bot now supports **three TTS engines** with MOSS-TTS-Nano as the new default. MOSS-TTS-Nano is a 0.1B parameter voice cloning TTS model that runs on CPU (no GPU needed), supports 20+ languages, and outputs 48 kHz stereo audio via a FastAPI server.
 
-**Engine priority:** `kokoro` (default) → `vibevoice` → `edge-tts` (cloud fallback)
+**Engine priority:** `moss` (default) → `vibevoice` → `edge-tts` (cloud fallback)
 
 **How it works:**
-- The bot sends `POST /v1/audio/speech` to the Kokoro-FastAPI Docker server (OpenAI-compatible REST API) and receives a WAV file.
-- A built-in health check (`GET /v1/audio/voices`) caches server reachability — if the server is down, the bot bails in ≤3 seconds and falls back to edge-tts instantly (not the old 30-second timeout).
-- Voice names: `af_heart`, `af_bella`, `am_adam`, `bm_george`, etc. (11 built-in voices).
+- The bot sends `POST /api/generate` to the MOSS-TTS-Nano server with multipart form data (text + prompt_audio file upload) and receives JSON with `audio_base64` (base64-encoded WAV).
+- A built-in health check (`GET /api/warmup-status`) caches server reachability — checks `state == "ready"` to confirm the server has warmed up. If the server is down, the bot falls back to edge-tts. Health check results are cached (30s for healthy, 10s for down).
+- Voice names correspond to `.wav` prompt audio files in `assets/moss_voices/`. Built-in voices: `en_warm_female` (default DJ voice), `en_news_male` (good for AI side host). Add your own `.wav` files to create custom voices.
 - The legacy `TTS_MODE=local` alias is still supported and maps to `vibevoice` with a deprecation warning.
+- **Backward compatibility:** If someone has `TTS_MODE=kokoro`, it auto-redirects to `moss` with a warning in the logs.
 
 **Setup:**
 ```bash
-docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
+pip install moss-tts-nano
+moss-tts-nano serve --port 18083
 ```
+Or use docker-compose (which includes a `moss-tts` service built from `./moss-tts-server/Dockerfile`).
+
 Then set in `.env`:
 ```ini
-TTS_MODE=kokoro
-KOKORO_TTS_URL=http://localhost:8880
-DJ_VOICE=af_heart
+TTS_MODE=moss
+MOSS_TTS_URL=http://localhost:18083
+DJ_VOICE=en_warm_female
 ```
 
-### 🔧 Kokoro WAV Streaming Header Fix (Critical Bug Fix)
-
-The Kokoro-FastAPI server sends WAV files with **streaming-style headers** where the data chunk size is `0xFFFFFFFF` (unknown). This caused two cascading failures:
-
-1. Python's `wave` module read `nframes=2,147,483,647` → reported **89478.5s** duration (24 hours) for a 3-second clip.
-2. FFmpeg read the broken header and **hung waiting for data that never came** — the TTS `after` callback never fired, `is_playing()` stayed True forever, and every subsequent `play()` call failed with "Already playing audio", silently skipping the entire queue.
-
-**Fix (3 layers):**
-- **Layer 1 (root cause):** After downloading WAV data from Kokoro, the bot detects the broken streaming header (`nframes` claims more data than received) and **rewrites the WAV file** with correct chunk sizes using Python's `wave` module. Output now shows correct duration: `3.2s` instead of `89478.5s`.
-- **Layer 2 (defense in depth):** FFmpeg options for TTS playback now include `-t 30` — even if a header lies about duration, FFmpeg stops after 30 seconds and the `after` callback fires.
-- **Layer 3 (emergency recovery):** Before every `voice_client.play()` call (both TTS and song playback), the code now checks `is_playing()`. If the voice client is stuck playing something from a previous failed playback, it force-stops it with a 300ms cooldown. This prevents the "Already playing audio" cascade that was skipping through the entire queue with no audio output.
+Add prompt audio files to `assets/moss_voices/` for custom voices.
 
 ### 🗣️ Three-Engine TTS Architecture
 
@@ -49,24 +43,24 @@ The TTS system has been refactored from a 2-engine system (`edge-tts` / `local`)
 
 | Priority | Engine | Where | When Used |
 |---|---|---|---|
-| 1st | **Kokoro-TTS** (`kokoro`) | Docker container on your GPU | Default — truly local, ~300ms latency |
+| 1st | **MOSS-TTS-Nano** (`moss`) | FastAPI server (CPU-friendly) | Default — truly local, voice cloning, ~2-8s latency on CPU |
 | 2nd | **VibeVoice** (`vibevoice`) | Separate WebSocket server | If explicitly configured |
 | 3rd | **Edge TTS** (`edge-tts`) | Microsoft Cloud | Automatic fallback when local engines fail |
 
-**New config variables:** `KOKORO_TTS_URL`, `KOKORO_VOICE`, `VIBEVOICE_TTS_URL`. The old `LOCAL_TTS_URL` still works as a backward-compatible alias.
+**New config variables:** `MOSS_TTS_URL`, `MOSS_VOICE`, `VIBEVOICE_TTS_URL`. The old `LOCAL_TTS_URL` still works as a backward-compatible alias.
 
 **How fallback works:**
 ```
-TTS_MODE=kokoro → health check → server up? → generate WAV → ✅ success
-                                     ↓ server down (≤3s detection)
-                                     → log warning with docker command
+TTS_MODE=moss → health check → server up? → generate WAV → ✅ success
+                                     ↓ server down (cached 30s/10s)
+                                     → log warning with setup instructions
                                      → resolve voice name for edge-tts
                                      → edge-tts generates MP3 → ✅ success
 ```
 
-**Voice name auto-resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. passing `en-US-AriaNeural` when using Kokoro) and swaps them for the target engine's default — so switching `TTS_MODE` doesn't require changing `DJ_VOICE`.
+**Voice name auto-resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. passing `en-US-AriaNeural` when using MOSS) and swaps them for the target engine's default — so switching `TTS_MODE` doesn't require changing `DJ_VOICE`.
 
-**The `TTS_AVAILABLE` flag:** A new boolean that's `True` when *any* TTS engine is available (not just edge-tts). The DJ mode and AI side host commands now gate on `TTS_AVAILABLE` instead of `EDGE_TTS_AVAILABLE`, so DJ works with Kokoro even if edge-tts isn't installed.
+**The `TTS_AVAILABLE` flag:** A new boolean that's `True` when *any* TTS engine is available (not just edge-tts). The DJ mode and AI side host commands now gate on `TTS_AVAILABLE` instead of `EDGE_TTS_AVAILABLE`, so DJ works with MOSS even if edge-tts isn't installed.
 
 ### 📡 Mission Control: 30-Second Soft Refresh
 
@@ -238,7 +232,7 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 
 ## 1. Overview
 
-**MBot 6.3.0** is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. The bot is designed to run as a persistent background service on Debian-based Linux servers, managed through `screen` sessions.
+**MBot 6.4.0** is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. The bot is designed to run as a persistent background service on Debian-based Linux servers, managed through `screen` sessions.
 
 ### Key Features
 
@@ -254,7 +248,7 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 | **UI** | Interactive button controls | Play, Pause, Skip, Stop, Queue buttons |
 | **DJ Mode** | Radio DJ between tracks | TTS voice commentary: intros, outros, transitions |
 | **DJ Mode** | Soundboard sound tags in DJ lines | `{sound:airhorn}` in any line plays a sound effect after the DJ speaks |
-| **DJ Mode** | **Kokoro-TTS (default)** | `TTS_MODE=kokoro` — Docker GPU server, ~300ms latency, 11 voices, zero cloud dependency |
+| **DJ Mode** | **MOSS-TTS-Nano (default)** | `TTS_MODE=moss` — CPU-friendly FastAPI server, voice cloning via prompt audio, ~2-8s latency, no GPU needed |
 | **DJ Mode** | VibeVoice-Realtime | `TTS_MODE=vibevoice` — separate WebSocket server, ~300ms latency, `en-Carter_man` etc. |
 | **DJ Mode** | Edge TTS fallback | Automatic fallback to Microsoft cloud TTS when local engines fail |
 | **DJ Mode** | 172 built-in DJ line templates | 74 with sound tags across 10 categories |
@@ -307,7 +301,7 @@ this2.0/
 │
 ├── utils/                  # Helper modules
 │   ├── __init__.py         # Auto-generated; makes utils a Python package
-│   ├── dj.py               # Radio DJ mode — 3-engine TTS (Kokoro/VibeVoice/Edge), 172 templates, WAV header fix, health check, sound tag support
+│   ├── dj.py               # Radio DJ mode — 3-engine TTS (MOSS/VibeVoice/Edge), 172 templates, health check, sound tag support
 │   ├── llm_dj.py           # AI side host — Ollama client, studio joker personality, 8 banter categories
 │   ├── custom_lines.py     # JSON persistence for custom DJ lines (CRUD operations)
 │   ├── soundboard.py       # Sound listing, path resolution, directory traversal prevention
@@ -344,6 +338,14 @@ this2.0/
 │   ├── record_scratch.wav  # Vinyl record scratch
 │   └── dj_scratch.wav # Turntable motor spin-up
 │
+├── assets/
+│   └── moss_voices/        # MOSS-TTS-Nano prompt audio files (voice cloning references)
+│       ├── en_warm_female.wav  # Default DJ voice (warm female)
+│       └── en_news_male.wav    # Default AI side host voice (news male)
+│
+├── moss-tts-server/        # MOSS-TTS-Nano Docker server
+│   └── Dockerfile          # Docker build for MOSS TTS server
+│
 ├── presets/                # Saved playlist JSON files (created at runtime)
 ├── tests/                  # pytest test suite
 ├── yt_dlp_cache/           # yt-dlp metadata cache directory (auto-created)
@@ -368,7 +370,7 @@ bot.py
 cogs/music.py
   ├── imports → cogs/youtube.py (YTDLSource, PlaceholderTrack, FFMPEG_OPTIONS, YTDL_FORMAT_OPTIONS)
   ├── imports → utils/suno.py (is_suno_url, get_suno_track)
-   ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, TTS_MODE, TTS_AVAILABLE, generate_intro, generate_song_intro, generate_outro, generate_tts, cleanup_tts_file, extract_sound_tags, list_voices, KOKORO_TTS_URL, VIBEVOICE_TTS_URL)
+   ├── imports → utils/dj.py (EDGE_TTS_AVAILABLE, TTS_MODE, TTS_AVAILABLE, generate_intro, generate_song_intro, generate_outro, generate_tts, cleanup_tts_file, extract_sound_tags, list_voices, MOSS_TTS_URL, VIBEVOICE_TTS_URL)
    ├── imports → utils/lyrics.py (get_lyrics)
    ├── imports → utils/presets.py (save_preset, load_preset, queue_to_tracks)
    ├── imports → utils/soundboard.py (list_sounds, get_sound_path)
@@ -396,12 +398,12 @@ web/app.py
 utils/dj.py
    ├── uses → utils/soundboard.py (list_sounds — for resolving {sound:name} tags)
    ├── uses → utils/custom_lines.py (load_custom_lines — merges built-in + custom)
-   ├── uses → config.py (STATION_NAME, TTS_MODE, KOKORO_TTS_URL, KOKORO_VOICE, VIBEVOICE_TTS_URL)
-   └── TTS engines → Kokoro-FastAPI REST (default), VibeVoice-Realtime WebSocket, or edge_tts.Communicate (cloud fallback)
-       ├── _generate_tts_kokoro() — POST /v1/audio/speech → WAV, with broken-header rewrite
+   ├── uses → config.py (STATION_NAME, TTS_MODE, MOSS_TTS_URL, MOSS_VOICE, VIBEVOICE_TTS_URL)
+   └── TTS engines → MOSS-TTS-Nano REST (default), VibeVoice-Realtime WebSocket, or edge_tts.Communicate (cloud fallback)
+       ├── _generate_tts_moss() — POST /api/generate → multipart form → base64 WAV
        ├── _generate_tts_vibevoice() — WebSocket /stream → PCM16 → WAV
        ├── _generate_tts_edge() — edge_tts.Communicate → MP3
-       ├── _check_kokoro_health() — GET /v1/audio/voices (cached, 3s timeout)
+       ├── _check_moss_health() — GET /api/warmup-status (checks state==ready, cached)
        └── generate_tts() — routes to active engine, falls back to edge-tts on failure
 ```
 
@@ -452,7 +454,7 @@ utils/dj.py
 | `PyNaCl` | ==1.5.0 | Audio encryption for Discord voice |
 | `python-dotenv` | latest | Load `.env` file into environment variables |
 | `audioop-lts` | latest | Audio operations (Python 3.13+ compatibility) |
-| `aiohttp` | latest | Async HTTP client (Suno, admin cookie fetch, Kokoro TTS, VibeVoice TTS) |
+| `aiohttp` | latest | Async HTTP client (Suno, admin cookie fetch, MOSS TTS, VibeVoice TTS) |
 | `edge-tts` | latest | Microsoft Edge TTS — generates DJ voice audio (optional but needed for DJ mode) |
 | `flask` | latest | Web dashboard (Mission Control) — serves interactive control panel |
 | `psutil` | latest | System/process monitoring — memory & CPU stats on the Settings page |
@@ -575,12 +577,12 @@ OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "tru
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:latest")
 OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
-OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "am_adam")
+OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", "en_news_male")
 OLLAMA_DJ_TIMEOUT = int(os.environ.get("OLLAMA_DJ_TIMEOUT", "15"))
 LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
-TTS_MODE = os.environ.get("TTS_MODE", "kokoro").lower()
-KOKORO_TTS_URL = os.environ.get("KOKORO_TTS_URL", "http://localhost:8880")
-KOKORO_VOICE = os.environ.get("KOKORO_VOICE", "af_heart")
+TTS_MODE = os.environ.get("TTS_MODE", "moss").lower()
+MOSS_TTS_URL = os.environ.get("MOSS_TTS_URL", "http://localhost:18083")
+MOSS_VOICE = os.environ.get("MOSS_VOICE", "en_warm_female")
 VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
 ```
 
@@ -595,12 +597,12 @@ VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
 | `OLLAMA_HOST` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_MODEL` | `gemma4:latest` | Ollama model for side host lines |
 | `OLLAMA_DJ_CHANCE` | `0.25` | Side host chime-in probability (0.0–1.0) |
-| `OLLAMA_DJ_VOICE` | `am_adam` | TTS voice for the AI side host (separate from main DJ, Kokoro `am_adam` by default) |
+| `OLLAMA_DJ_VOICE` | `en_news_male` | TTS voice for the AI side host (separate from main DJ, MOSS `en_news_male` by default) |
 | `OLLAMA_DJ_TIMEOUT` | `15` | Ollama API call timeout in seconds |
 | `OLLAMA_CUSTOM_MODEL` | `mbot-sidehost` | Custom Ollama model name — auto-created from base model + Modelfile with DJ personality |
-| `TTS_MODE` | `kokoro` | TTS engine: `"kokoro"` (local Docker), `"vibevoice"` (WebSocket), or `"edge-tts"` (cloud) |
-| `KOKORO_TTS_URL` | `http://localhost:8880` | Kokoro-FastAPI Docker server URL |
-| `KOKORO_VOICE` | `af_heart` | Default Kokoro voice |
+| `TTS_MODE` | `moss` | TTS engine: `"moss"` (local CPU), `"vibevoice"` (WebSocket), or `"edge-tts"` (cloud) |
+| `MOSS_TTS_URL` | `http://localhost:18083` | MOSS-TTS-Nano server URL |
+| `MOSS_VOICE` | `en_warm_female` | Default MOSS voice (corresponds to `assets/moss_voices/en_warm_female.wav`) |
 | `VIBEVOICE_TTS_URL` | `http://localhost:3000` | VibeVoice-Realtime server URL |
 | `LOCAL_TTS_URL` | `""` | Backward-compatible alias for older .env files |
 
@@ -608,7 +610,7 @@ VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
 
 | Constant | Default | Purpose |
 |---|---|---|
-| `DJ_VOICE` | `af_heart` | Default TTS voice for DJ commentary (Kokoro `af_heart`, VibeVoice `en-Carter_man`, or Edge TTS `en-US-AriaNeural`) |
+| `DJ_VOICE` | `en_warm_female` | Default TTS voice for DJ commentary (MOSS `en_warm_female`, VibeVoice `en-Carter_man`, or Edge TTS `en-US-AriaNeural`) |
 | `DJ_EMOJI` | 🎙️ | Emoji used in DJ command embeds |
 | `STATION_NAME` | From `.env` or `"MBot"` | Station name used in station ID lines ("You're tuned in to {STATION_NAME} Radio") |
 | `CROSSFADE_DURATION` | `3` (seconds) | Fade-in duration when a new song starts |
@@ -619,113 +621,81 @@ The DJ mode and AI side host voices can be generated by three TTS engines, contr
 
 | Constant | Default | Purpose |
 |---|---|---|
-| `TTS_MODE` | `kokoro` | Which TTS engine to use: `"kokoro"`, `"vibevoice"`, or `"edge-tts"` |
-| `KOKORO_TTS_URL` | `http://localhost:8880` | Kokoro-FastAPI Docker server URL (only when `TTS_MODE=kokoro`) |
-| `KOKORO_VOICE` | `af_heart` | Default Kokoro voice (only when `TTS_MODE=kokoro`) |
+| `TTS_MODE` | `moss` | Which TTS engine to use: `"moss"`, `"vibevoice"`, or `"edge-tts"` |
+| `MOSS_TTS_URL` | `http://localhost:18083` | MOSS-TTS-Nano server URL (only when `TTS_MODE=moss`) |
+| `MOSS_VOICE` | `en_warm_female` | Default MOSS voice (only when `TTS_MODE=moss`). Corresponds to `assets/moss_voices/en_warm_female.wav` |
 | `VIBEVOICE_TTS_URL` | `http://localhost:3000` | VibeVoice-Realtime server URL (only when `TTS_MODE=vibevoice`) |
-| `LOCAL_TTS_URL` | `""` | Backward-compatible alias — if set, used as fallback for `KOKORO_TTS_URL` or `VIBEVOICE_TTS_URL` |
+| `LOCAL_TTS_URL` | `""` | Backward-compatible alias — if set, used as fallback for `MOSS_TTS_URL` or `VIBEVOICE_TTS_URL` |
 
 ```ini
 # .env — TTS Engine
 
-# "kokoro" (default) — Kokoro-TTS Docker server (local GPU, ~300ms latency).
+# "moss" (default) — MOSS-TTS-Nano server (local CPU, voice cloning, ~2-8s latency).
 # "vibevoice" — VibeVoice-Realtime WebSocket server (local GPU/CPU).
 # "edge-tts" — Microsoft Edge TTS (cloud fallback, always available).
-TTS_MODE=kokoro
+TTS_MODE=moss
 
-# Kokoro-FastAPI server URL (only used when TTS_MODE=kokoro).
-# Start with: docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
-KOKORO_TTS_URL=http://localhost:8880
+# MOSS-TTS-Nano server URL (only used when TTS_MODE=moss).
+# Start with: moss-tts-nano serve --port 18083
+# Or use docker-compose which includes it automatically.
+MOSS_TTS_URL=http://localhost:18083
 
-# Default Kokoro voice. Popular: af_heart, af_bella, am_adam, bf_emma, bm_george
-KOKORO_VOICE=af_heart
+# Default MOSS voice. Voice names correspond to .wav files in assets/moss_voices/.
+# Built-in: en_warm_female, en_news_male. Add your own .wav files for custom voices.
+MOSS_VOICE=en_warm_female
 
 # VibeVoice server URL (only used when TTS_MODE=vibevoice).
 VIBEVOICE_TTS_URL=http://localhost:3000
 ```
 
-> **Fallback chain:** If the primary engine fails, the bot automatically falls back to edge-tts. For Kokoro, a quick health check (`GET /v1/audio/voices`, 3-second timeout) determines if the Docker container is reachable. If not, the fallback is nearly instant instead of waiting for a long timeout. The health check result is cached (30s for healthy, 10s for down) to avoid hammering the server on every TTS call.
+> **Fallback chain:** If the primary engine fails, the bot automatically falls back to edge-tts. For MOSS, a health check (`GET /api/warmup-status`, checks `state == "ready"`) determines if the server is warmed up and reachable. If not, the fallback is nearly instant instead of waiting for a long timeout. The health check result is cached (30s for healthy, 10s for down) to avoid hammering the server on every TTS call.
 
-> **Voice name resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. `en-US-AriaNeural` when using Kokoro) and swaps them for the target engine's default. This means switching `TTS_MODE` doesn't require changing `DJ_VOICE` — the bot adapts automatically.
+> **Voice name resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. `en-US-AriaNeural` when using MOSS) and swaps them for the target engine's default. This means switching `TTS_MODE` doesn't require changing `DJ_VOICE` — the bot adapts automatically.
 
-> **Legacy alias:** `TTS_MODE=local` still works and maps to `vibevoice` with a deprecation warning in the logs. `LOCAL_TTS_URL` is used as a fallback URL if `KOKORO_TTS_URL` or `VIBEVOICE_TTS_URL` aren't set.
+> **Legacy alias:** `TTS_MODE=local` still works and maps to `vibevoice` with a deprecation warning in the logs. `TTS_MODE=kokoro` auto-redirects to `moss` with a warning. `LOCAL_TTS_URL` is used as a fallback URL if `MOSS_TTS_URL` or `VIBEVOICE_TTS_URL` aren't set.
 
 > **Note:** DJ mode is off by default and must be enabled per-guild with `?dj`. The `DJ_VOICE` setting is just the default — users can override it per-guild with `?djvoice` or via the web dashboard.
 
-### Kokoro-TTS Setup (Default, Recommended)
+### MOSS-TTS-Nano Setup (Default, Recommended)
 
-Kokoro-TTS is the default engine — it's the most local option with the best latency and no cloud dependency. It runs as a Docker container on your GPU.
+MOSS-TTS-Nano is the default engine — it's CPU-friendly (no GPU needed) and uses voice cloning via prompt audio files for natural-sounding output.
 
-1. **Install Docker** with NVIDIA Container Toolkit (for GPU support):
-   ```bash
-   # Install Docker
-   curl -fsSL https://get.docker.com | sh
-   sudo usermod -aG docker $USER
+1. **Install MOSS-TTS-Nano:**
+    ```bash
+    pip install moss-tts-nano
+    ```
+    Or use docker-compose which includes it automatically (the `moss-tts` service is built from `./moss-tts-server/Dockerfile`).
 
-   # Install NVIDIA Container Toolkit
-   curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-   curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-     sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-     sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
-   sudo apt-get update && sudo apt-get install -y nvidia-container-toolkit
-   sudo nvidia-ctk runtime configure --runtime=docker
-   sudo systemctl restart docker
-   ```
-
-2. **Start the Kokoro-FastAPI server:**
-   ```bash
-   # GPU version (recommended):
-   docker run --gpus all -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-gpu:v0.2.1
-
-   # CPU version (no GPU, slower):
-   docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
-   ```
+2. **Start the MOSS-TTS-Nano server:**
+    ```bash
+    moss-tts-nano serve --port 18083
+    ```
+    The server will warm up on first start (0.1B params, runs on CPU). Health check at `GET /api/warmup-status` — wait until `state == "ready"`.
 
 3. **Verify it's running:**
-   ```bash
-   curl http://localhost:8880/v1/audio/voices
-   # Should return JSON with a "voices" list
-   ```
+    ```bash
+    curl http://localhost:18083/health
+    ```
 
 4. **Configure MBot** — in your `.env` file:
-   ```ini
-   TTS_MODE=kokoro
-   KOKORO_TTS_URL=http://localhost:8880
-   DJ_VOICE=af_heart
-   OLLAMA_DJ_VOICE=am_adam
-   ```
+    ```ini
+    TTS_MODE=moss
+    MOSS_TTS_URL=http://localhost:18083
+    DJ_VOICE=en_warm_female
+    OLLAMA_DJ_VOICE=en_news_male
+    ```
 
-5. **Restart the bot.**
+5. **Add custom prompt audio files** (optional):
+    Place `.wav` files in `assets/moss_voices/`. The voice name is the filename without the `.wav` extension (e.g. `assets/moss_voices/custom_voice.wav` → voice name `custom_voice`).
 
-**Available Kokoro voices:**
+**Built-in MOSS voices:**
 
-| Voice Name | Description |
-|---|---|
-| `af_heart` | American Female — Heart (warm) — **default** |
-| `af_bella` | American Female — Bella |
-| `af_nicole` | American Female — Nicole |
-| `af_sarah` | American Female — Sarah |
-| `af_sky` | American Female — Sky |
-| `am_adam` | American Male — Adam |
-| `am_michael` | American Male — Michael |
-| `bf_emma` | British Female — Emma |
-| `bf_isabella` | British Female — Isabella |
-| `bm_george` | British Male — George |
-| `bm_lewis` | British Male — Lewis |
+| Voice Name | File | Description |
+|---|---|---|
+| `en_warm_female` | `assets/moss_voices/en_warm_female.wav` | Warm female voice — **default DJ voice** |
+| `en_news_male` | `assets/moss_voices/en_news_male.wav` | News-style male voice — good for AI side host |
 
-> **Voice combos:** The Kokoro-FastAPI server supports voice mixing with `+` syntax, e.g. `af_bella+af_heart` for a 50/50 blend or `af_bella(2)+af_heart(1)` for a 67/33 weighted mix. These work in MBot too — just set `DJ_VOICE=af_bella+af_heart`.
-
-### Kokoro WAV Header Bug (Technical Detail)
-
-The Kokoro-FastAPI server sends WAV files with **streaming-style headers** where the RIFF and data chunk sizes are set to `0xFFFFFFFF` (meaning "unknown size"). This is valid for HTTP streaming but breaks consumers that expect correct sizes.
-
-**What the bot does:** After downloading the WAV from Kokoro, the `_generate_tts_kokoro()` function:
-1. Opens the raw bytes with Python's `wave` module in memory.
-2. Checks if `nframes` claims more data than what was actually received.
-3. If broken: calls `readframes()` to extract the actual PCM data, then rewrites the file with correct chunk sizes using `wave.open(path, 'wb')`.
-4. If fine: saves the bytes as-is.
-
-Additionally, FFmpeg options for TTS playback include `-t 30` as a duration cap — even if a header lies, FFmpeg stops after 30 seconds and the `after` callback fires normally.
+> **Custom voices:** To add your own MOSS voice, place a `.wav` file (ideally 5-15 seconds of clean speech) in `assets/moss_voices/`. The voice name becomes available automatically — e.g. `my_voice.wav` → `?djvoice my_voice`.
 
 ### VibeVoice-Realtime Setup (Alternative Local TTS)
 
@@ -760,17 +730,18 @@ To use the local TTS engine instead of Microsoft Edge TTS:
 
 **Key differences between TTS engines:**
 
-| Feature | Kokoro-TTS (Docker) | VibeVoice-Realtime | Edge TTS (cloud) |
+| Feature | MOSS-TTS-Nano | VibeVoice-Realtime | Edge TTS (cloud) |
 |---|---|---|---|
-| Latency | ~300ms first audio | ~300ms first audio | 2-5 seconds |
-| Server needed | Docker container (:8880) | WebSocket server (:3000) | No |
-| GPU required | Recommended (NVIDIA) | Recommended | No |
-| Voice names | `af_heart`, `am_adam`, etc. | `en-Carter_man`, etc. | `en-US-AriaNeural`, etc. |
-| Multilingual | English + British | English primary, 9 experimental | 40+ languages |
-| Quality | Natural, expressive | Natural, expressive | Natural, consistent |
+| Latency | ~2-8s per clip on CPU | ~300ms first audio | 2-5 seconds |
+| Server needed | FastAPI server (:18083) | WebSocket server (:3000) | No |
+| GPU required | No (CPU-friendly, 0.1B params) | Recommended | No |
+| Voice names | `en_warm_female`, `en_news_male`, etc. (prompt audio files) | `en-Carter_man`, etc. | `en-US-AriaNeural`, etc. |
+| Multilingual | 20+ languages | English primary, 9 experimental | 40+ languages |
+| Quality | Natural, voice cloning from prompt audio | Natural, expressive | Natural, consistent |
 | Cost | Free (runs locally) | Free (runs locally) | Free (no API key) |
-| Internet required | No (after image pull) | No (after model download) | Yes |
-| Voice mixing | Yes (`af_bella+af_heart`) | No | No |
+| Internet required | No (after pip install) | No (after model download) | Yes |
+| Voice cloning | Yes (prompt audio files) | No | No |
+| Output | 48 kHz stereo WAV | PCM16 → WAV | MP3 |
 | Open source | Yes (Apache 2.0) | Yes (MIT) | No (cloud service) |
 
 **Available VibeVoice voice presets:**
@@ -778,7 +749,7 @@ To use the local TTS engine instead of Microsoft Edge TTS:
 - `en-Journalist_woman` — Female, professional
 - Plus 9 experimental voices in German, French, Italian, Japanese, Korean, Dutch, Polish, Portuguese, and Spanish (download with `bash demo/download_experimental_voices.sh`)
 
-> **Note:** When any local TTS engine (Kokoro or VibeVoice) is unreachable, MBot will fall back to Edge TTS automatically (if `edge-tts` is installed). For Kokoro, a health check detects failures in ≤3 seconds. This provides graceful degradation — if your local GPU server goes down, the DJ still works, just with higher latency.
+> **Note:** When any local TTS engine (MOSS or VibeVoice) is unreachable, MBot will fall back to Edge TTS automatically (if `edge-tts` is installed). For MOSS, a health check detects failures quickly (cached 30s/10s). This provides graceful degradation — if your local server goes down, the DJ still works, just with higher latency.
 
 ### Web Dashboard Configuration (`config.py`)
 
@@ -1674,14 +1645,15 @@ Queue empty?
 
 ### Technology
 
-**Text-to-Speech**: [Microsoft Edge TTS](https://github.com/rany2/edge-tts) (`edge-tts` Python package) — free, no API key required, 100+ voices in 40+ languages.
+**Text-to-Speech**: The bot supports three TTS engines — MOSS-TTS-Nano (default, voice cloning via prompt audio), VibeVoice-Realtime (WebSocket), and Microsoft Edge TTS (cloud fallback). The active engine is controlled by `TTS_MODE` in config.
 
-**Flow**:
+**Flow (with MOSS-TTS-Nano):**
 1. `generate_intro()` or `generate_outro()` picks a random message template and fills in song titles.
-2. `edge_tts.Communicate(text, voice)` generates an MP3 file to a temp path.
-3. `FFmpegPCMAudio` plays the temp MP3 through the voice channel.
-4. The `after` callback on the TTS player triggers `_on_tts_done()`, which cleans up the temp file and calls `_play_song_after_dj()` to start the real song.
-5. `cleanup_tts_file()` deletes the temp MP3.
+2. `_generate_tts_moss()` sends `POST /api/generate` with multipart form data (text + prompt_audio file) to the MOSS server, receives JSON with `audio_base64` (base64-encoded WAV).
+3. The WAV data is decoded and saved to a temp file.
+4. `FFmpegPCMAudio` plays the temp WAV through the voice channel.
+5. The `after` callback on the TTS player triggers `_on_tts_done()`, which cleans up the temp file and calls `_play_song_after_dj()` to start the real song.
+6. `cleanup_tts_file()` deletes the temp file.
 
 ### Per-Guild State
 
@@ -1752,16 +1724,22 @@ The DJ adjusts its personality based on the time of day:
 
 ### Available Voices
 
-**Edge TTS (cloud, default):** The default voice is `en-US-AriaNeural` (female, American English). Use `?djvoices` to see all English voices, or `?djvoices <prefix>` for other languages (e.g., `?djvoices ja` for Japanese).
+**MOSS-TTS-Nano (local TTS, default):** Voice names correspond to `.wav` prompt audio files in `assets/moss_voices/`. The voice name is the filename without the `.wav` extension. Built-in voices:
+- `en_warm_female` — Warm female voice (default DJ voice)
+- `en_news_male` — News-style male voice (good for AI side host)
+
+Add your own voices by placing `.wav` files (5-15 seconds of clean speech) in `assets/moss_voices/`.
+
+**Edge TTS (cloud, fallback):** The fallback voice is `en-US-AriaNeural` (female, American English). Use `?djvoices` to see all English voices, or `?djvoices <prefix>` for other languages (e.g., `?djvoices ja` for Japanese).
 
 Popular Edge TTS voices include:
-- `en-US-AriaNeural` — Female, American (default)
+- `en-US-AriaNeural` — Female, American (default fallback)
 - `en-US-GuyNeural` — Male, American
 - `en-GB-SoniaNeural` — Female, British
 - `en-AU-NatashaNeural` — Female, Australian
 - `ja-JP-NanamiNeural` — Female, Japanese
 
-**VibeVoice-Realtime (local TTS, when `TTS_MODE=local`):** Voice presets are loaded from the VibeVoice server's `/config` endpoint. Available voices depend on which `.pt` preset files are in the `demo/voices/streaming_model/` directory.
+**VibeVoice-Realtime (local TTS, when `TTS_MODE=vibevoice`):** Voice presets are loaded from the VibeVoice server's `/config` endpoint. Available voices depend on which `.pt` preset files are in the `demo/voices/streaming_model/` directory.
 
 Default VibeVoice voice presets include:
 - `en-Carter_man` — Male, warm (default)
@@ -1894,7 +1872,7 @@ OLLAMA_DJ_ENABLED=true       # Enable the AI side host
 OLLAMA_HOST=http://localhost:11434  # Ollama server URL
 OLLAMA_MODEL=gemma4:latest    # Model to use (must be pulled first)
 OLLAMA_DJ_CHANCE=0.25         # 25% chance to chime in after each DJ line
-OLLAMA_DJ_VOICE=am_adam  # Separate TTS voice for the side host (TTS-engine-aware default)
+OLLAMA_DJ_VOICE=en_news_male  # Separate TTS voice for the side host (TTS-engine-aware default)
 OLLAMA_DJ_TIMEOUT=15          # Timeout in seconds (larger models need more time)
 ```
 
@@ -1904,7 +1882,7 @@ OLLAMA_DJ_TIMEOUT=15          # Timeout in seconds (larger models need more time
 | `OLLAMA_HOST` | `http://localhost:11434` | Any URL | Ollama server address |
 | `OLLAMA_MODEL` | `gemma4:latest` | Any pulled model | LLM model for generation |
 | `OLLAMA_DJ_CHANCE` | `0.25` | `0.0`–`1.0` | How often the side host chimes in |
-| `OLLAMA_DJ_VOICE` | `am_adam` (kokoro) / `en-Carter_man` (vibevoice) / `en-US-GuyNeural` (edge-tts) | TTS voice name | Separate voice so 2 hosts sound different |
+| `OLLAMA_DJ_VOICE` | `en_news_male` (moss) / `en-Carter_man` (vibevoice) / `en-US-GuyNeural` (edge-tts) | TTS voice name | Separate voice so 2 hosts sound different |
 | `OLLAMA_DJ_TIMEOUT` | `15` | Seconds | Max wait before falling back |
 
 ### Voice Configuration
@@ -1913,12 +1891,12 @@ The main DJ and AI side host have **separate TTS voices** to create two distinct
 
 | Host | Default Voice | Config Key | Discord Command | Web Dashboard |
 |---|---|---|---|---|
-| Main DJ | `af_heart` (kokoro) / `en-US-AriaNeural` (edge-tts) | `DJ_VOICE` | `?djvoice <name>` | Radio page → "🗣️ DJ Voice" |
-| AI Side Host | `am_adam` (kokoro) / `en-US-GuyNeural` (edge-tts) | `OLLAMA_DJ_VOICE` | `?aidjvoice <name>` | Radio page → "🃏 AI Side Host Voice" |
+| Main DJ | `en_warm_female` (moss) / `en-US-AriaNeural` (edge-tts) | `DJ_VOICE` | `?djvoice <name>` | Radio page → "🗣️ DJ Voice" |
+| AI Side Host | `en_news_male` (moss) / `en-US-GuyNeural` (edge-tts) | `OLLAMA_DJ_VOICE` | `?aidjvoice <name>` | Radio page → "🃏 AI Side Host Voice" |
 
 Use `?djvoices` to see all available voices for the active TTS engine.
 
-> **Note:** When you change a voice in the web dropdown, the change takes effect immediately for the *next* DJ or AI side host line — no restart needed. If the primary TTS engine is down and falls back to edge-tts, voices from other engines (Kokoro, VibeVoice) are automatically swapped to the closest compatible default so audio still plays. The dropdown shows a warning when the current voice isn't available in the active TTS engine.
+> **Note:** When you change a voice in the web dropdown, the change takes effect immediately for the *next* DJ or AI side host line — no restart needed. If the primary TTS engine is down and falls back to edge-tts, voices from other engines (MOSS, VibeVoice) are automatically swapped to the closest compatible default so audio still plays. The dropdown shows a warning when the current voice isn't available in the active TTS engine.
 
 ### Discord Commands
 
@@ -2803,6 +2781,9 @@ venv/bin/python -m pytest tests/test_suno.py -v
 | **Settings page shows 0 MB / 0% CPU** | `psutil` not installed | Install with `pip install psutil`. The page gracefully falls back to 0 if not installed. |
 | **Voice dropdowns stuck at "Loading voices..."** | Script ordering bug — inline scripts called functions before they were defined; also no server-side caching (every request hit Microsoft's API) | Fixed in 6.3.0 — functions called via `DOMContentLoaded`; voice list cached for 30 minutes; current voice stored in `data-current` attribute. |
 | **"Ollama returned status 404" with no details** | Model not pulled but error gave no actionable info | Fixed in 6.3.0 — now shows model name, pull command, and available models. |
+| **MOSS TTS not generating audio** | MOSS server not running or hasn't warmed up | Start the server: `moss-tts-nano serve --port 18083`. Check `curl http://localhost:18083/api/warmup-status` — wait until `state == "ready"`. |
+| **MOSS TTS falls back to edge-tts** | MOSS server unreachable or health check cached as down | Check the server URL in `.env` (`MOSS_TTS_URL`). Health check results are cached (30s healthy, 10s down) — if server was recently down, wait for cache to expire. |
+| **MOSS voice not found** | Missing prompt audio `.wav` file in `assets/moss_voices/` | Voice names must match a `.wav` file: e.g. `en_warm_female` → `assets/moss_voices/en_warm_female.wav`. Add your own `.wav` files for custom voices. |
 
 ### Known Issues
 
@@ -2822,11 +2803,11 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 8. **Speed values below 0.5 may cause FFmpeg errors** — The `atempo` FFmpeg filter only supports 0.5–2.0 per instance. While the bot's speed ladder starts at 0.25x, attempting to play at that speed may cause FFmpeg to fail. Values below 0.5 require chaining multiple `atempo` filters (e.g., `atempo=0.5,atempo=0.5` for 0.25x).
 
-### Bugs Fixed in 6.3.0
+### Bugs Fixed in 6.4.0
 
 | Bug | Root Cause | Fix |
 |---|---|---|
-| **Voice dropdown changes don't affect TTS output** | Multiple issues: (1) `data-current` on dropdowns was empty string when no guild voice was set, so the dropdown never showed the actual current voice; (2) `OLLAMA_DJ_VOICE` defaulted to `en-US-GuyNeural` (edge-tts) regardless of active TTS engine — if using Kokoro, that voice name got silently swapped to `af_heart` by `_resolve_voice()`; (3) when Kokoro/VibeVoice fell back to edge-tts, the selected voice was swapped to the engine default with no logging; (4) `_resolve_voice()` used fragile heuristic patterns instead of identifying which engine a voice belongs to | (1) `dj_voice`/`ai_dj_voice` template vars now fall back to `config.DJ_VOICE`/`config.OLLAMA_DJ_VOICE` when no guild voice is set; (2) `OLLAMA_DJ_VOICE` default is now TTS-engine-aware (`am_adam` for kokoro, `en-Carter_man` for vibevoice, `en-US-GuyNeural` for edge-tts); (3) `_resolve_voice()` logs all cross-engine swaps with the reason; (4) new helper functions `_is_edge_voice()`, `_is_kokoro_voice()`, `_is_vibevoice_voice()`, `_engine_for_voice()` provide reliable engine detection; (5) dropdown shows "(current — not available in kokoro)" warning when the saved voice doesn't exist in the active TTS engine |
+| **Voice dropdown changes don't affect TTS output** | Multiple issues: (1) `data-current` on dropdowns was empty string when no guild voice was set, so the dropdown never showed the actual current voice; (2) `OLLAMA_DJ_VOICE` defaulted to `en-US-GuyNeural` (edge-tts) regardless of active TTS engine — if using MOSS, that voice name got silently swapped to `en_warm_female` by `_resolve_voice()`; (3) when MOSS/VibeVoice fell back to edge-tts, the selected voice was swapped to the engine default with no logging; (4) `_resolve_voice()` used fragile heuristic patterns instead of identifying which engine a voice belongs to | (1) `dj_voice`/`ai_dj_voice` template vars now fall back to `config.DJ_VOICE`/`config.OLLAMA_DJ_VOICE` when no guild voice is set; (2) `OLLAMA_DJ_VOICE` default is now TTS-engine-aware (`en_news_male` for moss, `en-Carter_man` for vibevoice, `en-US-GuyNeural` for edge-tts); (3) `_resolve_voice()` logs all cross-engine swaps with the reason; (4) new helper functions `_is_edge_voice()`, `_is_moss_voice()`, `_is_vibevoice_voice()`, `_engine_for_voice()` provide reliable engine detection; (5) dropdown shows "(current — not available in moss)" warning when the saved voice doesn't exist in the active TTS engine |
 | **Voice dropdowns permanently stuck at "Loading voices..."** | Inline `<script>` tags called `loadVoices()`/`loadAiVoices()` before they were defined (definitions were at the bottom of the page). Also no server-side caching — every dropdown fetch called `edge_tts.list_voices()` which makes a live HTTP request to Microsoft (5–15s). | Functions now called via `DOMContentLoaded`; current voice stored in `data-current` attribute; voice list cached server-side for 30 minutes with stale-cache fallback on timeout |
 | **"Ollama returned status 404" with no actionable info** | `call_ollama()` logged only the HTTP status code (404) without model name, pull command, or available alternatives | On 404, handler now queries `/api/tags` for available models and logs: `Model 'X' not found. Run: ollama pull X \| Available: Y,Z` |
 | **Wrong default Ollama model** | `config.py`, `llm_dj.py`, `app.py`, `music.py` all hardcoded `llama3.2` as fallback — but that model wasn't pulled | Changed default to `gemma4:latest` across all files; created `.env` file with correct model |

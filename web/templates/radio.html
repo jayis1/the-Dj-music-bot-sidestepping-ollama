@@ -122,6 +122,51 @@
         {% endif %}
     </div>
 
+    <!-- ── Battle of the Beats ──────────────────────────────────── -->
+    <div style="margin-bottom: 20px; padding: 16px; background: linear-gradient(135deg, rgba(233,30,99,0.06) 0%, rgba(156,39,176,0.06) 100%); border: 1px solid rgba(233,30,99,0.25); border-radius: var(--radius-lg);">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+            <span style="font-size: 22px;">⚔️</span>
+            <div>
+                <span style="font-size: 15px; font-weight: 600; color: #E91E63;">Battle of the Beats</span>
+                <div style="font-size: 11px; color: var(--text-muted);">Two songs enter. One song wins. The community decides.</div>
+            </div>
+        </div>
+
+        <!-- Battle creation form -->
+        <div id="battle-form-{{ g.id }}" style="margin-bottom: 12px;">
+            <div style="display: flex; gap: 8px; align-items: stretch; margin-bottom: 8px;">
+                <div style="flex: 1; min-width: 0;">
+                    <label style="font-size: 11px; color: #E91E63; font-weight: 600; display: block; margin-bottom: 4px;">🅰️ Song A</label>
+                    <input type="text" id="battle-song-a-{{ g.id }}" placeholder="YouTube URL for Song A" style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius); font-size: 13px;">
+                </div>
+                <div style="display: flex; align-items: center; padding-top: 16px; font-size: 18px; font-weight: 700; color: var(--text-muted);">VS</div>
+                <div style="flex: 1; min-width: 0;">
+                    <label style="font-size: 11px; color: #9C27B0; font-weight: 600; display: block; margin-bottom: 4px;">🅱️ Song B</label>
+                    <input type="text" id="battle-song-b-{{ g.id }}" placeholder="YouTube URL for Song B" style="width: 100%; background: var(--bg-card); border: 1px solid var(--border); color: var(--text-primary); padding: 8px 12px; border-radius: var(--radius); font-size: 13px;">
+                </div>
+            </div>
+            <button class="btn" onclick="startBattle('{{ g.id }}')" style="width: 100%; background: linear-gradient(135deg, #E91E63, #9C27B0); color: white; border: none; font-weight: 600; font-size: 14px; padding: 10px; border-radius: var(--radius);">⚔️ Start Showdown</button>
+        </div>
+
+        <!-- Live battle display -->
+        <div id="battle-live-{{ g.id }}" style="display: none;">
+            <div style="text-align: center; margin-bottom: 8px;">
+                <span style="font-size: 13px; font-weight: 600; color: #E91E63;">⚔️ VOTE NOW!</span>
+                <span id="battle-timer-{{ g.id }}" style="font-size: 13px; color: var(--text-muted); margin-left: 8px;">60s left</span>
+            </div>
+            <div id="battle-bars-{{ g.id }}" style="margin-bottom: 8px;">
+                <!-- Vote bars rendered by JS -->
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button class="btn" onclick="webVote('{{ g.id }}', 'a')" style="flex: 1; background: #2196F3; color: white; border: none; border-radius: var(--radius); padding: 8px; font-weight: 600;">🅰️ <span id="battle-votes-a-{{ g.id }}">0</span></button>
+                <button class="btn" onclick="webVote('{{ g.id }}', 'b')" style="flex: 1; background: #E91E63; color: white; border: none; border-radius: var(--radius); padding: 8px; font-weight: 600;">🅱️ <span id="battle-votes-b-{{ g.id }}">0</span></button>
+            </div>
+            <div style="text-align: center; margin-top: 6px;">
+                <button class="btn" onclick="cancelBattle('{{ g.id }}')" style="font-size: 11px; color: var(--text-muted); background: none; border: none; cursor: pointer;">Cancel Battle</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── Listeners ───────────────────────────────────────── -->
     {% if g.listeners %}
     <div style="margin-bottom: 20px;">
@@ -557,6 +602,135 @@ async function replayHistory(guildId, index) {
     } catch (e) { showToast('Replay failed: ' + e.message, 'error'); }
 }
 
+// ── Battle of the Beats ───────────────────────────────────
+
+// Battle state per guild — tracks the polling interval
+const _battlePollers = {};
+
+async function startBattle(guildId) {
+    const songA = document.getElementById('battle-song-a-' + guildId).value.trim();
+    const songB = document.getElementById('battle-song-b-' + guildId).value.trim();
+    if (!songA || !songB) {
+        showToast('⚠️ Enter both song URLs to start a battle', 'error');
+        return;
+    }
+    try {
+        const res = await fetch('/api/' + guildId + '/battle', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ song_a: songA, song_b: songB })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('⚔️ Battle of the Beats started!', 'success');
+            document.getElementById('battle-form-' + guildId).style.display = 'none';
+            document.getElementById('battle-live-' + guildId).style.display = 'block';
+            startBattlePolling(guildId);
+        } else {
+            showToast(data.error || 'Failed to start battle', 'error');
+        }
+    } catch (e) { showToast('Battle start failed: ' + e.message, 'error'); }
+}
+
+async function webVote(guildId, choice) {
+    try {
+        const res = await fetch('/api/' + guildId + '/battle/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ choice: choice, user: 'web' })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(choice === 'a' ? '🅰️ Voted for Song A!' : '🅱️ Voted for Song B!', 'success');
+        } else {
+            showToast(data.error || 'Vote failed', 'error');
+        }
+    } catch (e) { showToast('Vote failed', 'error'); }
+}
+
+async function cancelBattle(guildId) {
+    // Cancel by starting a new battle with empty state (effectively ends it)
+    if (_battlePollers[guildId]) {
+        clearInterval(_battlePollers[guildId]);
+        delete _battlePollers[guildId];
+    }
+    document.getElementById('battle-form-' + guildId).style.display = 'block';
+    document.getElementById('battle-live-' + guildId).style.display = 'none';
+    showToast('Battle cancelled', 'error');
+}
+
+function startBattlePolling(guildId) {
+    // Poll for battle state every 2 seconds
+    if (_battlePollers[guildId]) clearInterval(_battlePollers[guildId]);
+    _battlePollers[guildId] = setInterval(async () => {
+        try {
+            const res = await fetch('/api/' + guildId + '/battle');
+            const data = await res.json();
+            if (!data.active) {
+                // Battle ended
+                clearInterval(_battlePollers[guildId]);
+                delete _battlePollers[guildId];
+                const liveEl = document.getElementById('battle-live-' + guildId);
+                if (liveEl) {
+                    const winner = data.votes_a > data.votes_b ? '🅰️ Song A wins!' :
+                                   data.votes_b > data.votes_a ? '🅱️ Song B wins!' : '🤝 Tie!';
+                    liveEl.innerHTML = '<div style="text-align:center;padding:12px;">' +
+                        '<span style="font-size:20px;">🏆</span><br>' +
+                        '<span style="font-size:16px;font-weight:700;color:#FFD700;">' + winner + '</span>' +
+                        '</div>';
+                }
+                // Reset to form after 10s
+                setTimeout(() => {
+                    const formEl = document.getElementById('battle-form-' + guildId);
+                    if (formEl) formEl.style.display = 'block';
+                    if (liveEl) liveEl.style.display = 'none';
+                    // Rebuild the live div
+                    location.reload();
+                }, 10000);
+                return;
+            }
+            // Update live display
+            const total = data.votes_a + data.votes_b;
+            const pctA = total > 0 ? (data.votes_a / total * 100) : 50;
+            const pctB = total > 0 ? (data.votes_b / total * 100) : 50;
+            const timerEl = document.getElementById('battle-timer-' + guildId);
+            if (timerEl) timerEl.textContent = data.time_left + 's left';
+            const votesAEl = document.getElementById('battle-votes-a-' + guildId);
+            if (votesAEl) votesAEl.textContent = data.votes_a;
+            const votesBEl = document.getElementById('battle-votes-b-' + guildId);
+            if (votesBEl) votesBEl.textContent = data.votes_b;
+            // Update vote bars
+            const barsEl = document.getElementById('battle-bars-' + guildId);
+            if (barsEl) {
+                barsEl.innerHTML =
+                    '<div style="margin-bottom:6px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-bottom:2px;">' +
+                    '<span>🅰️ ' + (data.title_a || 'Song A') + '</span><span>' + pctA.toFixed(0) + '%</span></div>' +
+                    '<div style="background:var(--bg-primary);border-radius:4px;height:8px;overflow:hidden;">' +
+                    '<div style="width:' + pctA + '%;height:100%;background:#2196F3;border-radius:4px;transition:width 0.5s ease;"></div></div></div>' +
+                    '<div style="margin-bottom:6px;">' +
+                    '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-bottom:2px;">' +
+                    '<span>🅱️ ' + (data.title_b || 'Song B') + '</span><span>' + pctB.toFixed(0) + '%</span></div>' +
+                    '<div style="background:var(--bg-primary);border-radius:4px;height:8px;overflow:hidden;">' +
+                    '<div style="width:' + pctB + '%;height:100%;background:#E91E63;border-radius:4px;transition:width 0.5s ease;"></div></div></div>';
+            }
+        } catch (e) {
+            console.error('Battle poll error:', e);
+        }
+    }, 2000);
+    // Immediately poll once
+    fetch('/api/' + guildId + '/battle').then(r => r.json()).then(data => {
+        if (data.active) {
+            const barsEl = document.getElementById('battle-bars-' + guildId);
+            if (barsEl && data.title_a) {
+                // Trigger initial render
+                const evt = new Event('poll');
+                document.dispatchEvent(evt);
+            }
+        }
+    });
+}
+
 // ── Initialize voice dropdowns on DOM ready ───────────────────
 document.addEventListener('DOMContentLoaded', function() {
     {% for g in guilds %}
@@ -571,6 +745,18 @@ document.addEventListener('DOMContentLoaded', function() {
         loadAiVoices('{{ g.id }}', aiSelect{{ g.id }}.dataset.current || '');
     }
     {% endif %}
+    // Check for active battles on page load
+    (async function() {
+        try {
+            const res = await fetch('/api/{{ g.id }}/battle');
+            const data = await res.json();
+            if (data.active) {
+                document.getElementById('battle-form-{{ g.id }}').style.display = 'none';
+                document.getElementById('battle-live-{{ g.id }}').style.display = 'block';
+                startBattlePolling('{{ g.id }}');
+            }
+        } catch (e) {}
+    })();
     {% endif %}
     {% endfor %}
 });

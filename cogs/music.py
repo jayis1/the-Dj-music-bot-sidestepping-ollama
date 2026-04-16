@@ -76,6 +76,9 @@ class Music(commands.Cog):
         self._ai_dj_pending_line = {}  # guild_id -> str|None (AI line waiting to be spoken)
         self._last_dj_line = {}  # guild_id -> str (what the main DJ just said, for AI context)
 
+        # Battle of the Beats — live voting showdowns (per-guild)
+        self._battles = {}  # guild_id -> dict {song_a, song_b, votes_a, votes_b, message_id, channel_id, timer_task, created_at}
+
         # ── Persist voice settings across restarts ──
         self._voice_settings_file = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "voice_settings.json"
@@ -1913,9 +1916,28 @@ class Music(commands.Cog):
             self._last_dj_line[guild_id] = clean_text if clean_text else text
 
         voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
+
+        # ── TTS engine routing ──
+        # Main DJ uses the configured TTS engine (MOSS → edge-tts fallback).
+        # AI Side Host always uses edge-tts (cloud-based, different voice from the DJ)
+        # to create a clear distinction between the two hosts.
+        if is_ai:
+            tts_engine = "edge-tts"
+            # Resolve the AI voice name for edge-tts if it's a MOSS-style name
+            from utils.dj import _resolve_voice, DEFAULT_VOICE_EDGE
+
+            voice = _resolve_voice(voice, "edge-tts")
+            logging.info(
+                f"AI Side Host: Using edge-tts with voice '{voice}' "
+                f"(AI host uses different TTS engine from main DJ)"
+            )
+        else:
+            tts_engine = TTS_MODE  # Use configured engine (MOSS → edge-tts fallback)
+
         logging.info(
             f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
             f"(source={'AI Side Host' if is_ai else 'DJ'}, "
+            f"engine={tts_engine}, "
             f"guild_dj_voice={self.dj_voice.get(guild_id, '<unset>')}, "
             f"config_default={config.DJ_VOICE})"
         )
@@ -1923,6 +1945,7 @@ class Music(commands.Cog):
             clean_text if clean_text else text,
             voice,
             source="AI Side Host" if is_ai else "DJ",
+            engine=tts_engine,
         )
 
         if not tts_path:
@@ -2678,6 +2701,354 @@ class Music(commands.Cog):
                     await interaction.response.send_message(embed=embed, ephemeral=True)
                 return  # Exit early as we've already responded
             await interaction.response.defer()
+
+    # ── Battle of the Beats ──────────────────────────────────────────
+
+    @commands.command(name="battle", aliases=["showdown", "versus", "vs"])
+    async def battle(self, ctx, song_a: str, song_b: str):
+        """Start a Battle of the Beats! Two songs go head-to-head and the community votes.
+
+        Usage: ?battle <song_a_url> <song_b_url>
+        Example: ?battle https://youtube.com/watch?v=xxx https://youtube.com/watch?v=yyy
+        """
+        guild_id = ctx.guild.id
+
+        # Check if a battle is already running in this guild
+        if guild_id in self._battles and self._battles[guild_id].get("active"):
+            await ctx.send(
+                embed=self.create_embed(
+                    "⚔️ Battle in Progress",
+                    "A Battle of the Beats is already running! Wait for it to finish.",
+                    discord.Color.orange(),
+                )
+            )
+            return
+
+        # Validate that the bot is in a voice channel
+        if not ctx.voice_client:
+            await ctx.send(
+                embed=self.create_embed(
+                    "⚔️ Battle",
+                    f"{config.ERROR_EMOJI} I need to be in a voice channel! Use `?join` first.",
+                    discord.Color.red(),
+                )
+            )
+            return
+
+        # Extract titles from song URLs
+        import yt_dlp
+
+        title_a = song_a
+        title_b = song_b
+        ydl_opts = {"quiet": True, "no_warnings": True, "extract_flat": True}
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_a = ydl.extract_info(song_a, download=False)
+                if info_a:
+                    title_a = info_a.get("title", song_a)
+        except Exception:
+            pass
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info_b = ydl.extract_info(song_b, download=False)
+                if info_b:
+                    title_b = info_b.get("title", song_b)
+        except Exception:
+            pass
+
+        # Limit title length for display
+        title_a = title_a[:60] + "…" if len(title_a) > 60 else title_a
+        title_b = title_b[:60] + "…" if len(title_b) > 60 else title_b
+
+        # Create the battle state
+        battle_data = {
+            "song_a": song_a,
+            "song_b": song_b,
+            "title_a": title_a,
+            "title_b": title_b,
+            "votes_a": {},  # user_id -> timestamp
+            "votes_b": {},  # user_id -> timestamp
+            "message_id": None,
+            "channel_id": ctx.channel.id,
+            "active": True,
+            "created_at": time.time(),
+            "duration": 60,  # 60-second voting window
+            "dj_announced": False,
+        }
+        self._battles[guild_id] = battle_data
+
+        # Create the Discord voting embed with buttons
+        embed = discord.Embed(
+            title="⚔️ BATTLE OF THE BEATS",
+            description=f"**🅰️ {title_a}**\nvs\n**🅱️ {title_b}**\n\nVote below! You have **60 seconds**.",
+            color=0xE91E63,
+        )
+        embed.set_footer(text="⏱️ Voting ends in 60 seconds — vote now!")
+        embed.add_field(name="🅰️", value="0 votes", inline=True)
+        embed.add_field(name="🅱️", value="0 votes", inline=True)
+        embed.add_field(name="📊", value="—", inline=True)
+
+        view = BattleView(self, guild_id)
+        msg = await ctx.send(embed=embed, view=view)
+
+        # Store the message ID for live updates
+        battle_data["message_id"] = msg.id
+
+        # DJ announcement
+        if self.dj_enabled.get(guild_id, False) and TTS_AVAILABLE:
+            battle_announce = f"{config.STATION_NAME} Battle of the Beats! {title_a} versus {title_b}. Vote now!"
+            spoke = await self._dj_speak(ctx.voice_client, battle_announce, guild_id)
+            if not spoke:
+                logging.info(f"Battle: DJ announcement skipped for guild {guild_id}")
+            battle_data["dj_announced"] = True
+
+        # Start the countdown timer
+        battle_data["timer_task"] = self.bot.loop.create_task(
+            self._battle_countdown(guild_id, ctx.channel, msg)
+        )
+
+    async def _battle_countdown(self, guild_id, channel, message):
+        """Countdown timer and live vote updates for a battle."""
+        try:
+            battle = self._battles.get(guild_id)
+            if not battle:
+                return
+
+            duration = battle.get("duration", 60)
+            start = battle.get("created_at", time.time())
+            update_interval = 5  # Update every 5 seconds
+
+            while True:
+                await asyncio.sleep(update_interval)
+                battle = self._battles.get(guild_id)
+                if not battle or not battle.get("active"):
+                    return
+
+                elapsed = time.time() - start
+                remaining = max(0, duration - elapsed)
+
+                if remaining <= 0:
+                    # Time's up — announce the winner
+                    await self._battle_finish(guild_id, channel)
+                    return
+
+                # Update the embed with current votes
+                votes_a = len(battle.get("votes_a", {}))
+                votes_b = len(battle.get("votes_b", {}))
+                total = votes_a + votes_b
+                pct_a = (votes_a / total * 100) if total > 0 else 50
+                pct_b = (votes_b / total * 100) if total > 0 else 50
+
+                bar_len = 20
+                bar_a = "█" * int(pct_a / 100 * bar_len) + "░" * (
+                    bar_len - int(pct_a / 100 * bar_len)
+                )
+                bar_b = "█" * int(pct_b / 100 * bar_len) + "░" * (
+                    bar_len - int(pct_b / 100 * bar_len)
+                )
+
+                embed = discord.Embed(
+                    title="⚔️ BATTLE OF THE BEATS",
+                    description=f"**🅰️ {battle['title_a']}**\nvs\n**🅱️ {battle['title_b']}**\n\n⏱️ **{int(remaining)}s** left to vote!",
+                    color=0xE91E63,
+                )
+                embed.add_field(
+                    name=f"🅰️ {votes_a} votes ({pct_a:.0f}%)",
+                    value=f"`{bar_a}`",
+                    inline=False,
+                )
+                embed.add_field(
+                    name=f"🅱️ {votes_b} votes ({pct_b:.0f}%)",
+                    value=f"`{bar_b}`",
+                    inline=False,
+                )
+
+                try:
+                    await message.edit(embed=embed)
+                except (discord.NotFound, discord.Forbidden):
+                    return
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logging.error(f"Battle countdown error for guild {guild_id}: {e}")
+
+    async def _battle_finish(self, guild_id, channel):
+        """Finish a battle: announce the winner and queue the winning song."""
+        battle = self._battles.get(guild_id)
+        if not battle:
+            return
+
+        battle["active"] = False
+
+        votes_a = len(battle.get("votes_a", {}))
+        votes_b = len(battle.get("votes_b", {}))
+        title_a = battle["title_a"]
+        title_b = battle["title_b"]
+
+        # Determine winner
+        if votes_a > votes_b:
+            winner_key = "a"
+            winner_title = title_a
+            winner_url = battle["song_a"]
+            result_text = f"🅰️ **{title_a}** wins with {votes_a}–{votes_b}!"
+        elif votes_b > votes_a:
+            winner_key = "b"
+            winner_title = title_b
+            winner_url = battle["song_b"]
+            result_text = f"🅱️ **{title_b}** wins with {votes_b}–{votes_a}!"
+        else:
+            # Tie — pick randomly
+            import random as _r
+
+            winner_key = _r.choice(["a", "b"])
+            winner_title = title_a if winner_key == "a" else title_b
+            winner_url = battle["song_a"] if winner_key == "a" else battle["song_b"]
+            result_text = (
+                f"🤝 It's a tie! {votes_a}–{votes_b}. Random pick: **{winner_title}**"
+            )
+
+        # Build final embed
+        total = votes_a + votes_b
+        pct_a = (votes_a / total * 100) if total > 0 else 50
+        pct_b = (votes_b / total * 100) if total > 0 else 50
+        bar_len = 20
+        bar_a = "█" * int(pct_a / 100 * bar_len) + "░" * (
+            bar_len - int(pct_a / 100 * bar_len)
+        )
+        bar_b = "█" * int(pct_b / 100 * bar_len) + "░" * (
+            bar_len - int(pct_b / 100 * bar_len)
+        )
+
+        embed = discord.Embed(
+            title="⚔️ BATTLE RESULTS",
+            description=f"**🅰️ {title_a}** ({votes_a} votes)\nvs\n**🅱️ {title_b}** ({votes_b} votes)\n\n🏆 {result_text}",
+            color=0xFFD700,
+        )
+        embed.add_field(
+            name=f"🅰️ {votes_a} votes ({pct_a:.0f}%)",
+            value=f"`{bar_a}`",
+            inline=False,
+        )
+        embed.add_field(
+            name=f"🅱️ {votes_b} votes ({pct_b:.0f}%)",
+            value=f"`{bar_b}`",
+            inline=False,
+        )
+        embed.set_footer(text=f"🏆 {winner_title}")
+
+        # Update the original message
+        msg_id = battle.get("message_id")
+        if msg_id:
+            try:
+                msg = await channel.fetch_message(msg_id)
+                await msg.edit(embed=embed, view=None)
+            except (discord.NotFound, discord.Forbidden):
+                pass
+
+        # Send a separate results message
+        await channel.send(embed=embed)
+
+        # DJ announcement of the winner
+        if self.dj_enabled.get(guild_id, False) and TTS_AVAILABLE:
+            announce_text = (
+                f"Battle of the Beats is over! {winner_title} wins! Let's hear it."
+            )
+            await self._dj_speak(channel.guild.voice_client, announce_text, guild_id)
+
+        # Queue the winning song
+        try:
+            from cogs.youtube import PlaceholderTrack
+
+            winner_track = PlaceholderTrack(title=winner_title, url=winner_url)
+            if guild_id not in self.song_queues:
+                self.song_queues[guild_id] = asyncio.Queue()
+            await self.song_queues[guild_id].put(winner_track)
+            await channel.send(
+                f"🎵 Winner **{winner_title}** has been added to the queue!"
+            )
+
+            # If nothing is playing, start playback
+            voice_client = channel.guild.voice_client
+            if (
+                voice_client
+                and not voice_client.is_playing()
+                and not voice_client.is_paused()
+            ):
+                # Create a minimal ctx-like object for play_next
+                class _FakeCtx:
+                    pass
+
+                fake_ctx = _FakeCtx()
+                fake_ctx.guild = channel.guild
+                fake_ctx.voice_client = voice_client
+                fake_ctx.channel = channel
+                fake_ctx.author = channel.guild.me
+                await self.play_next(fake_ctx)
+        except Exception as e:
+            logging.error(f"Battle: Failed to queue winner: {e}")
+            await channel.send(f"❌ Couldn't queue the winner: {e}")
+
+    def get_battle_state(self, guild_id):
+        """Get the current battle state for a guild (used by web API)."""
+        return self._battles.get(guild_id)
+
+
+class BattleView(discord.ui.View):
+    """Interactive Discord button view for Battle of the Beats voting."""
+
+    def __init__(self, music_cog, guild_id):
+        super().__init__(timeout=70)  # Slightly longer than the 60s battle
+        self.music_cog = music_cog
+        self.guild_id = guild_id
+
+    @discord.ui.Button(
+        label="🅰️ Song A", style=discord.ButtonStyle.primary, custom_id="battle_vote_a"
+    )
+    async def vote_a(self, interaction: discord.Interaction, button: discord.ui.Button):
+        battle = self.music_cog._battles.get(self.guild_id)
+        if not battle or not battle.get("active"):
+            await interaction.response.send_message(
+                "⏱️ This battle has ended!", ephemeral=True
+            )
+            return
+
+        user_id = str(interaction.user.id)
+        # Switching vote from B to A
+        if user_id in battle.get("votes_b", {}):
+            del battle["votes_b"][user_id]
+        battle["votes_a"][user_id] = time.time()
+
+        votes_a = len(battle["votes_a"])
+        votes_b = len(battle["votes_b"])
+        await interaction.response.send_message(
+            f"🅰️ Voted for **{battle['title_a']}**! ({votes_a}–{votes_b})",
+            ephemeral=True,
+        )
+
+    @discord.ui.Button(
+        label="🅱️ Song B", style=discord.ButtonStyle.danger, custom_id="battle_vote_b"
+    )
+    async def vote_b(self, interaction: discord.Interaction, button: discord.ui.Button):
+        battle = self.music_cog._battles.get(self.guild_id)
+        if not battle or not battle.get("active"):
+            await interaction.response.send_message(
+                "⏱️ This battle has ended!", ephemeral=True
+            )
+            return
+
+        user_id = str(interaction.user.id)
+        # Switching vote from A to B
+        if user_id in battle.get("votes_a", {}):
+            del battle["votes_a"][user_id]
+        battle["votes_b"][user_id] = time.time()
+
+        votes_a = len(battle["votes_a"])
+        votes_b = len(battle["votes_b"])
+        await interaction.response.send_message(
+            f"🅱️ Voted for **{battle['title_b']}**! ({votes_a}–{votes_b})",
+            ephemeral=True,
+        )
 
 
 async def setup(bot):

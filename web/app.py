@@ -1873,6 +1873,206 @@ def api_presets_delete():
     return jsonify({"error": f"Preset '{name}' not found"}), 404
 
 
+# ── Battle of the Beats API ──────────────────────────────────────────
+
+
+@app.route("/api/<int:guild_id>/battle", methods=["POST"])
+def api_battle_create(guild_id):
+    """Create a new Battle of the Beats showdown.
+
+    Expects JSON: {"song_a": "url1", "song_b": "url2"}
+    Returns the battle state with titles.
+    """
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+
+    data = request.json or {}
+    song_a = data.get("song_a", "").strip()
+    song_b = data.get("song_b", "").strip()
+    if not song_a or not song_b:
+        return jsonify({"error": "Both song_a and song_b URLs are required"}), 400
+
+    # Check if a battle is already active
+    existing = music.get_battle_state(guild_id)
+    if existing and existing.get("active"):
+        return jsonify({"error": "A battle is already active in this server"}), 409
+
+    # Create battle state directly
+    import yt_dlp
+
+    title_a = song_a
+    title_b = song_b
+    ydl_opts = {"quiet": True, "no_warnings": True, "extract_flat": True}
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(song_a, download=False)
+            if info:
+                title_a = info.get("title", song_a)
+    except Exception:
+        pass
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(song_b, download=False)
+            if info:
+                title_b = info.get("title", song_b)
+    except Exception:
+        pass
+
+    title_a = title_a[:60] + ("…" if len(title_a) > 60 else "")
+    title_b = title_b[:60] + ("…" if len(title_b) > 60 else "")
+
+    battle_data = {
+        "song_a": song_a,
+        "song_b": song_b,
+        "title_a": title_a,
+        "title_b": title_b,
+        "votes_a": {},
+        "votes_b": {},
+        "message_id": None,
+        "channel_id": None,
+        "active": True,
+        "created_at": time.time(),
+        "duration": 60,
+        "dj_announced": False,
+    }
+    music._battles[guild_id] = battle_data
+
+    # Start the countdown timer in the background
+    async def _start_battle_timer():
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            return
+        channel = None
+        for ch in guild.text_channels:
+            if ch.permissions_for(guild.me).send_messages:
+                channel = ch
+                break
+        if not channel:
+            return
+
+        # Send the Discord voting embed with buttons
+        import discord
+        from cogs.music import BattleView
+
+        embed = discord.Embed(
+            title="⚔️ BATTLE OF THE BEATS",
+            description=f"**🅰️ {title_a}**\nvs\n**🅱️ {title_b}**\n\nVote below! You have **60 seconds**.",
+            color=0xE91E63,
+        )
+        embed.set_footer(text="⏱️ Voting ends in 60 seconds — vote now!")
+        embed.add_field(name="🅰️", value="0 votes", inline=True)
+        embed.add_field(name="🅱️", value="0 votes", inline=True)
+        embed.add_field(name="📊", value="—", inline=True)
+
+        view = BattleView(music, guild_id)
+        msg = await channel.send(embed=embed, view=view)
+        battle_data["message_id"] = msg.id
+        battle_data["channel_id"] = channel.id
+
+        # DJ announcement
+        if music.dj_enabled.get(guild_id, False):
+            try:
+                from utils.dj import TTS_AVAILABLE
+
+                if TTS_AVAILABLE:
+                    announce_text = (
+                        f"Battle of the Beats! {title_a} versus {title_b}. Vote now!"
+                    )
+                    await music._dj_speak(guild.voice_client, announce_text, guild_id)
+                    battle_data["dj_announced"] = True
+            except Exception:
+                pass
+
+        # Start the countdown
+        await music._battle_countdown(guild_id, channel, msg)
+
+    _run_async(_start_battle_timer())
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "Battle started!",
+            "title_a": title_a,
+            "title_b": title_b,
+        }
+    )
+
+
+@app.route("/api/<int:guild_id>/battle", methods=["GET"])
+def api_battle_state(guild_id):
+    """Get the current battle state for live vote tracking.
+
+    Returns: { active, title_a, title_b, votes_a, votes_b, time_left, song_a, song_b }
+    """
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"active": False}), 200
+
+    battle = music.get_battle_state(guild_id)
+    if not battle or not battle.get("active"):
+        return jsonify({"active": False}), 200
+
+    elapsed = time.time() - battle.get("created_at", time.time())
+    remaining = max(0, battle.get("duration", 60) - elapsed)
+
+    return jsonify(
+        {
+            "active": True,
+            "title_a": battle.get("title_a", "Song A"),
+            "title_b": battle.get("title_b", "Song B"),
+            "song_a": battle.get("song_a", ""),
+            "song_b": battle.get("song_b", ""),
+            "votes_a": len(battle.get("votes_a", {})),
+            "votes_b": len(battle.get("votes_b", {})),
+            "time_left": int(remaining),
+            "duration": battle.get("duration", 60),
+        }
+    )
+
+
+@app.route("/api/<int:guild_id>/battle/vote", methods=["POST"])
+def api_battle_vote(guild_id):
+    """Cast a vote in an active battle from the web dashboard.
+
+    Expects JSON: {"choice": "a" or "b", "user": "username"}
+    """
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"error": "Music cog not loaded"}), 503
+
+    battle = music.get_battle_state(guild_id)
+    if not battle or not battle.get("active"):
+        return jsonify({"error": "No active battle"}), 404
+
+    data = request.json or {}
+    choice = data.get("choice", "").strip().lower()
+    user = data.get("user", "web_user")
+
+    if choice not in ("a", "b"):
+        return jsonify({"error": "Choice must be 'a' or 'b'"}), 400
+
+    # Use IP + user as a unique key to prevent double-voting from web
+    voter_key = f"web_{request.remote_addr}_{user}"
+
+    if choice == "a":
+        # Remove from B if switching
+        battle.get("votes_b", {}).pop(voter_key, None)
+        battle["votes_a"][voter_key] = time.time()
+    else:
+        # Remove from A if switching
+        battle.get("votes_a", {}).pop(voter_key, None)
+        battle["votes_b"][voter_key] = time.time()
+
+    return jsonify(
+        {
+            "ok": True,
+            "votes_a": len(battle["votes_a"]),
+            "votes_b": len(battle["votes_b"]),
+        }
+    )
+
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 

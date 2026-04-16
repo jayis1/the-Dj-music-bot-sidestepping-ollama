@@ -1792,24 +1792,27 @@ def _resolve_moss_voice(voice: str) -> tuple[str, str | None]:
     return voice, None
 
 
-async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str | None:
+async def generate_tts(
+    text: str, voice: str = None, source: str = "DJ", engine: str = None
+) -> str | None:
     """Generate a TTS audio file and return its path.
 
-    Routes to the appropriate TTS engine based on config.TTS_MODE:
-    - "moss": MOSS-TTS-Nano FastAPI server (local CPU/GPU, voice clone)
-    - "vibevoice": VibeVoice-Realtime WebSocket server (local GPU, separate process)
-    - "edge-tts": Microsoft Edge TTS (cloud-based, always-available fallback)
+    Routes to the appropriate TTS engine. By default uses config.TTS_MODE,
+    but a different engine can be specified via the `engine` parameter.
 
-    If the primary engine fails, falls back to edge-tts automatically.
-    For MOSS, a quick health check is done first — if the server is
-    unreachable, the fallback is nearly instant instead of waiting for
-    a long timeout.
+    This allows the AI side host to use a different TTS engine than the
+    main DJ — e.g. the DJ uses MOSS (local) while the AI host uses
+    edge-tts (cloud) for a distinct voice.
 
     Args:
         text: The text to synthesize.
         voice: Voice name. Auto-resolved per engine if None.
         source: Who is speaking — e.g. "DJ" or "AI Side Host".
             Used in log messages to distinguish who generated the TTS.
+        engine: Override the TTS engine for this call.
+            "moss": Use MOSS-TTS-Nano (with edge-tts fallback).
+            "vibevoice": Use VibeVoice (with edge-tts fallback).
+            "edge-tts": Use Microsoft Edge TTS directly (no fallback).
 
     Returns the path to a WAV file (moss/vibevoice) or MP3 file (edge-tts).
     The caller must delete the file after use via cleanup_tts_file().
@@ -1818,16 +1821,19 @@ async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str 
     if not text or not text.strip():
         return None
 
-    # Resolve default voice based on active engine
+    # Use the override engine if specified, otherwise use config default
+    active_engine = engine if engine is not None else TTS_MODE
+
+    # Resolve default voice based on the active engine
     if voice is None:
-        if TTS_MODE == "moss":
+        if active_engine == "moss":
             voice = DEFAULT_VOICE_MOSS
-        elif TTS_MODE == "vibevoice":
+        elif active_engine == "vibevoice":
             voice = DEFAULT_VOICE_VIBEVOICE
         else:
             voice = DEFAULT_VOICE_EDGE
 
-    if TTS_MODE == "moss":
+    if active_engine == "moss":
         # Quick health check — skip MOSS entirely if server is down or not warmed up
         healthy = await _check_moss_health()
         if healthy:
@@ -1857,7 +1863,7 @@ async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str 
                 f"using '{fallback_voice}' instead"
             )
 
-    elif TTS_MODE == "vibevoice":
+    elif active_engine == "vibevoice":
         resolved = _resolve_voice(voice, "vibevoice")
         result = await _generate_tts_vibevoice(text, resolved, source=source)
         if result is not None:
@@ -1871,7 +1877,7 @@ async def generate_tts(text: str, voice: str = None, source: str = "DJ") -> str 
             )
 
     else:
-        # TTS_MODE == "edge-tts" — use directly
+        # active_engine == "edge-tts" — use directly (no fallback needed)
         fallback_voice = _resolve_voice(voice, "edge-tts")
 
     # Final fallback: edge-tts

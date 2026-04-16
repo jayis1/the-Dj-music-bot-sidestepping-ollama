@@ -1705,7 +1705,257 @@ class Music(commands.Cog):
                 )
             )
 
-        for sound_id in sound_ids:
+        if voice_name is None:
+            current = self.dj_voice.get(guild_id, config.DJ_VOICE)
+            return await ctx.send(
+                embed=self.create_embed(
+                    f"{config.DJ_EMOJI} DJ Voice",
+                    f"Current voice: **`{current}`**\n\n"
+                    f"Use `?djvoice <voice_name>` to change it.\n"
+                    f"Use `?djvoices` to see available voices.",
+                )
+            )
+
+        # Validate the voice exists
+        try:
+            voices = await list_voices()
+            voice_names = [v["ShortName"] for v in voices]
+            if voice_name not in voice_names:
+                close = [v for v in voice_names if voice_name.lower() in v.lower()]
+                suggestion = ""
+                if close:
+                    suggestion = f"\nDid you mean one of these?\n" + "\n".join(
+                        f"• `{v}`" for v in close[:10]
+                    )
+                return await ctx.send(
+                    embed=self.create_embed(
+                        "Voice Not Found",
+                        f"{config.ERROR_EMOJI} Voice `{voice_name}` not found."
+                        f"{suggestion}\n\n"
+                        f"Use `?djvoices` to see all available voices.",
+                        discord.Color.red(),
+                    )
+                )
+        except Exception as e:
+            logging.warning(
+                f"DJ: Could not validate voice '{voice_name}': {e}. Setting anyway."
+            )
+
+        self.dj_voice[guild_id] = voice_name
+        logging.info(f"DJ voice set to '{voice_name}' for {ctx.guild.name}")
+        await ctx.send(
+            embed=self.create_embed(
+                f"{config.DJ_EMOJI} DJ Voice Changed",
+                f"{config.SUCCESS_EMOJI} DJ voice set to **`{voice_name}`**",
+            )
+        )
+
+    @commands.command(name="djvoices")
+    async def dj_voices_cmd(self, ctx, language: str = "en"):
+        """List available TTS voices (filtered by language, default: en)."""
+        logging.info(
+            f"DJ voices command invoked by {ctx.author} in {ctx.guild.name} (lang: {language})"
+        )
+
+        if not TTS_AVAILABLE:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "DJ Unavailable",
+                    f"{config.ERROR_EMOJI} DJ mode requires a TTS engine. "
+                    "Make sure MOSS, VibeVoice, or edge-tts is available.",
+                    discord.Color.red(),
+                )
+            )
+
+        try:
+            voices = await list_voices(language)
+        except Exception as e:
+            logging.error(f"DJ: Failed to list voices: {e}")
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Error",
+                    f"{config.ERROR_EMOJI} Failed to fetch voices: {e}",
+                    discord.Color.red(),
+                )
+            )
+
+        if not voices:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "No Voices Found",
+                    f"{config.ERROR_EMOJI} No voices found for language `{language}`. "
+                    "Try a different prefix (e.g., `?djvoices en`, `?djvoices ja`).",
+                    discord.Color.orange(),
+                )
+            )
+
+        voice_list = []
+        for v in voices[:25]:
+            gender = v.get("Gender", "?")
+            locale = v.get("Locale", "?")
+            voice_list.append(f"`{v['ShortName']}` — {gender}, {locale}")
+
+        description = "\n".join(voice_list)
+        if len(voices) > 25:
+            description += f"\n\n... and {len(voices) - 25} more."
+
+        await ctx.send(
+            embed=self.create_embed(
+                f"{config.DJ_EMOJI} Available Voices ({language}*)",
+                description,
+            )
+        )
+
+    # ── DJ Playback Helpers ────────────────────────────────────────
+
+    async def _dj_speak(
+        self,
+        voice_client,
+        text: str,
+        guild_id: int,
+        voice: str = None,
+        is_ai: bool = False,
+    ):
+        """
+        Generate TTS audio and play it through the voice client.
+        Also plays any {sound:name} tags found in the text after TTS finishes.
+        Returns True if TTS was played, False if skipped.
+
+        Args:
+            voice_client: The discord.VoiceClient to play through
+            text: The text to speak (may contain {sound:name} tags)
+            guild_id: The guild ID for state tracking
+            voice: Override TTS voice name (defaults to guild DJ voice)
+            is_ai: True if this is the AI side host speaking (don't overwrite dj_line context)
+        """
+        if not TTS_AVAILABLE:
+            return False
+
+        # Extract {sound:name} tags before TTS so they aren't spoken aloud
+        from utils.dj import extract_sound_tags
+
+        clean_text, sound_ids = extract_sound_tags(text)
+        if sound_ids:
+            logging.info(f"DJ: Extracted sound tags: {sound_ids} for guild {guild_id}")
+
+        # Store what the DJ is about to say so the AI side host can react to it.
+        # Only store the main DJ's lines — not the AI's own lines.
+        if not is_ai:
+            self._last_dj_line[guild_id] = clean_text if clean_text else text
+
+        voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
+        logging.info(
+            f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
+            f"(source={'AI Side Host' if is_ai else 'DJ'}, "
+            f"guild_dj_voice={self.dj_voice.get(guild_id, '<unset>')}, "
+            f"config_default={config.DJ_VOICE})"
+        )
+        tts_path = await generate_tts(
+            clean_text if clean_text else text,
+            voice,
+            source="AI Side Host" if is_ai else "DJ",
+        )
+
+        if not tts_path:
+            logging.warning(f"DJ: TTS generation returned None for guild {guild_id}")
+            return False
+
+        self._current_tts_path[guild_id] = tts_path
+        self.dj_playing_tts[guild_id] = True
+        # Store pending sounds to play after TTS finishes
+        self._dj_pending_sounds[guild_id] = sound_ids
+
+        try:
+            # ── Stuck-state recovery ──────────────────────────────────
+            # If the voice client thinks it's still playing something (e.g.
+            # a previous TTS with a broken WAV header that FFmpeg hangs on),
+            # force-stop it before trying to play the new TTS. Without this,
+            # every play() call fails with "Already playing audio" and the
+            # queue cascades through all songs with no audio output.
+            if voice_client.is_playing():
+                logging.warning(
+                    f"DJ: Voice client still playing in guild {guild_id} "
+                    f"before TTS — force-stopping stuck source"
+                )
+                voice_client.stop()
+                # Brief pause to let the old FFmpeg process fully terminate
+                await asyncio.sleep(0.3)
+
+            # TTS audio — no reconnect options needed (local file), no video.
+            # Duration cap of 30s prevents FFmpeg from hanging on malformed headers.
+            tts_source = discord.FFmpegPCMAudio(
+                tts_path,
+                before_options="-nostdin",
+                options="-vn -t 30",
+            )
+            tts_player = discord.PCMVolumeTransformer(tts_source)
+            tts_player.volume = self.current_volume.get(guild_id, 1.0)
+
+            # We cannot await play() — it starts playback and returns immediately.
+            # The 'after' callback fires when TTS playback finishes.
+            loop = self.bot.loop
+            voice_client.play(
+                tts_player,
+                after=lambda e: loop.call_soon_threadsafe(
+                    self._on_tts_done, guild_id, e
+                ),
+            )
+            display = clean_text if clean_text else text
+            logging.info(f"DJ: Speaking in guild {guild_id}: {display[:80]}…")
+            if sound_ids:
+                logging.info(f"DJ: Will play sounds after speech: {sound_ids}")
+            return True
+        except Exception as e:
+            logging.error(f"DJ: Failed to play TTS in guild {guild_id}: {e}")
+            self.dj_playing_tts[guild_id] = False
+            cleanup_tts_file(tts_path)
+            self._current_tts_path[guild_id] = None
+            return False
+
+    def _on_tts_done(self, guild_id, error):
+        """
+        Called from FFmpeg's after-callback thread when TTS playback finishes.
+        Cleans up the temp file, plays any pending sound effects, then
+        schedules playing the actual song.
+        """
+        self.dj_playing_tts[guild_id] = False
+
+        tts_path = self._current_tts_path.get(guild_id)
+        if tts_path:
+            cleanup_tts_file(tts_path)
+            self._current_tts_path[guild_id] = None
+
+        if error:
+            logging.error(f"DJ: TTS playback error for guild {guild_id}: {error}")
+
+        # Play any pending sound effects from {sound:name} tags
+        pending_sounds = self._dj_pending_sounds.pop(guild_id, [])
+
+        if pending_sounds:
+            # Start bed music for the gap between TTS and song start.
+            # We couldn't start it earlier because TTS was using the voice client.
+            # Now TTS is done, so bed music can play under the sound effects.
+            # It'll be stopped by _stop_bed_music() in _start_song_playback.
+            guild = self.bot.get_guild(guild_id)
+            if guild and guild.voice_client:
+                asyncio.ensure_future(
+                    self._start_bed_music(guild.voice_client, guild_id),
+                    loop=self.bot.loop,
+                )
+
+            logging.info(
+                f"DJ: Playing {len(pending_sounds)} sound effects for guild {guild_id}"
+            )
+            asyncio.ensure_future(
+                self._play_dj_sounds_then_song(guild_id, pending_sounds),
+                loop=self.bot.loop,
+            )
+        else:
+            logging.info(f"DJ: TTS done for guild {guild_id}, scheduling song playback")
+            asyncio.ensure_future(
+                self._play_song_after_dj(guild_id),
+                loop=self.bot.loop,
+            )
             path = get_sound_path(sound_id)
             if not path:
                 logging.warning(f"DJ: Sound '{sound_id}' not found, skipping")

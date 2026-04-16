@@ -81,20 +81,22 @@ jobs:
             docker-compose.yml
             .env.example
           body: |
-            ## 🐳 Quick Install (Docker)
+            ## 🐳 Mega-Easy Install (Docker)
 
             ```bash
-            # 1. Download the config files (attached below)
+            # 1. Download the starter files (attached below)
             curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/docker-compose.yml
             curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/.env.example
             mv .env.example .env
-            nano .env   # Set DISCORD_TOKEN at minimum
 
-            # 2. Start the bot + Kokoro TTS
+            # 2. Insert your Discord token!
+            nano .env
+
+            # 3. Start the bot + MOSS-TTS-Nano automatically!
             docker compose up -d
 
-            # 3. Open Mission Control dashboard
-            open http://your-server:8080
+            # 4. Open the Mission Control Dashboard
+            open http://localhost:8080
             ```
 
             ## 📦 Docker Image

@@ -2,8 +2,7 @@
   <img src="assets/logo.png" alt="The Radio DJ Music Bot" width="420"/>
 </p>
 
-# 🎵 The Radio DJ Music Bot — v6.4.0
-
+# 🎵 The Radio DJ Music Bot — v6.5.0
 > *🎙️ "LADIES AND GENTLEMEN, boys and girls, Discord users of ALL ages — put your hands together, because tonight — TONIGHT — we have something truly, genuinely, historically SPECIAL for you.*
 >
 > *You've had music bots before. We all have. Those sad little bots that stutter, skip, and quietly give up on life halfway through a playlist. Bots that just... play audio. No soul. No personality. No FIRE.*
@@ -30,22 +29,21 @@ The radio dj music bot is a self-contained Discord music bot built with Python a
 
 ## 🐳 Quick Install (Docker)
 
-The fastest way to get running — one command starts the bot **and** MOSS-TTS-Nano:
+The absolute fastest way to get your radio station running. One command starts the bot **and** the MOSS-TTS-Nano engine!
 
 ```bash
-# 1. Grab the compose file + config template
-curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/docker-compose.yml
-curl -O https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases/latest/download/.env.example
-mv .env.example .env
+# 1. Download the pre-configured starter files
+curl -O https://raw.githubusercontent.com/jayis1/the-Dj-music-bot-sidestepping-ollama/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/jayis1/the-Dj-music-bot-sidestepping-ollama/main/.env.example
 
-# 2. Set your Discord token (minimum required)
-nano .env    # set DISCORD_TOKEN=
+# 2. Add your bot token
+nano .env    # Just paste your DISCORD_TOKEN here, everything else is ready!
 
-# 3. Start everything
+# 3. Launch it!
 docker compose up -d
 
-# 4. Open Mission Control
-open http://your-server:8080
+# 4. Open the Mission Control Dashboard
+open http://localhost:8080
 ```
 
 > **MOSS-TTS-Nano** starts automatically as a sidecar container on port 18083. The bot detects it and uses it immediately — no extra config needed.

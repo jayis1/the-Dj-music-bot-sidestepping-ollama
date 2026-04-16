@@ -481,7 +481,7 @@ def _build_system_prompt(station_name: str) -> str:
         f"of the century, but sure' — you comment on it, you don't echo it.\n"
         f"- If no DJ line is given, do your own independent banter.\n\n"
         f"STRICT RULES:\n"
-        f"- Maximum 200 characters. Short and punchy — this is radio, not a podcast.\n"
+        f"- Maximum 140 characters. Short and punchy — this is radio, not a podcast. One line, one thought.\n"
         f"- Use contractions (we're, let's, that's, I'm).\n"
         f"- You can include sound effect tags anywhere in your line: {{sound:name}}\n"
         f"  Use them to add energy — airhorns for hype, scratches for transitions, "
@@ -590,7 +590,7 @@ async def call_ollama(
     system: str,
     model: str | None = None,
     temperature: float = 0.9,
-    max_tokens: int = 80,
+    max_tokens: int = 50,
 ) -> str | None:
     """Call the Ollama /api/chat endpoint. Returns the model text or None.
 
@@ -708,15 +708,15 @@ def _clean_ai_line(raw: str) -> str:
         line = clean_text
 
     # 3. Enforce max length
-    if len(line) > 200:
+    if len(line) > 140:
         # Truncate at last sentence boundary if possible
         for sep in [". ", "! ", "? "]:
-            last = line[:200].rfind(sep)
+            last = line[:140].rfind(sep)
             if last > 20:
                 line = line[: last + 1]
                 break
         else:
-            line = line[:200]
+            line = line[:140]
 
     # 4. Too short = probably garbage
     if len(line) < 5:

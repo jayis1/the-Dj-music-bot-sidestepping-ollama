@@ -293,9 +293,9 @@ def dashboard():
                     if music
                     else False,
                     "dj_voice": music.dj_voice.get(guild_id, "")
-                    or getattr(config, "DJ_VOICE", "af_heart")
+                    or getattr(config, "DJ_VOICE", "en_warm_female")
                     if music
-                    else getattr(config, "DJ_VOICE", "af_heart"),
+                    else getattr(config, "DJ_VOICE", "en_warm_female"),
                     "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
                     if music
                     else 100,
@@ -311,9 +311,9 @@ def dashboard():
                     if music
                     else False,
                     "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
-                    or getattr(config, "OLLAMA_DJ_VOICE", "am_adam")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
                     if music
-                    else getattr(config, "OLLAMA_DJ_VOICE", "am_adam"),
+                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
                     "recently_played": music.recently_played.get(guild_id, [])[:15]
                     if music
                     else [],
@@ -398,9 +398,9 @@ def radio():
                     if music
                     else False,
                     "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
-                    or getattr(config, "OLLAMA_DJ_VOICE", "am_adam")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
                     if music
-                    else getattr(config, "OLLAMA_DJ_VOICE", "am_adam"),
+                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
                     "recently_played": music.recently_played.get(guild_id, [])[:30]
                     if music
                     else [],
@@ -480,9 +480,9 @@ def queue_manager():
                     if music
                     else False,
                     "dj_voice": music.dj_voice.get(guild_id, "")
-                    or getattr(config, "DJ_VOICE", "af_heart")
+                    or getattr(config, "DJ_VOICE", "en_warm_female")
                     if music
-                    else getattr(config, "DJ_VOICE", "af_heart"),
+                    else getattr(config, "DJ_VOICE", "en_warm_female"),
                     "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
                     if music
                     else 100,
@@ -498,9 +498,9 @@ def queue_manager():
                     if music
                     else False,
                     "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
-                    or getattr(config, "OLLAMA_DJ_VOICE", "am_adam")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
                     if music
-                    else getattr(config, "OLLAMA_DJ_VOICE", "am_adam"),
+                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
                 }
             )
 

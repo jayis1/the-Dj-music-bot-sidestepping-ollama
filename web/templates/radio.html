@@ -66,7 +66,7 @@
             <span style="font-size: 11px; color: var(--text-muted);">Enable DJ mode from the dashboard</span>
             {% endif %}
         </div>
-        <div id="dj-voice-status-{{ g.id }}" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;"></div>
+        <div id="dj-voice-status-{{ g.id }}" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Default: <strong>{{ config.DJ_VOICE }}</strong> (from .env)</div>
     </div>
 
     <!-- ── AI Side Host Voice ──────────────────────────────────── -->
@@ -80,7 +80,7 @@
             <button class="btn btn-primary" onclick="saveAsDefaultVoice('{{ g.id }}', 'ai')" style="font-size: 11px; padding: 4px 10px; white-space: nowrap;" title="Save this voice as the AI side host default (updates .env and persists across restarts)">💾 Save as Default</button>
             <span class="badge badge-ai-dj" style="font-size: 11px; background: rgba(168,85,247,0.15); color: var(--purple);">🃏 AI Active</span>
         </div>
-        <div id="ai-voice-status-{{ g.id }}" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;"></div>
+        <div id="ai-voice-status-{{ g.id }}" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Default: <strong>{{ config.OLLAMA_DJ_VOICE }}</strong> (from .env)</div>
     </div>
     {% endif %}
 

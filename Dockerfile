@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopus-dev \
     libffi-dev \
     libsodium-dev \
+    build-essential \
+    python3-dev \
     git \
     curl \
     && rm -rf /var/lib/apt/lists/*

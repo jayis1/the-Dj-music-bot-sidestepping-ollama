@@ -71,6 +71,29 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # 6.5 Extract Docker metadata for MOSS-TTS-Nano
+      - name: Docker metadata MOSS
+        id: meta-moss
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      # 6.6 Build and push MOSS-TTS-Nano image
+      - name: Build & push MOSS image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./moss-tts-server
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-moss.outputs.tags }}
+          labels: ${{ steps.meta-moss.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       # 7. Create GitHub Release with docker-compose.yml + .env.example as assets
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

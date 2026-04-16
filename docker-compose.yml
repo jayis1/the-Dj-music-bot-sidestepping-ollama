@@ -13,9 +13,11 @@ services:
 
   # ── MOSS-TTS-Nano server ──────────────────────────────────────────────
   moss-tts:
-    build:
-      context: ./moss-tts-server
-      dockerfile: Dockerfile
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
+    # Uncomment to build locally instead:
+    # build:
+    #   context: ./moss-tts-server
+    #   dockerfile: Dockerfile
     container_name: moss-tts
     restart: unless-stopped
     ports:

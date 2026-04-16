@@ -2,7 +2,7 @@
   <img src="assets/logo.png" alt="The Radio DJ Music Bot" width="420"/>
 </p>
 
-# 🎵 The Radio DJ Music Bot — v6.6.0
+# 🎵 The Radio DJ Music Bot — v6.6.6
 > *🎙️ "LADIES AND GENTLEMEN, boys and girls, Discord users of ALL ages — put your hands together, because tonight — TONIGHT — we have something truly, genuinely, historically SPECIAL for you.*
 >
 > *You've had music bots before. We all have. Those sad little bots that stutter, skip, and quietly give up on life halfway through a playlist. Bots that just... play audio. No soul. No personality. No FIRE.*

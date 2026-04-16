@@ -1452,7 +1452,9 @@ async def _generate_tts_moss(
 
     url = f"{MOSS_TTS_URL}/api/generate"
 
-    # Build multipart form data
+    # Build multipart form data — the MOSS API requires either demo_id or
+    # prompt_audio (file upload). If we have a prompt audio file, upload it.
+    # Otherwise, fall back to the first built-in demo voice (demo-1).
     data = aiohttp.FormData()
     data.add_field("text", text.strip())
     data.add_field("max_new_frames", "375")
@@ -1467,6 +1469,7 @@ async def _generate_tts_moss(
     data.add_field("seed", "0")
 
     # Attach the prompt audio file for voice cloning (if available)
+    uploaded_prompt = False
     if prompt_audio_path and os.path.isfile(prompt_audio_path):
         try:
             data.add_field(
@@ -1475,17 +1478,27 @@ async def _generate_tts_moss(
                 filename=os.path.basename(prompt_audio_path),
                 content_type="audio/wav",
             )
+            uploaded_prompt = True
         except Exception as e:
             logging.warning(
                 f"{source}: Failed to attach MOSS prompt audio '{prompt_audio_path}': {e}. "
-                "Server will use built-in demo voice."
+                "Will use demo voice instead."
             )
     else:
         if prompt_audio_path:
             logging.warning(
                 f"{source}: MOSS prompt audio not found at '{prompt_audio_path}'. "
-                "Server will use built-in demo voice."
+                "Will use demo voice instead."
             )
+
+    # The MOSS API requires either demo_id or prompt_audio.
+    # If we didn't upload a prompt audio file, send demo_id as a fallback.
+    if not uploaded_prompt:
+        data.add_field("demo_id", "demo-1")
+        logging.info(
+            f"{source}: No prompt audio uploaded for MOSS voice '{voice}', "
+            "using demo-1 built-in voice as fallback"
+        )
 
     # Aggressive timeout — we don't want the DJ sitting in silence.
     # MOSS-TTS-Nano on CPU takes ~2-8 seconds for short DJ clips.

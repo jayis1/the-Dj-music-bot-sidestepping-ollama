@@ -755,7 +755,55 @@ def api_dj_voice(guild_id):
     if not voice:
         return jsonify({"error": "Voice required"}), 400
     music.dj_voice[guild_id] = voice
+    music._save_voice_settings()
     return jsonify({"ok": True, "voice": voice})
+
+
+@app.route("/api/<int:guild_id>/save_default_voice", methods=["POST"])
+def api_save_default_voice(guild_id):
+    """Save a voice as the default in .env, persisting it across restarts.
+
+    Expects JSON: {"type": "dj"|"ai", "voice": "voice_name"}
+    type="dj" saves to DJ_VOICE, type="ai" saves to OLLAMA_DJ_VOICE.
+    """
+    data = request.json or {}
+    voice_type = data.get("type", "dj")  # "dj" or "ai"
+    voice = data.get("voice", "")
+    if not voice:
+        return jsonify({"error": "Voice required"}), 400
+    if voice_type not in ("dj", "ai"):
+        return jsonify({"error": "Type must be 'dj' or 'ai'"}), 400
+
+    env_key = "DJ_VOICE" if voice_type == "dj" else "OLLAMA_DJ_VOICE"
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.isfile(env_file):
+        return jsonify({"error": ".env file not found"}), 500
+
+    # Read existing .env, update the line, write back
+    lines = []
+    found = False
+    with open(env_file, "r") as f:
+        for line in f:
+            if line.strip().startswith(env_key + "=") and not line.strip().startswith(
+                "#"
+            ):
+                lines.append(f"{env_key}={voice}\n")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"\n{env_key}={voice}\n")
+
+    with open(env_file, "w") as f:
+        f.writelines(lines)
+
+    # Also update the in-memory config
+    if voice_type == "dj":
+        config.DJ_VOICE = voice
+    else:
+        config.OLLAMA_DJ_VOICE = voice
+
+    return jsonify({"ok": True, "key": env_key, "voice": voice})
 
 
 @app.route("/api/<int:guild_id>/voices")

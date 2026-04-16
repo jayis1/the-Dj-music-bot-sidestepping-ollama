@@ -39,11 +39,11 @@
     {% if g.in_voice %}
 
     <!-- ── DJ Voice ──────────────────────────────────────────── -->
-    {% if tts_mode == 'kokoro' %}
+    {% if tts_mode == 'moss' %}
     <div style="margin-bottom: 20px;">
-        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">Kokoro TTS</span></h4>
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">MOSS-TTS-Nano</span></h4>
         <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
-            Using Kokoro-FastAPI at <code>{{ config.KOKORO_TTS_URL }}</code>
+            Voice cloning via MOSS <code>{{ config.MOSS_TTS_URL }}</code>
         </div>
     {% elif tts_mode == 'vibevoice' %}
     <div style="margin-bottom: 20px;">
@@ -53,18 +53,20 @@
         </div>
     {% else %}
     <div style="margin-bottom: 20px;">
-        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice</h4>
+        <h4 style="font-size: 14px; color: var(--text-secondary); margin-bottom: 10px;">🗣️ DJ Voice <span style="font-size: 11px; color: var(--purple);">Edge TTS</span></h4>
     {% endif %}
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
             <select id="voice-{{ g.id }}" class="voice-select" onchange="setDjVoice('{{ g.id }}', this.value)" data-current="{{ g.dj_voice }}">
                 <option value="">Loading voices...</option>
             </select>
+            <button class="btn btn-primary" onclick="saveAsDefaultVoice('{{ g.id }}', 'dj')" style="font-size: 11px; padding: 4px 10px; white-space: nowrap;" title="Save this voice as the bot default (updates .env and persists across restarts)">💾 Save as Default</button>
             {% if g.dj_enabled %}
             <span class="badge badge-dj" style="font-size: 11px;">DJ Active</span>
             {% else %}
             <span style="font-size: 11px; color: var(--text-muted);">Enable DJ mode from the dashboard</span>
             {% endif %}
         </div>
+        <div id="dj-voice-status-{{ g.id }}" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;"></div>
     </div>
 
     <!-- ── AI Side Host Voice ──────────────────────────────────── -->
@@ -75,8 +77,10 @@
             <select id="ai-voice-{{ g.id }}" class="voice-select" onchange="setAiDjVoice('{{ g.id }}', this.value)" data-current="{{ g.ai_dj_voice }}">
                 <option value="">Loading voices...</option>
             </select>
+            <button class="btn btn-primary" onclick="saveAsDefaultVoice('{{ g.id }}', 'ai')" style="font-size: 11px; padding: 4px 10px; white-space: nowrap;" title="Save this voice as the AI side host default (updates .env and persists across restarts)">💾 Save as Default</button>
             <span class="badge badge-ai-dj" style="font-size: 11px; background: rgba(168,85,247,0.15); color: var(--purple);">🃏 AI Active</span>
         </div>
+        <div id="ai-voice-status-{{ g.id }}" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;"></div>
     </div>
     {% endif %}
 
@@ -311,13 +315,20 @@ function showToast(msg, type) {
 // ── DJ Voice ──────────────────────────────────────────────
 async function setDjVoice(guildId, voice) {
     try {
-        await fetch('/api/' + guildId + '/dj_voice', {
+        const res = await fetch('/api/' + guildId + '/dj_voice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ voice: voice })
         });
-        showToast('Voice: ' + voice.split('-').pop(), 'success');
-    } catch (e) { showToast('Voice change failed', 'error'); }
+        const data = await res.json();
+        if (data.ok) {
+            showToast('✅ DJ voice changed to: ' + voice, 'success');
+            const statusEl = document.getElementById('dj-voice-status-' + guildId);
+            if (statusEl) statusEl.textContent = 'Active: ' + voice + ' (session — click 💾 to save as default)';
+        } else {
+            showToast('❌ Voice change failed: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (e) { showToast('❌ Voice change failed', 'error'); }
 }
 
 async function loadVoices(guildId, currentVoice) {
@@ -331,7 +342,7 @@ async function loadVoices(guildId, currentVoice) {
         const ttsMode = data.tts_mode || 'edge-tts';
         select.innerHTML = '';
         if (data.voices && data.voices.length > 0) {
-            // In local TTS modes (kokoro/vibevoice), the default voice is marked
+            // In local TTS modes (moss/vibevoice), the default voice is marked
             // with a "default" field. Place it first in the list.
             const sorted = [...data.voices].sort((a, b) => {
                 if (a.default) return -1;
@@ -364,11 +375,13 @@ async function loadVoices(guildId, currentVoice) {
                 select.insertBefore(customOpt, select.firstChild);
             }
         } else if (data.error) {
-            const prefix = ttsMode === 'local' ? 'Local TTS error: ' : '';
+            const prefix = ttsMode === 'moss' ? 'MOSS error: ' : ttsMode === 'vibevoice' ? 'VibeVoice error: ' : '';
             select.innerHTML = '<option value="">' + prefix + data.error + '</option>';
         } else {
-            const msg = ttsMode === 'local'
-                ? 'No local TTS voices. Is VibeVoice-Realtime running?'
+            const msg = ttsMode === 'moss'
+                ? 'No MOSS voices found. Is the MOSS-TTS-Nano server running?'
+                : ttsMode === 'vibevoice'
+                ? 'No VibeVoice voices. Is VibeVoice-Realtime running?'
                 : 'No voices available — is edge-tts installed?';
             select.innerHTML = '<option value="">' + msg + '</option>';
         }
@@ -381,13 +394,54 @@ async function loadVoices(guildId, currentVoice) {
 // ── AI Side Host Voice ────────────────────────────────────
 async function setAiDjVoice(guildId, voice) {
     try {
-        await fetch('/api/' + guildId + '/ai_dj_voice', {
+        const res = await fetch('/api/' + guildId + '/ai_dj_voice', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ voice: voice })
         });
-        showToast('🃏 AI voice: ' + voice.split('-').pop(), 'success');
-    } catch (e) { showToast('AI voice change failed', 'error'); }
+        const data = await res.json();
+        if (data.ok) {
+            showToast('✅ AI voice changed to: ' + voice, 'success');
+            const statusEl = document.getElementById('ai-voice-status-' + guildId);
+            if (statusEl) statusEl.textContent = 'Active: ' + voice + ' (session — click 💾 to save as default)';
+        } else {
+             showToast('❌ AI voice change failed: ' + (data.error || 'Unknown error'), 'error');
+         }
+     } catch (e) { showToast('❌ AI voice change failed', 'error'); }
+ }
+
+// ── Save as Default Voice ────────────────────────────────────
+async function saveAsDefaultVoice(guildId, type) {
+    // type is 'dj' or 'ai'
+    const selectId = type === 'ai' ? 'ai-voice-' + guildId : 'voice-' + guildId;
+    const select = document.getElementById(selectId);
+    if (!select || !select.value) {
+        showToast('❌ No voice selected', 'error');
+        return;
+    }
+    const voice = select.value;
+    const statusId = type === 'ai' ? 'ai-voice-status-' + guildId : 'dj-voice-status-' + guildId;
+    const statusEl = document.getElementById(statusId);
+    const typeName = type === 'ai' ? 'AI side host' : 'DJ';
+
+    try {
+        const res = await fetch('/api/' + guildId + '/save_default_voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ type: type, voice: voice })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('💾 ' + typeName + ' default voice saved: ' + voice, 'success');
+            if (statusEl) statusEl.textContent = '✅ Default: ' + voice + ' (saved to .env, persists across restarts)';
+        } else {
+            showToast('❌ Failed to save default: ' + (data.error || 'Unknown error'), 'error');
+            if (statusEl) statusEl.textContent = '❌ Save failed: ' + (data.error || 'Unknown error');
+        }
+    } catch (e) {
+        showToast('❌ Failed to save default voice', 'error');
+        if (statusEl) statusEl.textContent = '❌ Save failed (network error)';
+    }
 }
 
 async function loadAiVoices(guildId, currentVoice) {
@@ -431,11 +485,13 @@ async function loadAiVoices(guildId, currentVoice) {
                 select.insertBefore(customOpt, select.firstChild);
             }
         } else if (data.error) {
-            const prefix = ttsMode === 'local' ? 'Local TTS error: ' : '';
+            const prefix = ttsMode === 'moss' ? 'MOSS error: ' : ttsMode === 'vibevoice' ? 'VibeVoice error: ' : '';
             select.innerHTML = '<option value="">' + prefix + data.error + '</option>';
         } else {
-            const msg = ttsMode === 'local'
-                ? 'No local TTS voices. Is VibeVoice-Realtime running?'
+            const msg = ttsMode === 'moss'
+                ? 'No MOSS voices found. Is the MOSS-TTS-Nano server running?'
+                : ttsMode === 'vibevoice'
+                ? 'No VibeVoice voices. Is VibeVoice-Realtime running?'
                 : 'No voices available — is edge-tts installed?';
             select.innerHTML = '<option value="">' + msg + '</option>';
         }

@@ -15,27 +15,65 @@ The bot now supports **three TTS engines** with MOSS-TTS-Nano as the new default
 **Engine priority:** `moss` (default) → `vibevoice` → `edge-tts` (cloud fallback)
 
 **How it works:**
-- The bot sends `POST /api/generate` to the MOSS-TTS-Nano server with multipart form data (text + prompt_audio file upload) and receives JSON with `audio_base64` (base64-encoded WAV).
-- A built-in health check (`GET /api/warmup-status`) caches server reachability — checks `state == "ready"` to confirm the server has warmed up. If the server is down, the bot falls back to edge-tts. Health check results are cached (30s for healthy, 10s for down).
-- Voice names correspond to `.wav` prompt audio files in `assets/moss_voices/`. Built-in voices: `en_warm_female` (default DJ voice), `en_news_male` (good for AI side host). Add your own `.wav` files to create custom voices.
+- The bot sends `POST /api/generate` to the MOSS-TTS-Nano server with **multipart form data**. The server requires either a `prompt_audio` file upload (for voice cloning) **or** a `demo_id` parameter (for built-in demo voices). If the bot finds a `.wav` prompt file in `assets/moss_voices/` matching the voice name, it uploads it. Otherwise, it sends `demo_id=demo-1` to use the server's built-in English demo voice as a fallback.
+- The server returns JSON with `audio_base64` (base64-encoded WAV), `sample_rate` (48000), and `run_status`.
+- A built-in health check (`GET /api/warmup-status`) caches server reachability — checks `state == "ready"` to confirm the server has finished loading the model and running its warmup synthesis (~30s on CPU). If the server is down or still warming up, the bot falls back to edge-tts. Health check results are cached (30s healthy / 10s down).
+- Voice names correspond to `.wav` prompt audio files in `assets/moss_voices/`. Built-in catalog: `en_warm_female` (default DJ voice), `en_news_male` (good for AI side host). Add your own `.wav` files to create custom voices. If no prompt files exist, the bot falls back to `demo-1` (the MOSS server's first built-in demo voice).
 - The legacy `TTS_MODE=local` alias is still supported and maps to `vibevoice` with a deprecation warning.
 - **Backward compatibility:** If someone has `TTS_MODE=kokoro`, it auto-redirects to `moss` with a warning in the logs.
 
+**MOSS-TTS-Nano API reference (`POST /api/generate`):**
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `text` | Form (required) | — | The text to synthesize |
+| `demo_id` | Form | `""` | Built-in demo voice ID (e.g. `demo-1`, `demo-2`). Required if no `prompt_audio` is uploaded. |
+| `prompt_audio` | File upload | `None` | `.wav` prompt audio file for voice cloning. Required if no `demo_id` is provided. |
+| `max_new_frames` | Form | `375` | Max generation frames (375 ≈ ~15s audio) |
+| `voice_clone_max_text_tokens` | Form | `75` | Max text tokens from prompt for voice cloning |
+| `enable_text_normalization` | Form | `"1"` | Enable WeTextProcessing normalization |
+| `enable_normalize_tts_text` | Form | `"1"` | Enable TTS-specific text normalization |
+| `do_sample` | Form | `"1"` | Enable sampling (1=yes, 0=no) |
+| `cpu_threads` | Form | `4` | Number of CPU threads for torch |
+| `attn_implementation` | Form | `"model_default"` | Attention backend: `model_default`, `sdpa`, or `eager` |
+| `seed` | Form | `"0"` | Random seed (0 = non-deterministic) |
+
+**Response (200 OK):**
+```json
+{
+  "audio_base64": "<base64-encoded WAV audio>",
+  "sample_rate": 48000,
+  "run_status": "Done | mode=voice_clone | prompt=zh_1 | attn=eager | exec=cpu | audio=2.56s | elapsed=5.20s",
+  "prompt_audio_path": "Uploaded: en_warm_female.wav",
+  "warmup_status_text": "Warmup complete. device=cpu elapsed=23.29s | WeTextProcessing ready.",
+  "text_normalization_status_text": "..."
+}
+```
+
+**Response (400 Bad Request):**
+```json
+{"error": "demo_id is required unless prompt speech is uploaded."}
+```
+This happens when neither `demo_id` nor `prompt_audio` is provided. The bot handles this automatically by sending `demo_id=demo-1` when no custom prompt audio is available.
+
 **Setup:**
 ```bash
+# Install and start the MOSS-TTS-Nano server on port 18083
 pip install moss-tts-nano
-moss-tts-nano serve --port 18083
+moss-tts-nano serve --host 0.0.0.0 --port 18083 --device auto
 ```
 Or use docker-compose (which includes a `moss-tts` service built from `./moss-tts-server/Dockerfile`).
+
+> **Note:** On CPU-only systems, `--device auto` is ignored and forced to `cpu`. The first startup takes ~30-60 seconds for model download + warmup synthesis. The bot's health check will return `False` until the server reports `state: "ready"`, and it'll fall back to edge-tts during that time.
 
 Then set in `.env`:
 ```ini
 TTS_MODE=moss
-MOSS_TTS_URL=http://localhost:18083
+MOSS_TTS_URL=http://localhost:18083    # or http://172.16.1.125:18083 for a remote server
 DJ_VOICE=en_warm_female
 ```
 
-Add prompt audio files to `assets/moss_voices/` for custom voices.
+Add prompt audio files (5-30s clean speech recordings) to `assets/moss_voices/` for custom voices. If no prompt files are present, the bot uses the MOSS server's built-in demo voices (`demo-1`).
 
 ### 🗣️ Three-Engine TTS Architecture
 
@@ -51,11 +89,16 @@ The TTS system has been refactored from a 2-engine system (`edge-tts` / `local`)
 
 **How fallback works:**
 ```
-TTS_MODE=moss → health check → server up? → generate WAV → ✅ success
-                                     ↓ server down (cached 30s/10s)
-                                     → log warning with setup instructions
-                                     → resolve voice name for edge-tts
-                                     → edge-tts generates MP3 → ✅ success
+TTS_MODE=moss → health check → server up & ready? → generate WAV → ✅ success
+                                      ↓ server down or warming up (cached 30s/10s)
+                                      → log warning with setup instructions
+                                      → resolve voice name for edge-tts
+                                      → edge-tts generates MP3 → ✅ success
+
+MOSS voice resolution:
+  voice name → .wav file exists in assets/moss_voices/?
+    → YES: upload prompt_audio for voice cloning → custom voice
+    → NO:  send demo_id=demo-1 → server's built-in demo voice
 ```
 
 **Voice name auto-resolution:** The `_resolve_voice()` function detects mismatched voice names (e.g. passing `en-US-AriaNeural` when using MOSS) and swaps them for the target engine's default — so switching `TTS_MODE` doesn't require changing `DJ_VOICE`.
@@ -251,7 +294,7 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 | **DJ Mode** | **MOSS-TTS-Nano (default)** | `TTS_MODE=moss` — CPU-friendly FastAPI server, voice cloning via prompt audio, ~2-8s latency, no GPU needed |
 | **DJ Mode** | VibeVoice-Realtime | `TTS_MODE=vibevoice` — separate WebSocket server, ~300ms latency, `en-Carter_man` etc. |
 | **DJ Mode** | Edge TTS fallback | Automatic fallback to Microsoft cloud TTS when local engines fail |
-| **DJ Mode** | 172 built-in DJ line templates | 74 with sound tags across 10 categories |
+| **DJ Mode** | ~480 built-in DJ line templates | ~150 with sound tags across 10 categories, plus funny/serious/weird variants |
 | **DJ Mode** | Custom DJ lines | Add/remove via web dashboard, persisted in JSON |
 | **AI Side Host** | Ollama-powered studio joker | Second radio personality with own voice, writes original banter, hot takes, and jokes |
 | **AI Side Host** | Separate TTS voice | `OLLAMA_DJ_VOICE` in `.env` — sounds like a different person |
@@ -301,7 +344,7 @@ this2.0/
 │
 ├── utils/                  # Helper modules
 │   ├── __init__.py         # Auto-generated; makes utils a Python package
-│   ├── dj.py               # Radio DJ mode — 3-engine TTS (MOSS/VibeVoice/Edge), 172 templates, health check, sound tag support
+│   ├── dj.py               # Radio DJ mode — 3-engine TTS (MOSS/VibeVoice/Edge), ~480 templates, health check, sound tag support
 │   ├── llm_dj.py           # AI side host — Ollama client, studio joker personality, 8 banter categories
 │   ├── custom_lines.py     # JSON persistence for custom DJ lines (CRUD operations)
 │   ├── soundboard.py       # Sound listing, path resolution, directory traversal prevention
@@ -400,7 +443,7 @@ utils/dj.py
    ├── uses → utils/custom_lines.py (load_custom_lines — merges built-in + custom)
    ├── uses → config.py (STATION_NAME, TTS_MODE, MOSS_TTS_URL, MOSS_VOICE, VIBEVOICE_TTS_URL)
    └── TTS engines → MOSS-TTS-Nano REST (default), VibeVoice-Realtime WebSocket, or edge_tts.Communicate (cloud fallback)
-       ├── _generate_tts_moss() — POST /api/generate → multipart form → base64 WAV
+       ├── _generate_tts_moss() — POST /api/generate → multipart form (text + prompt_audio OR demo_id) → base64 WAV (48 kHz stereo)
        ├── _generate_tts_vibevoice() — WebSocket /stream → PCM16 → WAV
        ├── _generate_tts_edge() — edge_tts.Communicate → MP3
        ├── _check_moss_health() — GET /api/warmup-status (checks state==ready, cached)
@@ -668,25 +711,43 @@ MOSS-TTS-Nano is the default engine — it's CPU-friendly (no GPU needed) and us
 
 2. **Start the MOSS-TTS-Nano server:**
     ```bash
-    moss-tts-nano serve --port 18083
+    # On the same machine:
+    moss-tts-nano serve --host 0.0.0.0 --port 18083 --device auto
+
+    # On a remote machine (e.g. 172.16.1.125):
+    moss-tts-nano serve --host 0.0.0.0 --port 18083 --device auto
     ```
-    The server will warm up on first start (0.1B params, runs on CPU). Health check at `GET /api/warmup-status` — wait until `state == "ready"`.
+    On CPU-only systems, `--device auto` is ignored and forced to `cpu`. The server will warm up on first start (~30 seconds for model download + warmup synthesis). The bot's health check polls `GET /api/warmup-status` and waits until `state == "ready"` before sending TTS requests.
 
 3. **Verify it's running:**
     ```bash
-    curl http://localhost:18083/health
+    curl http://localhost:18083/api/warmup-status
+    # Look for "state": "ready" in the response
     ```
 
-4. **Configure MBot** — in your `.env` file:
+4. **Test TTS generation:**
+    ```bash
+    curl -X POST http://localhost:18083/api/generate \
+      -F "text=Hello world" \
+      -F "demo_id=demo-1" \
+      -F "max_new_frames=200" \
+      -o test_response.json
+    # The response contains "audio_base64" with base64-encoded 48 kHz stereo WAV
+    ```
+
+5. **Configure MBot** — in your `.env` file:
     ```ini
     TTS_MODE=moss
-    MOSS_TTS_URL=http://localhost:18083
+    MOSS_TTS_URL=http://localhost:18083       # same machine
+    # MOSS_TTS_URL=http://172.16.1.125:18083  # remote server
     DJ_VOICE=en_warm_female
     OLLAMA_DJ_VOICE=en_news_male
     ```
 
-5. **Add custom prompt audio files** (optional):
-    Place `.wav` files in `assets/moss_voices/`. The voice name is the filename without the `.wav` extension (e.g. `assets/moss_voices/custom_voice.wav` → voice name `custom_voice`).
+6. **Add custom prompt audio files** (optional but recommended):
+    Place `.wav` files in `assets/moss_voices/`. The voice name is the filename without the `.wav` extension (e.g. `assets/moss_voices/custom_voice.wav` → voice name `custom_voice`). When a prompt file exists, the bot uploads it for voice cloning. When no prompt file exists, the bot sends `demo_id=demo-1` to use the server's built-in demo English voice.
+
+> **Important:** The `POST /api/generate` endpoint **requires** either `prompt_audio` (file upload) or `demo_id` (string). Sending neither returns `400 Bad Request` with `{"error": "demo_id is required unless prompt speech is uploaded."}`. The bot handles this automatically — if no `.wav` prompt file is found for the requested voice, it sends `demo_id=demo-1` as a fallback.
 
 **Built-in MOSS voices:**
 
@@ -695,7 +756,14 @@ MOSS-TTS-Nano is the default engine — it's CPU-friendly (no GPU needed) and us
 | `en_warm_female` | `assets/moss_voices/en_warm_female.wav` | Warm female voice — **default DJ voice** |
 | `en_news_male` | `assets/moss_voices/en_news_male.wav` | News-style male voice — good for AI side host |
 
-> **Custom voices:** To add your own MOSS voice, place a `.wav` file (ideally 5-15 seconds of clean speech) in `assets/moss_voices/`. The voice name becomes available automatically — e.g. `my_voice.wav` → `?djvoice my_voice`.
+**MOSS server demo voices** (available even without prompt audio files):
+
+| Demo ID | Language | Description |
+|---|---|---|
+| `demo-1` | English? | First built-in demo voice — used as fallback when no prompt audio is available |
+| `demo-2`+ | Various | Additional built-in demo voices from the MOSS server's `assets/demo.jsonl` |
+
+> **Custom voices:** To add your own MOSS voice, place a `.wav` file (ideally 5-15 seconds of clean speech, no background music/noise) in `assets/moss_voices/`. The voice name becomes available automatically — e.g. `my_voice.wav` → `?djvoice my_voice`. The DJ will speak in the cloned voice of whoever is in that recording.
 
 ### VibeVoice-Realtime Setup (Alternative Local TTS)
 
@@ -1667,21 +1735,21 @@ Queue empty?
 
 ### Message Templates
 
-The DJ has **172 built-in line templates** across 10 categories. 74 of these include `{sound:name}` tags that trigger sound effects after the DJ speaks.
+The DJ has **~480 built-in line templates** across 10 categories, including funny, serious, and weird variants. ~150 of these include `{sound:name}` tags that trigger sound effects after the DJ speaks.
 
 | Category | Count | With Sound Tags | Example |
 |---|---|---|---|
-| **Session Intros** | 23 | 11 | `"{greeting} We are LIVE! Let's kick it off with {title}. {sound:airhorn}"` |
-| **Song Intros** | 19 | 5 | `"Up next, {title}!", "Incoming! {title}! {sound:airhorn}"` |
-| **Hype Intros (Loud)** | 18 | 9 | `"YES! {title}! Let's go!", "Buckle up! {title}! {sound:air_raid}"` |
-| **Outros** | 13 | 5 | `"That was {title}.", "{title} — done and dusted. {sound:button_press}"` |
-| **Transitions** | 23 | 8 | `"That was {prev_title}. Next up, {next_title}.", "From {prev_title} to {next_title}. In the mix! {sound:in_the_mix}"` |
-| **Hype Transitions** | 12 | 7 | `"That was {prev_title}! And NOW — {next_title}! {sound:airhorn} LET'S GO!"` |
-| **Mellow Transitions** | 9 | 4 | `"Lovely track. Here's {next_title} to keep the vibe going. {sound:dj_scratch}"` |
-| **Final Outros** | 17 | 7 | `"The queue's empty but the radio stays on.", "End of the road. {sound:applause}"` |
-| **Station IDs** | 18 | 8 | `"You're tuned in to MBot Radio.", "MBot Radio — on the air! {sound:air_raid}"` |
-| **Listener Callouts** | 20 | 10 | `"Shoutout to everyone listening right now.", "You guys are the best! {sound:applause}"` |
-| **Queue Banter** | 10+ | — | `"One more left in the queue.", "We are in it for the long haul, 20 more tracks!"` |
+| **Session Intros** | 67 | ~25 | `"{greeting} We are LIVE! Let's kick it off with {title}. {sound:airhorn}"`, `"{greeting} My therapist said I should open up more. So here's {title}."` |
+| **Song Intros** | 65 | ~20 | `"Up next, {title}!"`, `"Incoming! {title}! {sound:airhorn}"`, `"{title} has entered the chat. Everyone act normal."` |
+| **Hype Intros (Loud)** | 41 | ~20 | `"YES! {title}! Let's go!"`, `"Buckle up! {title}! {sound:air_raid}"`, `"REALITY SHIFT DETECTED! {title}!"` |
+| **Outros** | 42 | ~12 | `"That was {title}."`, `"{title} — done and dusted. {sound:button_press}"`, `"That was {title}. The simulation has recorded your reaction."` |
+| **Transitions** | 59 | ~20 | `"That was {prev_title}. Next up, {next_title}."`, `"From {prev_title} to {next_title}. In the mix! {sound:dj_scratch}"`, `"The vibe goblin ate {prev_title}."` |
+| **Hype Transitions** | 17 | ~10 | `"That was {prev_title}! And NOW — {next_title}! {sound:airhorn} LET'S GO!"` |
+| **Mellow Transitions** | 17 | ~6 | `"Lovely track. Here's {next_title} to keep the vibe going. {sound:dj_scratch}"`, `"Let's pretend we're in a coffee shop with {next_title}."` |
+| **Final Outros** | 39 | ~12 | `"The queue's empty but the radio stays on."`, `"End of the road. {sound:applause}"`, `"Queue status: NULL. Reality status: QUESTIONABLE."` |
+| **Station IDs** | 36 | ~12 | `"You're tuned in to MBot Radio."`, `"MBot Radio — on the air! {sound:air_raid}"`, `"Broadcasting from Sector 7G."` |
+| **Listener Callouts** | 43 | ~14 | `"Shoutout to everyone listening right now."`, `"You guys are the best! {sound:applause}"`, `"Someone just sneezed in the chat. Bless you."` |
+| **Queue Banter** | 25 | — | `"One more left in the queue."`, `"That's not a queue. That's a lifestyle."`, `"DJ math: {} tracks remaining divided by vibes equals a good time."` |
 
 ### Sound Tags in DJ Lines (`{sound:name}`)
 
@@ -1777,7 +1845,7 @@ DJ_EMOJI = '🎙️'                # Emoji for DJ command embeds
 
 ## 10. AI Side Host: `utils/llm_dj.py` — The Studio Joker
 
-A second radio personality powered by a local LLM (Ollama). Unlike the main DJ that picks from 172 pre-written templates, the AI side host **writes its own original lines from scratch** — spontaneous banter, hot takes, song roasts, jokes, and commentary that a template system simply cannot produce.
+A second radio personality powered by a local LLM (Ollama). Unlike the main DJ that picks from ~480 pre-written templates, the AI side host **writes its own original lines from scratch** — spontaneous banter, hot takes, song roasts, jokes, and commentary that a template system simply cannot produce.
 
 ### Concept
 
@@ -2783,7 +2851,10 @@ venv/bin/python -m pytest tests/test_suno.py -v
 | **"Ollama returned status 404" with no details** | Model not pulled but error gave no actionable info | Fixed in 6.3.0 — now shows model name, pull command, and available models. |
 | **MOSS TTS not generating audio** | MOSS server not running or hasn't warmed up | Start the server: `moss-tts-nano serve --port 18083`. Check `curl http://localhost:18083/api/warmup-status` — wait until `state == "ready"`. |
 | **MOSS TTS falls back to edge-tts** | MOSS server unreachable or health check cached as down | Check the server URL in `.env` (`MOSS_TTS_URL`). Health check results are cached (30s healthy, 10s down) — if server was recently down, wait for cache to expire. |
-| **MOSS voice not found** | Missing prompt audio `.wav` file in `assets/moss_voices/` | Voice names must match a `.wav` file: e.g. `en_warm_female` → `assets/moss_voices/en_warm_female.wav`. Add your own `.wav` files for custom voices. |
+| **MOSS voice not found** | Missing prompt audio `.wav` file in `assets/moss_voices/` | Voice names must match a `.wav` file: e.g. `en_warm_female` → `assets/moss_voices/en_warm_female.wav`. Add your own `.wav` files for custom voices. If no prompt file exists, the bot uses `demo_id=demo-1` (built-in MOSS demo voice) automatically. |
+| **MOSS TTS returns 400 Bad Request** | Missing `demo_id` or `prompt_audio` in the API request | The MOSS API requires either `demo_id` or `prompt_audio` file upload. This should be handled automatically by the bot — if you see this in logs, check that `assets/moss_voices/` exists and that the bot has the latest `utils/dj.py`. |
+| **MOSS server takes 30+ seconds to become ready** | Model download + warmup synthesis on first start | Normal behavior on CPU. The bot will fall back to edge-tts during warmup. Wait for `/api/warmup-status` to show `state: "ready"`. |
+| **MOSS server on remote machine unreachable** | `MOSS_TTS_URL` points to `localhost` instead of remote IP | Update `.env`: `MOSS_TTS_URL=http://172.16.1.125:18083`. Ensure the server was started with `--host 0.0.0.0` (not just `localhost`). |
 
 ### Known Issues
 

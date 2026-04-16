@@ -11,11 +11,11 @@
 >
 > *This — THIS — is the bot that woke up one day and said 'you know what? I want to be a RADIO STATION.' It has a DJ voice. It has OPINIONS about what time of day it is. It introduces your songs like it's auditioning for a Grammy. It drops airhorns. It plays BED MUSIC under its own voice-overs like a professional. It gives shoutouts to your friends ON THE AIR.*
 >
-> *It has a WEB DASHBOARD. It has a SOUNDBOARD. It has KEYBOARD SHORTCUTS on the soundboard because it respects your time. It tracks your listening history so you can replay bangers from three hours ago. It auto-fills the queue when you run out of songs SO THE PARTY NEVER HAS TO END.*
+> *It has a REACTIVE AI SIDE HOST that listens and banters live on air. It has a WEB DASHBOARD. It has a SOUNDBOARD. It has KEYBOARD SHORTCUTS on the soundboard because it respects your time. It tracks your listening history so you can replay bangers from three hours ago. It auto-fills the queue when you run out of songs SO THE PARTY NEVER HAS TO END.*
 >
 > *Speed control? Live. Volume control? Live. Queue reordering? Drag and drop, baby. Progress bar? Ticking every second, accurate to your playback speed. Crossfade? Gapless. Lyrics panel? Right there. Playlist support? THE WHOLE PLAYLIST — not just 25 tracks — THE WHOLE THING.*
 >
-> *It has 172 unique DJ broadcast lines. Seventy. Two. And 74 of them trigger actual sound effects. From the internet. It picked them itself.*
+> *It has over 924 unique DJ broadcast lines. Nine. Hundred. Twenty. Four. And over 100 of them trigger actual sound effects. From the internet. It picked them itself.*
 >
 > ***You didn't come here for a music bot. You came for a radio station. And a radio station is exactly what you're gonna get.***
 >
@@ -516,140 +516,6 @@ nano .env           # Paste your DISCORD_TOKEN
 
 For full technical details — architecture, cog internals, all API endpoints, module dependency graph, and development guide — see [GUIDE.md](GUIDE.md).
 
----
-
-## 🐛 Bugs Fixed & Features Added in v6.4.0
-
-| | Summary |
-|---|---|
-| ⚙️ **Settings Page Crash** | `NameError: EDGE_TTS_AVAILABLE` on `/settings` — fixed by importing from `utils.dj` |
-| 🎵 **DJ Bed Race Condition** | Fixed "Already playing audio" crash — bed music now starts after TTS finishes, not simultaneously |
-| 🧠 **Ollama Model Creation Bug** | `mbot-sidehost` creation via JSON API failed — fixed by switching `SYSTEM """..."""` to `MESSAGE system` format which survives JSON serialization |
-| 🎛️ **Multi Sound Effects** | AI side host can now use multiple `{sound:name}` tags per line (char limit raised 150→200) — the pipeline already supported it, only the prompt restricted it |
-| 🔀 **Reverse Proxy Support** | Settings panel now has an Nginx/NPM config card — one-click toggle for `ProxyFix` middleware (real IPs, HTTPS awareness, subpath support) |
-| 🔤 **Ollama Model Name Sanitization** | Bot's Discord name (e.g. `Bad Music inc.`) caused `invalid model name` — now auto-sanitized to `bad-music-inc` |
-| 🎤 **Voice Dropdown 4-Bug Fix** | Four interconnected bugs caused DJ/AI voice dropdowns to show wrong voice, silently swap engines, and never update TTS — all fixed |
-| 📋 **Log Panel Layout Fix** | `#log-panel` moved outside `<main>` so `position: fixed` works correctly; `min-height: 0` added to `.log-entries` so `overflow-y: auto` actually scrolls |
-| 👤 **Bot Name as Station Name** | AI side host now uses the bot's actual Discord display name (e.g. `musicBOT2`) instead of the generic `STATION_NAME` config value |
-| 🧠 **Custom Ollama Model** | Bot auto-creates `mbot-sidehost` (Modelfile with personality baked in) at startup — no more 2KB system prompt on every call |
-| 🍡 **MOSS-TTS-Nano Engine** | New primary TTS engine — `TTS_MODE=moss`, highly CPU-friendly, voice cloning via prompt audio |
-| 🔄 **Dashboard 30s Soft Refresh** | Dashboard now refreshes guild state every 30s without touching the progress bar — smooth, jitter-free |
-| 📋 **Activity Log Panel** | Live slide-out log panel in Mission Control — real-time SSE streaming, severity filters |
-| 🎙️ **Voice Dropdown Fixes** | DJ & AI voice dropdowns now load instantly (30-min server-side cache, DOMContentLoaded fix) |
-| 🃏 **AI Reactive Banter** | AI side host now *reacts* to what the main DJ just said — 4 new reactive banter categories |
-| 🔧 **Ollama Error Handling** | 404 errors now show the pull command + available models instead of just "status 404" |
-| 🔄 **Default Model Update** | Default Ollama model changed from `llama3.2` → `gemma4:latest` across all configs |
-
-### 🎵 DJ Bed Race Condition Fix — Technical Detail
-
-**Cause:** After TTS started playing, `play_next()` immediately called `_start_bed_music()`. Discord's voice client can only play one audio source at a time → "Already playing audio" every time.
-
-**Three-part fix in `cogs/music.py`:**
-1. Removed `_start_bed_music()` call from `play_next()` after TTS starts
-2. Moved it to `_on_tts_done()` — fires after TTS finishes, only when `{sound:name}` tags are present
-3. Added `is_playing()` guard in `_start_bed_music()` — silently skips instead of crashing
-
-### 🧠 Ollama Custom Model Creation Fix — Technical Detail
-
-**Cause:** `/api/create` mangles Modelfiles with `SYSTEM """..."""` blocks (braces, quotes, multi-line) during JSON serialization → Ollama parser fails with `"neither 'from' or 'files' was specified"`.
-
-**Three-method fallback in `utils/llm_dj.py`:**
-
-| Priority | Method | When it works |
-|---|---|---|
-| 1st | **CLI** — write to `/tmp`, run `ollama create mbot-sidehost -f <path>` | Local Ollama on same machine |
-| 2nd | **JSON API** — `POST /api/create {"modelfile": "..."}` | Remote Ollama, simple models |
-| 3rd | **Multipart upload** — `POST /api/create` with FormData file | Remote Ollama, complex Modelfiles ✅ |
-
-> Default setup (Ollama on `172.16.1.26:11434`, bot on separate machine): CLI fails → falls to multipart, which works reliably.
-
-### ⚙️ Settings Page Crash Fix
-
-**Cause:** `settings_page()` in `web/app.py` used `EDGE_TTS_AVAILABLE` as a template variable but never imported it → `NameError` on every `/settings` visit.
-
-**Fix:** Added `from utils.dj import EDGE_TTS_AVAILABLE` inside `settings_page()`, matching the pattern used by `api_voices` and `api_ollama_check`.
-
-### 🔤 Ollama Model Name Sanitization
-
-**Cause:** The bot's Discord name (`Bad Music inc.`) was used verbatim as the Ollama model name. Ollama requires lowercase alphanumeric + dashes only.
-
-**Fix:** Auto-sanitization in `utils/llm_dj.py` using regex:
-```python
-CUSTOM_MODEL_NAME = re.sub(r"[^a-z0-9\-]", "-", raw_name.lower())
-CUSTOM_MODEL_NAME = re.sub(r"-+", "-", CUSTOM_MODEL_NAME).strip("-")
-```
-
-| Input | Sanitized |
-|---|---|
-| `Bad Music Bot` | `bad-music-bot` |
-| `Bad Music inc.` | `bad-music-inc` |
-| `  spaces  everywhere  ` | `spaces-everywhere` |
-| `mbot-sidehost` | `mbot-sidehost` *(unchanged)* |
-
-### 📋 Activity Log Panel Layout Fix
-
-**Two CSS/HTML bugs:**
-
-1. **Wrong DOM position** — `#log-panel` was inside `<main class="main">`. `position: fixed` elements inside a container can behave inconsistently across browsers. Fixed by moving `#log-panel` and its backdrop outside `<main>` as direct siblings of `<nav>` and `<main>` under `.layout`.
-
-2. **Missing `min-height: 0`** — Without this on `.log-entries` (a flex child), the container grows infinitely instead of scrolling. This is a critical CSS flexbox rule: flex children can't shrink below their content size unless `min-height: 0` is set, which is what allows `overflow-y: auto` to actually create a scrollbar.
-```css
-/* Before: entries just grew taller, no scroll */
-.log-entries { flex: 1; overflow-y: auto; }
-
-/* After: entries scroll correctly */
-.log-entries { flex: 1; overflow-y: auto; min-height: 0; }
-```
-
-### 🎤 Voice Dropdown — 4-Bug Root Cause Analysis
-
-Four interconnected bugs caused the DJ and AI side host voice dropdowns to malfunction:
-
-| # | Bug | Fix |
-|---|---|---|
-| 1 | `data-current` was `""` when no guild-specific voice set — dropdown showed wrong voice | Template variables now fall back to `config.DJ_VOICE` / `config.OLLAMA_DJ_VOICE` so dropdown always reflects the active voice |
-| 2 | `OLLAMA_DJ_VOICE` hardcoded to `en-US-GuyNeural` (edge-tts) regardless of active engine — silently swapped to `en_warm_female` by `_resolve_voice()` | `config.py` now picks default by `TTS_MODE`: `moss→en_news_male`, `vibevoice→en-Carter_man`, `edge-tts→en-US-GuyNeural` |
-| 3 | `_resolve_voice()` silently swapped cross-engine voices with no logging | New helpers `_is_edge_voice()`, `_is_moss_voice()`, `_is_vibevoice_voice()`, `_engine_for_voice()` + logging on every swap |
-| 4 | When saved voice was from wrong engine, dropdown showed nothing selected | `loadVoices()` / `loadAiVoices()` now add a `"voice_name (current — not available in moss)"` option so user knows to repick |
-
-### 🧠 Ollama Modelfile JSON Serialization Fix
-
-**Cause:** `SYSTEM """..."""` in the Modelfile uses triple-quoted blocks. `json.dumps()` escapes `"""` → `\"\"\"` which Ollama's parser can't read, failing with `"neither 'from' or 'files' was specified"`.
-
-**Fix:** Switched to `MESSAGE system <line>` format — no triple quotes, survives JSON perfectly, supports all special characters (`{sound:airhorn}`, apostrophes, etc.). Ollama concatenates multiple `MESSAGE system` lines into the same system prompt.
-
-```
-# Before (broken via JSON):
-FROM phi3:latest
-SYSTEM """
-You are the AI side host...
-"""
-
-# After (works via JSON):
-FROM phi3:latest
-MESSAGE system You are the AI side host...
-MESSAGE system You're funny and chaotic...
-```
-
-### 🎛️ AI Side Host — Multiple Sound Effects Per Line
-
-The AI can now use multiple `{sound:name}` tags per line — the pipeline already handled them; only the system prompt restricted it to one.
-
-| Layer | Before | After | Code change? |
-|---|---|---|---|
-| System prompt | "ONE sound effect tag at the very end" | "tags anywhere, use as many as fit" | ✅ |
-| `extract_sound_tags()` | Already returns all tags | No change | ❌ |
-| `_play_dj_sounds_then_song()` | Already loops all sounds sequentially | No change | ❌ |
-| Character limit | 150 chars | 200 chars | ✅ |
-
-**Example output:**
-```
-Before: Coming up next, brace yourselves! {sound:airhorn}
-After:  {sound:dj_scratch} Wait for it... {sound:airhorn} THIS one goes HARD! {sound:rave_cheer}
-```
-Each sound plays sequentially after TTS finishes, then the song starts.
-
----
 
 ## 📄 License
 

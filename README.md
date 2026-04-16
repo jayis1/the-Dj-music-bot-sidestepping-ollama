@@ -11,11 +11,13 @@
 >
 > *This — THIS — is the bot that woke up one day and said 'you know what? I want to be a RADIO STATION.' It has a DJ voice. It has OPINIONS about what time of day it is. It introduces your songs like it's auditioning for a Grammy. It drops airhorns. It plays BED MUSIC under its own voice-overs like a professional. It gives shoutouts to your friends ON THE AIR.*
 >
-> *It has a REACTIVE AI SIDE HOST that listens and banters live on air. It has a WEB DASHBOARD. It has a SOUNDBOARD. It has KEYBOARD SHORTCUTS on the soundboard because it respects your time. It tracks your listening history so you can replay bangers from three hours ago. It auto-fills the queue when you run out of songs SO THE PARTY NEVER HAS TO END.*
+> *It has a **REACTIVE AI SIDE HOST** powered by a local LLM that sits in the studio, listens to the main DJ, and banters back in real-time. It agrees, it argues, it throws hot takes, and it roasts the songs you queue.*
+>
+> *It has a **WEB DASHBOARD**. It has a **SOUNDBOARD**. It has KEYBOARD SHORTCUTS on the soundboard because it respects your time. It tracks your listening history so you can replay bangers from three hours ago. It auto-fills the queue when you run out of songs SO THE PARTY NEVER HAS TO END.*
 >
 > *Speed control? Live. Volume control? Live. Queue reordering? Drag and drop, baby. Progress bar? Ticking every second, accurate to your playback speed. Crossfade? Gapless. Lyrics panel? Right there. Playlist support? THE WHOLE PLAYLIST — not just 25 tracks — THE WHOLE THING.*
 >
-> *It has over 924 unique DJ broadcast lines. Nine. Hundred. Twenty. Four. And over 100 of them trigger actual sound effects. From the internet. It picked them itself.*
+> *It has **924 unique DJ broadcast lines**. Nine. Hundred. Twenty. Four. And **100 of them** reliably trigger actual studio-quality sound effects. Everything from smooth turntable scratches to absolutely devastating airhorns, dropped live on air with sub-second accuracy.*
 >
 > ***You didn't come here for a music bot. You came for a radio station. And a radio station is exactly what you're gonna get.***
 >

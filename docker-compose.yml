@@ -54,7 +54,6 @@ services:
       - ./presets:/app/presets         # Auto-DJ presets (persisted)
       - ./assets/moss_voices:/app/assets/moss_voices  # MOSS voice prompt files
       - ./yt_dlp_cache:/app/yt_dlp_cache
-      - ./bot_activity.log:/app/bot_activity.log
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s

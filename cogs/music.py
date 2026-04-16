@@ -2115,11 +2115,12 @@ class Music(commands.Cog):
         del self._dj_pending[guild_id]
 
         # ── AI Side Host: chime in after the main DJ, before the song ──
-        if (
-            self.ai_dj_enabled.get(guild_id, False)
-            and OLLAMA_DJ_AVAILABLE
-            and TTS_AVAILABLE
-        ):
+        ai_enabled = self.ai_dj_enabled.get(guild_id, False)
+        logging.info(
+            f"AI Side Host check: enabled={ai_enabled}, ollama_available={OLLAMA_DJ_AVAILABLE}, "
+            f"tts_available={TTS_AVAILABLE}"
+        )
+        if ai_enabled and OLLAMA_DJ_AVAILABLE and TTS_AVAILABLE:
             # Pass what the main DJ just said so the AI can react to it
             dj_line = self._last_dj_line.get(guild_id, "")
             ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
@@ -2160,7 +2161,12 @@ class Music(commands.Cog):
             dj_line: What the main DJ just said (for reactive context)
         """
         if not should_side_host_speak():
+            logging.info(f"AI Side Host: skipped (random chance or disabled)")
             return None
+
+        logging.info(
+            f"AI Side Host: generating line for guild {guild_id} (dj_line: {dj_line[:80]}...)"
+        )
 
         # Gather context
         current = self.current_song.get(guild_id)

@@ -53,7 +53,7 @@ class Music(commands.Cog):
 
         # DJ Mode state (per-guild)
         self.dj_enabled = {}  # guild_id -> bool
-        self.dj_voice = {}  # guild_id -> str (Edge TTS voice name)
+        self.dj_voice = {}  # guild_id -> str (TTS voice name)
         self.dj_playing_tts = {}  # guild_id -> bool (prevents re-entrant TTS during skip/stop)
         self._current_tts_path = {}  # guild_id -> str|None (path to clean up after TTS playback)
         self._dj_pending_sounds = {}  # guild_id -> list[str] (sound IDs to play after TTS, from {sound:name} tags)
@@ -71,9 +71,73 @@ class Music(commands.Cog):
 
         # AI Side Host (Ollama) — a second radio personality with its own voice
         self.ai_dj_enabled = {}  # guild_id -> bool (side host on/off)
-        self.ai_dj_voice = {}  # guild_id -> str (Edge TTS voice name for side host)
+        self.ai_dj_voice = {}  # guild_id -> str (TTS voice name for side host)
         self._ai_dj_pending_line = {}  # guild_id -> str|None (AI line waiting to be spoken)
         self._last_dj_line = {}  # guild_id -> str (what the main DJ just said, for AI context)
+
+        # ── Persist voice settings across restarts ──
+        self._voice_settings_file = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "voice_settings.json"
+        )
+        self._load_voice_settings()
+
+    # ── Voice settings persistence ────────────────────────────────────
+
+    def _load_voice_settings(self):
+        """Load persisted voice settings from voice_settings.json.
+
+        This file stores per-guild DJ voice, AI voice, and AI enabled state
+        so they survive bot restarts. If the file doesn't exist or is corrupt,
+        we just use the defaults from config.
+        """
+        try:
+            if os.path.isfile(self._voice_settings_file):
+                with open(self._voice_settings_file, "r") as f:
+                    data = json.load(f)
+                for guild_id_str, settings in data.items():
+                    try:
+                        gid = int(guild_id_str)
+                    except (ValueError, TypeError):
+                        continue
+                    if "dj_voice" in settings:
+                        self.dj_voice[gid] = settings["dj_voice"]
+                    if "ai_dj_voice" in settings:
+                        self.ai_dj_voice[gid] = settings["ai_dj_voice"]
+                    if "ai_dj_enabled" in settings:
+                        self.ai_dj_enabled[gid] = settings["ai_dj_enabled"]
+                    if "dj_enabled" in settings:
+                        self.dj_enabled[gid] = settings["dj_enabled"]
+                loaded = sum(1 for k in data if isinstance(k, str))
+                logging.info(
+                    f"DJ: Loaded voice settings for {loaded} guilds from {self._voice_settings_file}"
+                )
+        except Exception as e:
+            logging.warning(f"DJ: Failed to load voice settings: {e}")
+
+    def _save_voice_settings(self):
+        """Save current voice settings to voice_settings.json.
+
+        Called automatically whenever a voice or enabled state changes.
+        """
+        all_guild_ids = (
+            set(self.dj_voice.keys())
+            | set(self.ai_dj_voice.keys())
+            | set(self.ai_dj_enabled.keys())
+            | set(self.dj_enabled.keys())
+        )
+        data = {}
+        for gid in all_guild_ids:
+            data[str(gid)] = {
+                "dj_voice": self.dj_voice.get(gid, ""),
+                "ai_dj_voice": self.ai_dj_voice.get(gid, ""),
+                "ai_dj_enabled": self.ai_dj_enabled.get(gid, False),
+                "dj_enabled": self.dj_enabled.get(gid, False),
+            }
+        try:
+            with open(self._voice_settings_file, "w") as f:
+                json.dump(data, f, indent=2)
+        except Exception as e:
+            logging.warning(f"DJ: Failed to save voice settings: {e}")
 
     async def get_queue(self, guild_id):
         if guild_id not in self.song_queues:
@@ -1567,6 +1631,7 @@ class Music(commands.Cog):
 
         guild_id = ctx.guild.id
         self.dj_enabled[guild_id] = not self.dj_enabled.get(guild_id, False)
+        self._save_voice_settings()
         status = "ON" if self.dj_enabled[guild_id] else "OFF"
         voice_name = self.dj_voice.get(guild_id, config.DJ_VOICE)
         logging.info(f"DJ mode {status} for {ctx.guild.name} (voice: {voice_name})")
@@ -1620,6 +1685,7 @@ class Music(commands.Cog):
             )
 
         self.ai_dj_enabled[guild_id] = not self.ai_dj_enabled.get(guild_id, False)
+        self._save_voice_settings()
         status = "ON" if self.ai_dj_enabled[guild_id] else "OFF"
 
         ai_voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
@@ -1680,6 +1746,7 @@ class Music(commands.Cog):
             )
 
         self.ai_dj_voice[guild_id] = voice_name
+        self._save_voice_settings()
         await ctx.send(
             embed=self.create_embed(
                 "🃏 AI Side Host Voice",
@@ -1742,6 +1809,7 @@ class Music(commands.Cog):
             )
 
         self.dj_voice[guild_id] = voice_name
+        self._save_voice_settings()
         logging.info(f"DJ voice set to '{voice_name}' for {ctx.guild.name}")
         await ctx.send(
             embed=self.create_embed(

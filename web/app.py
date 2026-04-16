@@ -644,7 +644,7 @@ def api_ai_dj_status(guild_id):
         {
             "enabled": music.ai_dj_enabled.get(guild_id, False),
             "voice": music.ai_dj_voice.get(guild_id, "")
-            or getattr(cfg, "OLLAMA_DJ_VOICE", "am_adam"),
+            or getattr(cfg, "OLLAMA_DJ_VOICE", "en_news_male"),
             "model": getattr(cfg, "OLLAMA_MODEL", "gemma4:latest"),
             "chance": getattr(cfg, "OLLAMA_DJ_CHANCE", 0.25),
             "ollama_available": OLLAMA_DJ_AVAILABLE,

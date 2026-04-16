@@ -1570,19 +1570,71 @@ async def _list_voices_moss(language: str = "en") -> list[dict]:
             }
         )
 
-    # Also try to query the MOSS server's demo voices
+    # Also try to query the MOSS server's demo voices (demo-1 through demo-8)
+    # These are built-in voices available on every MOSS server.
+    # We probe demo-1 through demo-8 and add any that respond with 200.
     if AIOHTTP_AVAILABLE:
+        demo_ids = []
         try:
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=10)
             ) as session:
+                # First check the server is warmed up
                 async with session.get(f"{MOSS_TTS_URL}/api/warmup-status") as resp:
                     if resp.status != 200:
                         logging.debug(
                             "DJ: MOSS server warmup check returned non-200, skipping demo list"
                         )
-        except Exception:
-            pass  # Server may not be up yet, that's fine
+                    else:
+                        data = await resp.json(content_type=None)
+                        if (
+                            data.get("state") != "ready"
+                            and data.get("ready") is not True
+                        ):
+                            logging.debug(
+                                "DJ: MOSS server not ready yet, skipping demo list"
+                            )
+                            return result
+
+                # Probe known demo IDs (demo-1 through demo-8)
+                demo_descs = {
+                    "demo-1": "Built-in Demo 1 (zh)",
+                    "demo-2": "Built-in Demo 2 (en)",
+                    "demo-3": "Built-in Demo 3",
+                    "demo-4": "Built-in Demo 4",
+                    "demo-5": "Built-in Demo 5",
+                    "demo-6": "Built-in Demo 6",
+                    "demo-7": "Built-in Demo 7",
+                    "demo-8": "Built-in Demo 8",
+                }
+                for i in range(1, 9):
+                    demo_id = f"demo-{i}"
+                    try:
+                        async with session.head(
+                            f"{MOSS_TTS_URL}/api/demo-prompt-audio/{demo_id}"
+                        ) as demo_resp:
+                            if demo_resp.status == 200:
+                                demo_ids.append(demo_id)
+                    except Exception:
+                        pass  # Skip unavailable demos
+
+                for demo_id in demo_ids:
+                    # Avoid duplicates with prompt files
+                    if demo_id in prompt_files:
+                        continue
+                    desc = demo_descs.get(demo_id, f"Built-in Demo {demo_id}")
+                    result.append(
+                        {
+                            "ShortName": demo_id,
+                            "Gender": "Unknown",
+                            "Locale": "en-US",
+                            "name": demo_id,
+                            "default": len(result) == 0 and not prompt_files,
+                            "description": desc,
+                        }
+                    )
+        except Exception as e:
+            logging.debug(f"DJ: Failed to query MOSS demo voices: {e}")
 
     return result
 

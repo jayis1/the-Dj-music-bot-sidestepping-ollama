@@ -630,6 +630,10 @@ async def call_ollama(
             },
         }
 
+        logging.debug(
+            f"AI Side Host: Calling Ollama model={use_model}, host={host}, prompt_len={len(prompt)}"
+        )
+
         async with session.post(f"{host}/api/chat", json=payload) as resp:
             if resp.status != 200:
                 # Provide a clear, actionable error message.
@@ -664,16 +668,18 @@ async def call_ollama(
             content = message.get("content", "").strip()
 
             if not content:
-                logging.debug("AI Side Host: Ollama returned empty content")
+                logging.warning(
+                    f"AI Side Host: Ollama returned empty content for model '{use_model}'"
+                )
                 return None
 
             return content
 
     except asyncio.TimeoutError:
-        logging.debug("AI Side Host: Ollama timed out")
+        logging.warning(f"AI Side Host: Ollama timed out (model={use_model})")
         return None
     except aiohttp.ClientError as e:
-        logging.debug(f"AI Side Host: Connection error: {e}")
+        logging.warning(f"AI Side Host: Connection error: {e}")
         return None
     except Exception as e:
         logging.warning(f"AI Side Host: Unexpected error: {e}")
@@ -813,6 +819,9 @@ async def generate_side_host_line(
     raw = await call_ollama(prompt=user, system=system)
 
     if raw is None:
+        logging.warning(
+            f"AI Side Host: call_ollama returned None (model={CUSTOM_MODEL_NAME if _custom_model_ready else getattr(config, 'OLLAMA_MODEL', 'gemma4:latest')})"
+        )
         return None
 
     cleaned = _clean_ai_line(raw)
@@ -821,6 +830,9 @@ async def generate_side_host_line(
         logging.info(f"AI Side Host: Generated [{label}]: {cleaned[:80]}")
         return cleaned
 
+    logging.warning(
+        f"AI Side Host: Ollama returned content but _clean_ai_line filtered it out. Raw: {raw[:200]}"
+    )
     return None
 
 

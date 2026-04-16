@@ -2020,6 +2020,11 @@ class Music(commands.Cog):
         if error:
             logging.error(f"DJ: TTS playback error for guild {guild_id}: {error}")
 
+        # Check if this TTS was from the AI side host.
+        # If so, skip the AI check when playing the song to prevent
+        # the AI from speaking again and blocking the song indefinitely.
+        ai_spoke = guild_id in self._ai_dj_pending_line
+
         # Play any pending sound effects from {sound:name} tags
         pending_sounds = self._dj_pending_sounds.pop(guild_id, [])
 
@@ -2043,9 +2048,11 @@ class Music(commands.Cog):
                 loop=self.bot.loop,
             )
         else:
-            logging.info(f"DJ: TTS done for guild {guild_id}, scheduling song playback")
+            logging.info(
+                f"DJ: TTS done for guild {guild_id}, scheduling song playback (ai_spoke={ai_spoke})"
+            )
             asyncio.ensure_future(
-                self._play_song_after_dj(guild_id),
+                self._play_song_after_dj(guild_id, skip_ai=ai_spoke),
                 loop=self.bot.loop,
             )
 
@@ -2118,11 +2125,17 @@ class Music(commands.Cog):
         # All sounds done — play the song (AI side host handled in _play_song_after_dj)
         await self._play_song_after_dj(guild_id)
 
-    async def _play_song_after_dj(self, guild_id):
+    async def _play_song_after_dj(self, guild_id, skip_ai=False):
         """
         Called after DJ TTS intro finishes. Plays the queued song that
         was already dequeued but held until the intro was spoken.
         'pending_song' is stored on the guild before TTS starts.
+
+        Args:
+            guild_id: The guild ID
+            skip_ai: If True, skip the AI side host check (used when
+                called after the AI side host's own TTS finishes, to
+                prevent the AI from speaking again and blocking the song).
         """
         guild = self.bot.get_guild(guild_id)
         if not guild or not guild.voice_client:
@@ -2135,16 +2148,15 @@ class Music(commands.Cog):
             return
 
         ctx, data, channel_id = pending
-        # Don't delete pending yet — keep it alive in case AI side host
-        # needs to reference it. _start_song_playback will consume it.
 
         # ── AI Side Host: chime in after the main DJ, before the song ──
+        # Only if skip_ai is False (we haven't just played an AI line)
         ai_enabled = self.ai_dj_enabled.get(guild_id, False)
         logging.info(
             f"AI Side Host check: enabled={ai_enabled}, ollama_available={OLLAMA_DJ_AVAILABLE}, "
-            f"tts_available={TTS_AVAILABLE}"
+            f"tts_available={TTS_AVAILABLE}, skip_ai={skip_ai}"
         )
-        if ai_enabled and OLLAMA_DJ_AVAILABLE and TTS_AVAILABLE:
+        if not skip_ai and ai_enabled and OLLAMA_DJ_AVAILABLE and TTS_AVAILABLE:
             # Pass what the main DJ just said so the AI can react to it
             dj_line = self._last_dj_line.get(guild_id, "")
             logging.info(
@@ -2167,9 +2179,11 @@ class Music(commands.Cog):
                 if spoke:
                     # AI side host spoke — the 'after' callback on this TTS
                     # will handle song playback via _on_tts_done. Store the
-                    # pending data so _on_tts_done can play the song.
+                    # pending data so _on_tts_done can find it.
+                    # CRITICAL: _on_tts_done will call _play_song_after_dj again,
+                    # but with skip_ai=True to prevent the AI from speaking again.
                     self._dj_pending[guild_id] = (ctx, data, channel_id)
-                    self._ai_dj_pending_line.pop(guild_id, None)
+                    self._ai_dj_pending_line[guild_id] = ai_line
                     logging.info(
                         f"AI Side Host: Spoke in guild {guild_id}, song will play after TTS"
                     )
@@ -2184,11 +2198,10 @@ class Music(commands.Cog):
 
         # Remove pending data now that we're done with it
         self._dj_pending.pop(guild_id, None)
+        self._ai_dj_pending_line.pop(guild_id, None)
 
         # Now play the actual song
-        logging.info(
-            f"AI Side Host: skipping AI side host, playing song directly for guild {guild_id}"
-        )
+        logging.info(f"Playing song for guild {guild_id} (skip_ai={skip_ai})")
         await self._start_song_playback(ctx, data, channel_id)
 
     async def _try_ai_side_host(self, guild_id, dj_line: str = "") -> str | None:

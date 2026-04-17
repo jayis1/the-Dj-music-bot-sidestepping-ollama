@@ -330,11 +330,14 @@ class Music(commands.Cog):
             del self.inactivity_timers[guild_id]
         guild = self.bot.get_guild(guild_id)
         if guild and guild.voice_client and not guild.voice_client.is_playing():
-            # Don't disconnect if YouTube Live stream is active —
-            # the stream may still be running even during brief silences
             if self._yt_stream_active:
                 logging.info(
-                    f"Skipping inactivity disconnect in {guild.name} — YouTube Live stream is active"
+                    f"Idle in {guild.name} — switching YouTube Live to autonomous 24/7 mode"
+                )
+                await self._switch_to_autonomous(guild_id)
+                await guild.voice_client.disconnect()
+                logging.info(
+                    f"Bot disconnected from voice channel in {guild.name} (stream continues autonomously)."
                 )
                 return
             await guild.voice_client.disconnect()
@@ -394,6 +397,10 @@ class Music(commands.Cog):
             cleanup_tts_file(tts_path)
 
         if ctx.voice_client:
+            # If YouTube Live is active, switch to autonomous before disconnecting
+            if self._yt_stream_active and self._yt_streamer:
+                await self._switch_to_autonomous(guild_id)
+
             await ctx.voice_client.disconnect()
             logging.info(f"Bot disconnected from voice channel in {ctx.guild.name}")
 
@@ -406,10 +413,15 @@ class Music(commands.Cog):
                 self.nowplaying_tasks[guild_id].cancel()
                 del self.nowplaying_tasks[guild_id]
 
+            stream_msg = ""
+            if self._yt_stream_active:
+                stream_msg = (
+                    "\n\n🔴 **YouTube Live** stream continues in autonomous 24/7 mode!"
+                )
             await ctx.send(
                 embed=self.create_embed(
                     "Left Channel",
-                    f"{config.SUCCESS_EMOJI} Successfully disconnected from the voice channel.",
+                    f"{config.SUCCESS_EMOJI} Successfully disconnected from the voice channel.{stream_msg}",
                 )
             )
         else:
@@ -2937,6 +2949,135 @@ class Music(commands.Cog):
             guild.voice_client.stop()
             self._bed_playing[guild_id] = False
             logging.info(f"DJ Bed: Stopped for guild {guild_id}")
+
+    async def _switch_to_autonomous(self, guild_id):
+        """Switch YouTube Live from mirror mode to autonomous 24/7 mode.
+
+        Called when all humans leave the voice channel or the bot is
+        disconnected, but the YouTube stream is still active. Keeps the
+        stream running independently using the configured playlist.
+        """
+        if not self._yt_stream_active or not self._yt_streamer:
+            return
+        if self._yt_streamer.is_autonomous:
+            return
+
+        playlist_url = getattr(config, "YOUTUBE_STREAM_PLAYLIST", "") or getattr(
+            config, "AUTODJ_DEFAULT_SOURCE", ""
+        )
+        if not playlist_url:
+            logging.warning(
+                "YouTube Live: Cannot switch to autonomous — no playlist URL "
+                "configured. Set YOUTUBE_STREAM_PLAYLIST or AUTODJ_DEFAULT_SOURCE "
+                "in .env. The YouTube stream will show a waiting card."
+            )
+            asyncio.ensure_future(
+                self._yt_streamer.play_waiting(
+                    f"Waiting for next track... | {config.STATION_NAME} Radio"
+                ),
+                loop=self.bot.loop,
+            )
+            return
+
+        logging.info(
+            f"YouTube Live: Switching from mirror mode to autonomous 24/7 "
+            f"(playlist: {playlist_url[:60]})"
+        )
+
+        try:
+            await self._yt_streamer.stop()
+            self._yt_stream_active = False
+
+            rtmp_url = getattr(
+                config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+            )
+            key = getattr(config, "YOUTUBE_STREAM_KEY", "")
+            if not key:
+                key = self._yt_streamer.stream_key if self._yt_streamer else ""
+
+            self._yt_streamer = YOUTUBE_STREAMER_CLASS(
+                stream_key=key,
+                rtmp_url=rtmp_url,
+                stream_image=getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None,
+                stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+                station_name=getattr(config, "STATION_NAME", "MBot Radio"),
+            )
+
+            await self._yt_streamer.start_autonomous(
+                playlist_url=playlist_url,
+                loop_playlist=True,
+                shuffle=True,
+            )
+            self._yt_stream_active = True
+
+            logging.info(
+                "YouTube Live: ✅ Successfully switched to autonomous 24/7 mode"
+            )
+
+            np_channel_id = getattr(config, "NOWPLAYING_CHANNEL_ID", 0)
+            if np_channel_id:
+                channel = self.bot.get_channel(np_channel_id)
+                if channel:
+                    await channel.send(
+                        f"🎙️ **YouTube Live** switched to **autonomous 24/7 mode** — "
+                        "the stream keeps running even without anyone in voice!"
+                    )
+        except Exception as e:
+            logging.error(f"YouTube Live: Failed to switch to autonomous: {e}")
+            self._yt_stream_active = False
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        """Detect when all humans leave the voice channel.
+
+        If the YouTube stream is active in mirror mode and the bot's
+        voice channel becomes empty (no human listeners), automatically
+        switch to autonomous 24/7 mode so the stream keeps going.
+
+        Also handles the bot being forcefully disconnected from voice.
+        """
+        if not self._yt_stream_active or not self._yt_streamer:
+            return
+        if self._yt_streamer.is_autonomous:
+            return
+
+        if not before or not before.channel:
+            return
+
+        if not before.channel.guild:
+            return
+        guild = before.channel.guild
+        guild_id = guild.id
+        if guild_id != getattr(self, "_yt_stream_guild", 0):
+            return
+
+        # Case 1: The bot itself was disconnected from voice
+        if member.id == self.bot.user.id and after.channel is None:
+            logging.info(
+                f"YouTube Live: Bot disconnected from voice in {guild.name} — "
+                "switching to autonomous 24/7 mode"
+            )
+            await self._switch_to_autonomous(guild_id)
+            return
+
+        # Case 2: A human left — check if the channel is now empty
+        voice_client = guild.voice_client
+        if not voice_client or not voice_client.channel:
+            # Bot already left voice — switch to autonomous
+            await self._switch_to_autonomous(guild_id)
+            return
+        if voice_client.channel.id != before.channel.id:
+            return
+
+        human_members = [m for m in voice_client.channel.members if not m.bot]
+        if len(human_members) > 0:
+            return
+
+        logging.info(
+            f"YouTube Live: Voice channel empty in {guild.name} — "
+            "switching to autonomous 24/7 mode"
+        )
+        await self._switch_to_autonomous(guild_id)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction):

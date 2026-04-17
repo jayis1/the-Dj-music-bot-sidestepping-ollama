@@ -606,6 +606,8 @@ YouTube Live control panel (redesigned):
 - ?stoplive — works for both modes
 - Inactivity timer fix: Won't disconnect from voice when YouTube Live is active
 - Auto-start on boot: on_ready listener starts autonomous stream if YOUTUBE_STREAM_ENABLED=true + playlist URL configured
+- 🛡️ Autonomous Failover: Added `_switch_to_autonomous()` to seamlessly transition active YouTube streams from Mirror Mode to 24/7 Mode without interrupting the RTMP sequence when the voice channel becomes empty (human listeners drop) or the bot is forcefully disconnected.
+- 🎛️ SFX Dashboard Interop: Mapped `play_sfx()` cleanly into `web/app.py` UI interactions, streaming standalone soundboard triggers to the active YouTube Live HUD dynamically.
 
 ⚙️ Config: config.py + .env.example
 - New: YOUTUBE_STREAM_PLAYLIST — default playlist URL for autonomous mode

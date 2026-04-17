@@ -182,148 +182,77 @@ class YouTubeLiveStreamer:
         return ""
 
     async def _start_master_ffmpeg(self):
-        """Engage the monolithic RTMP connection."""
-        await self._kill_process()
+        """Construct the FFmpeg process with Xvfb and Chromium headless screen capture!"""
+        if not self.stream_key and not self.rtmp_url:
+            log.error("YouTube Live: Cannot start Master Engine (No Configs)")
+            return
 
-        image = self._resolve_image()
-        safe_station = self._safe_text(self.station_name, 30)
-        W, H = self.WIDTH, self.HEIGHT
-        fps = self.fps
-
-        font_bold = self._resolve_font(bold=True)
-        font_reg = self._resolve_font(bold=False)
-        font_opt_bold = f"fontfile='{font_bold}':" if font_bold else ""
-        font_opt_reg = f"fontfile='{font_reg}':" if font_reg else ""
-
-        # Pre-initialize disk text files safely
-        for path in [TXT_TITLE, TXT_DJ, TXT_WAITING]:
-            if not os.path.exists(path):
-                with open(path, "w") as f:
-                    f.write("")
-
-        cmd = ["ffmpeg"]
-
-        # Input 0: Physical GUI Image Base / Static Logo
-        if image:
-            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", image])
-        else:
-            cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
-
-        # Input 1: The Raw PCM UDP Master Audio Socket (driven by PCMBroadcaster)
-        cmd.extend([
-            "-f", "s16le", 
-            "-ar", "48000", 
-            "-ac", "2", 
-            "-thread_queue_size", "1024",
-            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000"
-        ])
-
-        # Input 2: Dynamic Thumbnail loop
-        thumb_path = "/tmp/radio_thumbnail.jpg"
-        if not os.path.exists(thumb_path):
-            try:
-                import base64
-                blank_jpg = base64.b64decode("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=")
-                with open(thumb_path, "wb") as f:
-                    f.write(blank_jpg)
-            except:
-                pass
-                
-        cmd.extend([
-            "-f", "image2", "-loop", "1", "-framerate", "1", "-thread_queue_size", "256", "-i", thumb_path
-        ])
-
-        # Input 3: Animated GIF overlay wrapper
-        gif_path = self._resolve_gif()
-        has_gif = gif_path and os.path.isfile(gif_path)
-        if has_gif:
-            cmd.extend(["-stream_loop", "-1", "-ignore_loop", "0", "-i", gif_path])
-
-        # Build native video filters
-        vf = ""
-        if image:
-            vf += f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
-            vf += f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x0f0f23,"
-            vf += f"format=yuva420p[bg];"
-        else:
-            vf += f"[0:v]format=yuva420p[bg];"
-
-        # Dynamically build a modern audio spectrum effect using the UDP audio input [1:a]
-        vf += f"[1:a]asplit=2[a_viz][outa];"
-        vf += f"[a_viz]showwaves=s={W}x240:mode=cline:colors=0x00FFFF|0xFF00FF:rate={fps}[viz];"
-
-        # Prepare Thumbnail scaling [2:v]
-        vf += f"[2:v]scale=120:120:force_original_aspect_ratio=decrease,format=yuva420p[thumb_scaled];"
-
-        # Base layering sequence
-        if has_gif:
-            vf += f"[3:v]split=2[gif_big_in][gif_small_in];"
-            vf += f"[gif_big_in]scale=120:120:force_original_aspect_ratio=decrease,format=yuva420p[gif_big];"
-            vf += f"[gif_small_in]scale=40:40:force_original_aspect_ratio=decrease,format=yuva420p[gif_small];"
-            vf += f"[bg][viz]overlay=0:{H-280}:format=auto[bg_viz];"
-            vf += f"[bg_viz][thumb_scaled]overlay=(W-w)/2:330:format=auto[with_thumb];"
-            vf += f"[with_thumb][gif_big]overlay=W-w-30:30:format=auto[with_gif_1];"
-            vf += f"[with_gif_1][gif_small]overlay=260:145:format=auto[vbase];"
-        else:
-            vf += f"[bg][viz]overlay=0:{H-280}:format=auto[bg_viz];"
-            vf += f"[bg_viz][thumb_scaled]overlay=(W-w)/2:330:format=auto[vbase];"
-
-        # Apply Dynamic Text reload hooks directly to the pipeline
-        filter_chain = "[vbase]"
+        primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
         
-        # 1. Station text (static watermark moved to top-left out of the way)
-        filter_chain += (
-            f"drawtext={font_opt_bold}text='{safe_station}':"
-            f"fontcolor=white:fontsize=28:x=30:y=30:shadowcolor=black:shadowx=2:shadowy=2,"
-        )
-        # 2. Main Title HUD (dynamic txt reload)
-        filter_chain += (
-            f"drawtext={font_opt_bold}textfile='{TXT_TITLE}':reload=1:"
-            f"fontcolor=gold:fontsize=56:x=(w-text_w)/2:y=210:shadowcolor=black:shadowx=2:shadowy=2,"
-        )
-        # 3. DJ Hook HUD (dynamic txt reload)
-        filter_chain += (
-            f"drawtext={font_opt_reg}textfile='{TXT_DJ}':reload=1:"
-            f"fontcolor=0x00FFCC:fontsize=36:x=(w-text_w)/2:y=280:shadowcolor=black:shadowx=1:shadowy=1,"
-        )
-        # 4. Waiting / Bottom Ticker Strip HUD (dynamic txt reload)
-        filter_chain += (
-            f"drawbox=y={H}-40:color=black@0.6:width=iw:height=40:t=fill,"
-            f"drawtext={font_opt_reg}textfile='{TXT_WAITING}':reload=1:"
-            f"fontcolor=white:fontsize=24:x=(w-text_w)/2:y={H}-32"
-        )
-        filter_chain += "[outv]"
-
-        vf += filter_chain
+        log.info("YouTube Live: Spawning Headless Xvfb overlay capture...")
         
-        cmd.extend(["-filter_complex", vf])
-        cmd.extend(["-map", "[outv]", "-map", "[outa]"]) # Tie video to the split audio pass-through 
+        # 1. Spawn Xvfb virtual frame buffer
+        try:
+            self._xvfb = await asyncio.create_subprocess_exec(
+                "Xvfb", ":99", "-screen", "0", f"{self.WIDTH}x{self.HEIGHT}x24",
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.sleep(1) # Allow X11 daemon to initialize
+        except Exception as e:
+            log.error(f"YouTube Live: Failed to launch Xvfb: {e}")
+            return
 
-        # ── RTMP encoding settings ──
-        cmd.extend([
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency", 
+        # 2. Spawn headless Chromium to render the beautiful Flask overlay
+        env = os.environ.copy()
+        env["DISPLAY"] = ":99"
+        try:
+            self._chromium = await asyncio.create_subprocess_exec(
+                "chromium", 
+                "--kiosk", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
+                "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
+                f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",
+                "http://127.0.0.1:8080/overlay",
+                env=env,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.sleep(5) # Allow page to fully render resources
+        except Exception as e:
+            log.error(f"YouTube Live: Failed to launch Chromium: {e}")
+
+        # 3. Launch FFmpeg x11grab + audio capture
+        cmd = [
+            "ffmpeg",
+            "-thread_queue_size", "2048",
+            "-f", "x11grab", "-video_size", f"{self.WIDTH}x{self.HEIGHT}",
+            "-framerate", str(self.fps),
+            "-i", ":99.0+0,0",
+            # Audio source from the PCMBroadcaster master node
+            "-f", "s16le", "-ar", "48000", "-ac", "2", "-thread_queue_size", "1024",
+            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000",
+            # Map explicitly
+            "-map", "0:v", "-map", "1:a",
+            # Streaming Codecs
+            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
             "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k", 
-            "-bufsize", f"{self.bitrate_video*2}k", "-pix_fmt", "yuv420p", "-g", str(fps * 2),
+            "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p", "-g", str(self.fps * 2),
             "-c:a", "aac", "-b:a", f"{self.bitrate_audio}k", "-ar", "48000",
             "-f", "flv", "-flvflags", "no_duration_filesize",
             "-rtmp_live", "live", "-rtmp_buffer", "2000"
-        ])
+        ]
 
-        if "?" in self.rtmp_url:
-            base, query = self.rtmp_url.split("?", 1)
-            primary_url = f"{base.rstrip('/')}/{self.stream_key}?{query}"
-        else:
-            primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
         if self.rtmp_url.startswith("rtmps://"):
             cmd.extend(["-tls_verify", "0"])
 
         cmd.append(primary_url)
 
-        log.info(f"YouTube Live: Executing single unified FFmpeg RTMP wrapper...")
+        log.info("YouTube Live: Executing Chromium FFmpeg x11grab RTMP wrapper...")
         
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
+                env=env,
                 stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
@@ -353,6 +282,7 @@ class YouTubeLiveStreamer:
                         log.error(f"Master Stream halted entirely. Rebooting in {backoff}s...")
                         await asyncio.sleep(backoff)
                         
+                    await self._kill_process() # Cleanup dead xvfb instances before reviving!
                     await self._start_master_ffmpeg()
                 else:
                     consecutive_failures = 0
@@ -360,7 +290,7 @@ class YouTubeLiveStreamer:
             pass
 
     async def _kill_process(self):
-        """Native shutdown logic for Master Node."""
+        """Native shutdown logic for Master Node + Chromium layer."""
         if self._process and self._process.returncode is None:
             try:
                 if self._process.stdin:
@@ -383,3 +313,18 @@ class YouTubeLiveStreamer:
                     except Exception:
                         pass
         self._process = None
+        
+        # Aggressively cleanup Xvfb and Chromium headless instances too
+        if hasattr(self, '_chromium') and self._chromium and self._chromium.returncode is None:
+            try:
+                self._chromium.kill()
+            except Exception:
+                pass
+            self._chromium = None
+            
+        if hasattr(self, '_xvfb') and self._xvfb and self._xvfb.returncode is None:
+            try:
+                self._xvfb.kill()
+            except Exception:
+                pass
+            self._xvfb = None

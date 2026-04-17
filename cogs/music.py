@@ -263,6 +263,8 @@ class Music(commands.Cog):
                 ),
                 stream_image=stream_image,
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+                bitrate_audio=int(getattr(config, "YOUTUBE_AUDIO_BITRATE", 192)),
+                bitrate_video=int(getattr(config, "YOUTUBE_VIDEO_BITRATE", 3000)),
             )
             self._yt_stream_guild = guild.id
             

@@ -15,6 +15,7 @@ from cogs.youtube import (
     PlaceholderTrack,
     FFMPEG_OPTIONS,
     YTDL_FORMAT_OPTIONS,
+    get_ytdl_format_options,
 )
 from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
@@ -2797,7 +2798,8 @@ class Music(commands.Cog):
 
         title_a = song_a
         title_b = song_b
-        ydl_opts = {"quiet": True, "no_warnings": True, "extract_flat": True}
+        ydl_opts = get_ytdl_format_options()
+        ydl_opts["extract_flat"] = True
         try:
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info_a = ydl.extract_info(song_a, download=False)

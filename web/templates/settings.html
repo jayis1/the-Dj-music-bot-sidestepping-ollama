@@ -127,6 +127,21 @@
     {% endif %}
 </div>
 
+<!-- ── yt-dlp Cookie Auth ──────────────────────────────────────── -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2><span class="icon">🍪</span> yt-dlp Cookie Auth</h2>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+        YouTube increasingly requires cookies to avoid "Sign in to confirm you're not a bot" errors.
+        You can provide cookies from an installed browser or a Netscape-format cookie file.
+        Changes take effect immediately — no restart needed.
+    </p>
+    <div id="cookie-status-container">
+        <button class="btn" onclick="checkCookieStatus()">🔄 Check Cookie Status</button>
+    </div>
+</div>
+
 <!-- ── Reverse Proxy ─────────────────────────────────────────── -->
 <div class="card" style="margin-bottom: 24px;">
     <div class="card-header">
@@ -511,6 +526,90 @@ async function checkOllamaStatus() {
         container.innerHTML = html;
     } catch (e) {
         container.innerHTML = '<span style="color: var(--danger); font-size: 13px;">❌ Failed to check Ollama status: ' + e.message + '</span>';
+    }
+}
+
+// ── Cookie Auth Status Check ────────────────────────────────────
+async function checkCookieStatus() {
+    const container = document.getElementById('cookie-status-container');
+    container.innerHTML = '<span style="color: var(--text-muted); font-size: 13px;">Checking cookie settings...</span>';
+    try {
+        const res = await fetch('/api/ytcookies/status');
+        const data = await res.json();
+
+        let html = '<div class="settings-grid">';
+
+        html += '<div class="settings-item">';
+        html += '<span class="settings-label">Cookie Source</span>';
+        if (data.source === 'browser') {
+            html += '<span class="settings-value" style="color: var(--success);">🌐 Browser: ' + data.browser + '</span>';
+        } else if (data.source === 'file') {
+            html += '<span class="settings-value" style="color: var(--success);">📄 Cookie file</span>';
+        } else {
+            html += '<span class="settings-value" style="color: var(--warning);">⚠️ None configured</span>';
+        }
+        html += '</div>';
+
+        if (data.cookiefile) {
+            html += '<div class="settings-item">';
+            html += '<span class="settings-label">Cookie File</span>';
+            html += '<span class="settings-value" style="font-size: 12px; color: ' + (data.cookiefile_exists ? 'var(--success)' : 'var(--danger)') + ';">' +
+                    data.cookiefile + (data.cookiefile_exists ? ' ✅' : ' ❌ not found') + '</span>';
+            html += '</div>';
+        }
+
+        if (data.browser) {
+            html += '<div class="settings-item">';
+            html += '<span class="settings-label">Browser</span>';
+            html += '<span class="settings-value">' + data.browser + '</span>';
+            html += '</div>';
+        }
+
+        html += '</div>';
+
+        if (data.source === 'none') {
+            html += '<div style="margin-top: 12px; padding: 12px; background: rgba(245,158,11,0.1); border: 1px solid var(--warning); border-radius: var(--radius); font-size: 13px; color: var(--warning);">';
+            html += '⚠️ No cookies configured. YouTube will likely block playback with "Sign in to confirm you\'re not a bot".<br>';
+            html += 'Use <code>?ytcookies browser:chrome</code> in Discord or set <code>YTDDL_COOKIES_FROM_BROWSER</code> in <code>.env</code>.<br>';
+            html += 'Or export cookies from your browser and save as <code>youtube_cookie.txt</code>.';
+            html += '</div>';
+        } else {
+            html += '<div style="margin-top: 12px; padding: 12px; background: rgba(34,197,94,0.1); border: 1px solid var(--success); border-radius: var(--radius); font-size: 13px; color: var(--success);">';
+            html += '✅ Cookies are configured. yt-dlp will use ' + (data.source === 'browser' ? 'browser cookies from <strong>' + data.browser + '</strong>' : 'the cookie file <code>' + data.cookiefile + '</code>') + '.';
+            html += '</div>';
+        }
+
+        // Quick-set buttons
+        html += '<div style="margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap;">';
+        html += '<button class="btn" onclick="setYtCookies(\'browser:chrome\')" style="font-size: 12px; padding: 6px 12px;">🌐 Chrome</button>';
+        html += '<button class="btn" onclick="setYtCookies(\'browser:firefox\')" style="font-size: 12px; padding: 6px 12px;">🦊 Firefox</button>';
+        html += '<button class="btn" onclick="setYtCookies(\'browser:brave\')" style="font-size: 12px; padding: 6px 12px;">🦁 Brave</button>';
+        html += '<button class="btn" onclick="setYtCookies(\'file\')" style="font-size: 12px; padding: 6px 12px;">📄 Cookie File</button>';
+        html += '<button class="btn btn-danger" onclick="setYtCookies(\'clear\')" style="font-size: 12px; padding: 6px 12px;">🗑️ Clear</button>';
+        html += '</div>';
+
+        container.innerHTML = html;
+    } catch (e) {
+        container.innerHTML = '<span style="color: var(--danger); font-size: 13px;">❌ Failed to check cookie status: ' + e.message + '</span>';
+    }
+}
+
+async function setYtCookies(source) {
+    try {
+        const res = await fetch('/api/ytcookies/set', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ source: source })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast(data.message, 'success');
+            checkCookieStatus(); // Refresh status display
+        } else {
+            showToast(data.error || 'Failed to set cookies', 'error');
+        }
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
     }
 }
 

@@ -33,8 +33,17 @@ class DiscordLogHandler(logging.Handler):
                 "created": record.created,
             }
         )
-        if self.task is None or self.task.done():
-            self.task = self.bot.loop.create_task(self.flush_buffer())
+        # Guard: during shutdown, bot.loop becomes _MissingSentinel and
+        # create_task will crash. Only schedule a flush if the loop is alive.
+        try:
+            loop = self.bot.loop
+            if loop is None or loop.is_closed():
+                return
+            if self.task is None or self.task.done():
+                self.task = loop.create_task(self.flush_buffer())
+        except (AttributeError, RuntimeError):
+            # Loop is gone or shutting down — silently skip Discord dispatch
+            pass
 
     async def flush_buffer(self):
         await asyncio.sleep(self.flush_interval)

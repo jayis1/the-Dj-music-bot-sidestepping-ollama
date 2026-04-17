@@ -1513,18 +1513,20 @@ def api_soundboard(guild_id):
 
     import discord
 
-    async def _play_sound():
-        """Play the sound effect on the bot's event loop thread.
+    music_cog = bot.get_cog("Music") if bot else None
 
-        discord.py voice_client.play() is synchronous and must be called
-        from the bot's event loop thread to avoid thread-safety issues.
-        If something is already playing, stop it first.
-        """
+    async def _play_sound():
+        """Play the sound effect safely routing to Discord or native YouTube Broadcast."""
         try:
-            # Stop any currently playing audio before playing the new sound.
-            # Without this, discord.py raises "already playing audio".
-            if guild.voice_client.is_playing():
-                guild.voice_client.stop()
+            vc = guild.voice_client if guild else None
+            if not vc and music_cog:
+                vc = music_cog._get_audio_client(guild_id)
+                
+            if not vc:
+                return False
+
+            if vc.is_playing():
+                vc.stop()
                 await asyncio.sleep(0.15)  # Brief pause for stop to take effect
 
             source = discord.FFmpegPCMAudio(
@@ -1532,30 +1534,12 @@ def api_soundboard(guild_id):
                 before_options="-nostdin",
                 options=f"-vn -t {getattr(config, 'MAX_SOUND_SECONDS', 8)}",  # Soft cap
             )
-            guild.voice_client.play(source)
-
-            # ── YouTube Live: Stream sound effect ──
-            music_cog = None
-            if bot:
-                try:
-                    music_cog = bot.get_cog("Music")
-                except Exception:
-                    pass
-            if (
-                music_cog
-                and getattr(music_cog, "_yt_stream_active", False)
-                and getattr(music_cog, "_yt_streamer", None)
-            ):
-                import os as _os
-
-                if _os.path.isfile(path):
-                    display_name = (
-                        sound_id.replace("_", " ").replace("-", " ").strip().title()
-                    )
-                    asyncio.ensure_future(
-                        music_cog._yt_streamer.play_sfx(path, f"SFX: {display_name}"),
-                        loop=bot.loop,
-                    )
+            
+            # Universally route the UDP audio to Discord + YouTube Master Engine
+            if music_cog:
+                music_cog._dispatch_audio_play(guild_id, source, after=None)
+            else:
+                vc.play(source)
 
             return True
         except Exception as e:
@@ -2205,13 +2189,13 @@ def api_overlay_state():
     # Find the first guild with active playback
     for guild in bot.guilds:
         gid = guild.id
-        voice = guild.voice_client
+        voice = guild.voice_client or music._get_audio_client(gid)
         if not voice:
             continue
 
         current = music.current_song.get(gid)
         is_playing = voice.is_playing() if voice else False
-        is_paused = voice.is_paused() if voice else False
+        is_paused = voice.is_paused() if hasattr(voice, "is_paused") else False
         dj_speaking = music.dj_playing_tts.get(gid, False)
 
         # Calculate elapsed time

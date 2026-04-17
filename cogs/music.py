@@ -292,8 +292,12 @@ class Music(commands.Cog):
             self.autodj_source[guild.id] = playlist_url
             
             # Use Auto-DJ system natively to seed queue
-            # (which triggers `play_next` automatically if queue is zero)
-            self.bot.loop.create_task(self._autodj_fill(ctx))
+            # And then explicitly start playback since we're the first track
+            async def _fill_and_play():
+                await self._autodj_fill(ctx)
+                self.bot.loop.call_soon_threadsafe(self.play_next, ctx)
+                
+            self.bot.loop.create_task(_fill_and_play())
             
             self._yt_stream_active = True
             logging.info(

@@ -274,7 +274,6 @@ class YouTubeLiveStreamer:
             "-nal-hrd", "cbr",
             "-r", str(self.fps),
             "-c:a", "aac", "-b:a", f"{self.bitrate_audio}k", "-ar", "48000",
-            "-af", "aresample=async=1",
             "-max_muxing_queue_size", "9999",
             "-f", "flv", "-flvflags", "no_duration_filesize",
             "-rtmp_live", "live", "-rtmp_buffer", "2000"

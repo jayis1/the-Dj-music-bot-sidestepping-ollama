@@ -1521,6 +1521,30 @@ def api_soundboard(guild_id):
                 options=f"-vn -t {getattr(config, 'MAX_SOUND_SECONDS', 8)}",  # Soft cap
             )
             guild.voice_client.play(source)
+
+            # ── YouTube Live: Stream sound effect ──
+            music_cog = None
+            if bot:
+                try:
+                    music_cog = bot.get_cog("Music")
+                except Exception:
+                    pass
+            if (
+                music_cog
+                and getattr(music_cog, "_yt_stream_active", False)
+                and getattr(music_cog, "_yt_streamer", None)
+            ):
+                import os as _os
+
+                if _os.path.isfile(path):
+                    display_name = (
+                        sound_id.replace("_", " ").replace("-", " ").strip().title()
+                    )
+                    asyncio.ensure_future(
+                        music_cog._yt_streamer.play_sfx(path, f"SFX: {display_name}"),
+                        loop=bot.loop,
+                    )
+
             return True
         except Exception as e:
             logging.error(f"Soundboard: {e}")

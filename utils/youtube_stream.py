@@ -416,6 +416,19 @@ class YouTubeLiveStreamer:
         log.info(f"YouTube Live: Streaming TTS → {text[:60]}...")
         await self._start_ffmpeg_tts(tts_path, text)
 
+    async def play_sfx(self, sfx_path: str, label: str = "Sound Effect"):
+        """Stream a sound effect file to YouTube Live (mirror mode).
+
+        Uses the same visual card as TTS (DJ Speaking overlay) since
+        sound effects are DJ drops that play between songs.
+        """
+        if not self._running or not sfx_path or not os.path.isfile(sfx_path):
+            return
+
+        await self._kill_process()
+        log.info(f"YouTube Live: Streaming SFX → {label[:60]}...")
+        await self._start_ffmpeg_tts(sfx_path, label)
+
     # ── Autonomous mode scheduler ──────────────────────────────────
 
     async def _run_autonomous_loop(self):
@@ -510,6 +523,61 @@ class YouTubeLiveStreamer:
                 self._current_thumbnail = thumb_path
                 self._song_count += 1
 
+                # ── DJ Intro before first song ──
+                # For the very first song, play a station opener intro.
+                if self._song_count == 1:
+                    dj_first_intro_ok = False
+                    try:
+                        from utils.dj import (
+                            generate_intro,
+                            generate_tts,
+                            extract_sound_tags,
+                            TTS_AVAILABLE,
+                            cleanup_tts_file,
+                        )
+                        import config as _cfg
+
+                        if TTS_AVAILABLE:
+                            dj_line = generate_intro(title)
+                            dj_line_clean, sfx_ids = extract_sound_tags(dj_line)
+                            voice = getattr(_cfg, "DJ_VOICE", None)
+                            tts_path = await generate_tts(
+                                dj_line_clean, voice=voice, source="DJ-Stream"
+                            )
+                            if tts_path and os.path.isfile(tts_path):
+                                await self.play_tts(
+                                    tts_path, f"DJ: {dj_line_clean[:80]}"
+                                )
+                                await self._wait_for_process()
+                                dj_first_intro_ok = True
+                                try:
+                                    loop = asyncio.get_running_loop()
+                                    loop.call_later(15, cleanup_tts_file, tts_path)
+                                except RuntimeError:
+                                    cleanup_tts_file(tts_path)
+
+                                if sfx_ids:
+                                    try:
+                                        from utils.soundboard import get_sound_path
+
+                                        for sfx_id in sfx_ids:
+                                            sfx_path = get_sound_path(sfx_id)
+                                            if sfx_path and os.path.isfile(sfx_path):
+                                                await self.play_sfx(
+                                                    sfx_path, f"SFX: {sfx_id}"
+                                                )
+                                                await self._wait_for_process()
+                                    except Exception as e:
+                                        log.warning(
+                                            f"YouTube Live: SFX playback error: {e}"
+                                        )
+                    except ImportError:
+                        log.debug(
+                            "YouTube Live: DJ module not available for autonomous intro"
+                        )
+                    except Exception as e:
+                        log.warning(f"YouTube Live: DJ first intro skipped: {e}")
+
                 log.info(
                     f"YouTube Live: ► Playing [{self._playlist_index + 1}/{len(self._playlist_entries)}] "
                     f"#{self._song_count}: {title}"
@@ -538,9 +606,73 @@ class YouTubeLiveStreamer:
                 # Song ended — advance
                 self._playlist_index += 1
 
-                # Brief waiting card between songs (prevents YouTube "not receiving data" errors)
-                await self.play_waiting(f"Up next... | {self.station_name} Radio")
-                await asyncio.sleep(2)
+                # ── DJ Intro between songs ──
+                # Generate and play a TTS DJ intro before the next song.
+                # Falls back to a brief waiting card if TTS is unavailable.
+                dj_intro_played = False
+                try:
+                    from utils.dj import (
+                        generate_song_intro,
+                        generate_tts,
+                        extract_sound_tags,
+                        TTS_AVAILABLE,
+                        cleanup_tts_file,
+                    )
+                    import config as _cfg
+
+                    if TTS_AVAILABLE:
+                        next_index = self._playlist_index
+                        next_title = ""
+                        if next_index < len(self._playlist_entries):
+                            next_title = self._playlist_entries[next_index].get(
+                                "title", ""
+                            )
+                        dj_line = generate_song_intro(
+                            title, queue_size=len(self._playlist_entries) - next_index
+                        )
+                        dj_line_clean, sfx_ids = extract_sound_tags(dj_line)
+                        voice = getattr(_cfg, "DJ_VOICE", None)
+                        tts_path = await generate_tts(
+                            dj_line_clean, voice=voice, source="DJ-Stream"
+                        )
+                        if tts_path and os.path.isfile(tts_path):
+                            await self.play_tts(tts_path, f"DJ: {dj_line_clean[:80]}")
+                            await self._wait_for_process()
+                            dj_intro_played = True
+                            # Schedule TTS file cleanup (delay so FFmpeg finishes reading)
+                            try:
+                                loop = asyncio.get_running_loop()
+                                loop.call_later(15, cleanup_tts_file, tts_path)
+                            except RuntimeError:
+                                cleanup_tts_file(tts_path)
+
+                            # Play any sound effects from {sound:name} tags
+                            if sfx_ids:
+                                try:
+                                    from utils.soundboard import get_sound_path
+
+                                    for sfx_id in sfx_ids:
+                                        sfx_path = get_sound_path(sfx_id)
+                                        if sfx_path and os.path.isfile(sfx_path):
+                                            await self.play_sfx(
+                                                sfx_path, f"SFX: {sfx_id}"
+                                            )
+                                            await self._wait_for_process()
+                                except Exception as e:
+                                    log.warning(
+                                        f"YouTube Live: SFX playback error: {e}"
+                                    )
+                except ImportError:
+                    log.debug(
+                        "YouTube Live: DJ module not available for autonomous intros"
+                    )
+                except Exception as e:
+                    log.warning(f"YouTube Live: DJ intro skipped: {e}")
+
+                if not dj_intro_played:
+                    # Brief waiting card between songs (prevents YouTube "not receiving data" errors)
+                    await self.play_waiting(f"Up next... | {self.station_name} Radio")
+                    await asyncio.sleep(2)
 
         except asyncio.CancelledError:
             log.info("YouTube Live: Autonomous loop cancelled")

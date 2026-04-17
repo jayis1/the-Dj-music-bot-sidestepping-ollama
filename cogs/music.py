@@ -2275,6 +2275,7 @@ class Music(commands.Cog):
         from blocking the next song.
         """
         from utils.soundboard import get_sound_path
+        import os as _os
         import discord
 
         guild = self.bot.get_guild(guild_id)
@@ -2321,6 +2322,20 @@ class Music(commands.Cog):
                 logging.info(
                     f"DJ: Playing sound effect '{sound_id}' in guild {guild_id}"
                 )
+
+                # ── YouTube Live: Stream sound effect ──
+                if (
+                    self._yt_stream_active
+                    and self._yt_streamer
+                    and _os.path.isfile(path)
+                ):
+                    display_name = (
+                        sound_id.replace("_", " ").replace("-", " ").strip().title()
+                    )
+                    asyncio.ensure_future(
+                        self._yt_streamer.play_sfx(path, f"SFX: {display_name}"),
+                        loop=self.bot.loop,
+                    )
 
                 # Wait up to 12s for the sound to finish (sounds capped at 10s + margin)
                 try:
@@ -2587,7 +2602,7 @@ class Music(commands.Cog):
             # ── YouTube Live: Stream the song (with thumbnail) ──
             if self._yt_stream_active and self._yt_streamer and data.url:
                 thumb = getattr(data, "thumbnail", None)
-                
+
                 async def _play_yt_song():
                     # Give the preceding FFmpeg process (DJ TTS / Waiting list)
                     # 2 seconds to natively flush its RTMP packets to YouTube
@@ -2596,7 +2611,7 @@ class Music(commands.Cog):
                     await self._yt_streamer.play_song(
                         data.url, data.title or "Unknown", thumbnail=thumb
                     )
-                    
+
                 asyncio.ensure_future(_play_yt_song(), loop=self.bot.loop)
 
             # Record to recently-played history

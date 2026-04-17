@@ -107,6 +107,9 @@ class Music(commands.Cog):
         self.current_volume = {}
         self.inactivity_timers = {}
 
+        # Overlay States
+        self._sfx_active = {}  # guild_id -> bool
+
         # DJ Mode state (per-guild)
         self.dj_enabled = {}  # guild_id -> bool
         self.dj_voice = {}  # guild_id -> str (TTS voice name)

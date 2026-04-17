@@ -753,14 +753,15 @@ class YouTubeLiveStreamer:
 
         cmd = ["ffmpeg", "-re"]
 
-        # Input 0: Background color source
-        cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
+        # Input 0: Background image or color source
+        if image:
+            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", image])
+        else:
+            cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
 
-        # Input 1: Thumbnail or logo image (looped, with framerate set)
+        # Input 1: Thumbnail (loops fallback if missing)
         if thumb_path and os.path.isfile(thumb_path):
             cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", thumb_path])
-        elif image:
-            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", image])
         else:
             cmd.extend(["-f", "lavfi", "-i", f"color=c=0x1a1a2e:s=360x360:r={fps}"])
 
@@ -795,7 +796,12 @@ class YouTubeLiveStreamer:
         vf += f"format=yuva420p[thumb];"
 
         # Background
-        vf += f"[0:v]format=yuva420p[bg];"
+        if image:
+            vf += f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
+            vf += f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x0f0f23,"
+            vf += f"format=yuva420p[bg];"
+        else:
+            vf += f"[0:v]format=yuva420p[bg];"
 
         # Overlay thumbnail on left
         vf += f"[bg][thumb]overlay=30:150:format=auto[with_thumb];"

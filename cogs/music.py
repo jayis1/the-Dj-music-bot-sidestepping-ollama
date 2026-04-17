@@ -2510,10 +2510,13 @@ class Music(commands.Cog):
             self.current_song[guild_id] = data
             self.song_start_time[guild_id] = time.time()
 
-            # ── YouTube Live: Stream the song ──
+            # ── YouTube Live: Stream the song (with thumbnail) ──
             if self._yt_stream_active and self._yt_streamer and data.url:
+                thumb = getattr(data, "thumbnail", None)
                 asyncio.ensure_future(
-                    self._yt_streamer.play_song(data.url, data.title or "Unknown"),
+                    self._yt_streamer.play_song(
+                        data.url, data.title or "Unknown", thumbnail=thumb
+                    ),
                     loop=self.bot.loop,
                 )
 
@@ -3311,11 +3314,13 @@ class BattleView(discord.ui.View):
             config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
         )
         stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
+        stream_gif = getattr(config, "YOUTUBE_STREAM_GIF", "") or None
 
         self._yt_streamer = YOUTUBE_STREAMER_CLASS(
             stream_key=key,
             rtmp_url=rtmp_url,
             stream_image=stream_image,
+            stream_gif=stream_gif,
         )
         self._yt_stream_guild = ctx.guild.id
 
@@ -3325,7 +3330,10 @@ class BattleView(discord.ui.View):
         # If a song is currently playing, start streaming it immediately
         current = self.current_song.get(ctx.guild.id)
         if current and current.url:
-            await self._yt_streamer.play_song(current.url, current.title or "Unknown")
+            thumb = getattr(current, "thumbnail", None)
+            await self._yt_streamer.play_song(
+                current.url, current.title or "Unknown", thumbnail=thumb
+            )
 
         key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
         await ctx.send(

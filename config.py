@@ -203,6 +203,12 @@ YOUTUBE_STREAM_IMAGE = os.environ.get(
     "YOUTUBE_STREAM_IMAGE", ""
 )  # Path to stream card image
 
+# Animated GIF overlay for YouTube Live stream card.
+# This GIF plays on top of the stream video — adds visual energy.
+# Falls back to assets/giphy.gif if not set.
+# Set to "" to disable the GIF overlay.
+YOUTUBE_STREAM_GIF = os.environ.get("YOUTUBE_STREAM_GIF", "")
+
 # ── yt-dlp Cookie Authentication ──────────────────────────────────────────
 # YouTube increasingly requires authentication to avoid "Sign in to confirm
 # you're not a bot" errors. There are two ways to provide cookies:

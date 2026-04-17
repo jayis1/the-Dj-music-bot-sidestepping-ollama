@@ -52,6 +52,199 @@
             {% endif %}
         </nav>
         <main class="main">
+            <!-- Self-healing cookie banner — appears when YouTube blocks playback -->
+            <div id="yt-auth-banner" style="display:none; margin-bottom:16px; padding:16px 20px;
+                background:rgba(239,68,68,0.15); border:2px solid var(--danger); border-radius:var(--radius-lg);
+                animation: cookie-banner-pulse 2s ease-in-out infinite;">
+                <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                    <span style="font-size:24px;">🚫</span>
+                    <div style="flex:1;">
+                        <h3 style="margin:0; font-size:15px; color:var(--danger);">YouTube Authentication Required</h3>
+                        <p style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);">
+                            YouTube is blocking playback. Send cookies from your browser to fix this — it takes 5 seconds.
+                        </p>
+                    </div>
+                    <button onclick="document.getElementById('yt-auth-banner').style.display='none'"
+                        style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:4px;">✕</button>
+                </div>
+                <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                    <button class="btn" onclick=" ytCookieQuickFix()" style="background:var(--success); color:#000; border-color:var(--success); font-weight:600;">
+                        🍪 Fix Now (from this browser)
+                    </button>
+                    <button class="btn" onclick="ytCookieShowOptions()" style="border-color:var(--warning); color:var(--warning);">
+                        📋 More Options
+                    </button>
+                    <a href="/settings" class="btn" style="text-decoration:none; border-color:var(--text-muted); color:var(--text-muted);">
+                        ⚙️ Settings
+                    </a>
+                </div>
+                <div id="yt-cookie-options" style="display:none; margin-top:12px; padding:12px;
+                    background:var(--bg-primary); border:1px solid var(--border); border-radius:var(--radius);">
+                    <div style="margin-bottom:12px;">
+                        <strong style="font-size:13px;">🖥️ Option 1 — Run snippet in YouTube tab</strong>
+                        <p style="font-size:12px; color:var(--text-muted); margin:4px 0;">
+                            Open <a href="https://youtube.com" target="_blank">youtube.com</a> →
+                            Press <kbd>F12</kbd> → Console → Paste:
+                        </p>
+                        <button class="btn" onclick="ytCookieCopySnippet()" style="font-size:12px; padding:6px 12px;">
+                            📋 Copy Snippet
+                        </button>
+                        <span id="snippet-copied" style="display:none; color:var(--success); font-size:12px; margin-left:8px;">✅ Copied!</span>
+                    </div>
+                    <div style="margin-bottom:12px;">
+                        <strong style="font-size:13px;">📄 Option 2 — Paste cookies</strong>
+                        <p style="font-size:12px; color:var(--text-muted); margin:4px 0;">
+                            Copy cookies from your browser's DevTools → Application → Cookies → youtube.com
+                        </p>
+                        <textarea id="cookie-paste-input" rows="3" placeholder="Paste cookie text here (Netscape format or name=value; name2=value2)"
+                            style="width:100%; background:var(--bg-secondary); color:var(--text-primary); border:1px solid var(--border);
+                            border-radius:var(--radius); padding:8px; font-size:12px; font-family:monospace; resize:vertical;"></textarea>
+                        <button class="btn" onclick="ytCookiePasteAndSend()" style="font-size:12px; padding:6px 12px; margin-top:4px;">
+                            📤 Send Cookies
+                        </button>
+                        <span id="cookie-sent-status" style="font-size:12px; margin-left:8px;"></span>
+                    </div>
+                    <div>
+                        <strong style="font-size:13px;">📁 Option 3 — Upload cookies.txt</strong>
+                        <p style="font-size:12px; color:var(--text-muted); margin:4px 0;">
+                            Export with a browser extension like "Get cookies.txt LOCALLY"
+                        </p>
+                        <input type="file" id="cookie-file-input" accept=".txt" onchange="ytCookieUpload(this)"
+                            style="font-size:12px; color:var(--text-muted);">
+                        <span id="cookie-upload-status" style="font-size:12px; margin-left:8px;"></span>
+                    </div>
+                </div>
+            </div>
+            <style>
+                @keyframes cookie-banner-pulse {
+                    0%, 100% { border-color: var(--danger); }
+                    50% { border-color: rgba(239,68,68,0.4); }
+                }
+            </style>
+            <script>
+            // ── YouTube Cookie Self-Healing ─────────────────────────────────
+            // Polls the bot for auth errors and shows the banner when needed.
+            // Provides one-click cookie injection from the user's browser.
+            (function() {
+                let ytAuthPollInterval = null;
+
+                function checkYtAuth() {
+                    fetch('/api/ytcookies/auth_status')
+                        .then(r => r.json())
+                        .then(data => {
+                            const banner = document.getElementById('yt-auth-banner');
+                            if (!banner) return;
+                            if (data.auth_blocked || data.recent_auth_error) {
+                                banner.style.display = 'block';
+                            } else {
+                                banner.style.display = 'none';
+                            }
+                        })
+                        .catch(() => {});
+                }
+
+                // Check every 15 seconds (lightweight endpoint)
+                ytAuthPollInterval = setInterval(checkYtAuth, 15000);
+                // Also check on page load (after 2s to let the page settle)
+                setTimeout(checkYtAuth, 2000);
+
+                window.ytCookieQuickFix = function() {
+                    // One-click: try to extract cookies from the CURRENT page
+                    // (works best if Mission Control and YouTube are on same domain,
+                    //  but due to same-origin policy we can only get cookies for this domain)
+                    // Instead, show the options panel and auto-copy the snippet
+                    ytCookieShowOptions();
+                    ytCookieCopySnippet();
+                };
+
+                window.ytCookieShowOptions = function() {
+                    const opts = document.getElementById('yt-cookie-options');
+                    if (opts) opts.style.display = opts.style.display === 'none' ? 'block' : 'none';
+                };
+
+                window.ytCookieCopySnippet = function() {
+                    fetch('/api/ytcookies/snippet')
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.snippet) {
+                                navigator.clipboard.writeText(data.snippet).then(() => {
+                                    const el = document.getElementById('snippet-copied');
+                                    if (el) { el.style.display = 'inline'; setTimeout(() => el.style.display = 'none', 3000); }
+                                }).catch(() => {
+                                    // Fallback
+                                    const ta = document.createElement('textarea');
+                                    ta.value = data.snippet;
+                                    document.body.appendChild(ta);
+                                    ta.select();
+                                    document.execCommand('copy');
+                                    document.body.removeChild(ta);
+                                    const el = document.getElementById('snippet-copied');
+                                    if (el) { el.style.display = 'inline'; setTimeout(() => el.style.display = 'none', 3000); }
+                                });
+                            }
+                        });
+                };
+
+                window.ytCookiePasteAndSend = function() {
+                    const input = document.getElementById('cookie-paste-input');
+                    const status = document.getElementById('cookie-sent-status');
+                    if (!input || !input.value.trim()) {
+                        if (status) status.textContent = '⚠️ Paste cookies first';
+                        return;
+                    }
+                    if (status) status.textContent = '⏳ Sending...';
+                    fetch('/api/ytcookies/inject', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({cookies: input.value.trim(), source: 'paste'})
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.ok) {
+                            if (status) status.innerHTML = '✅ Cookies sent! Playback resuming...';
+                            input.value = '';
+                            // Hide banner after 5s
+                            setTimeout(() => {
+                                const banner = document.getElementById('yt-auth-banner');
+                                if (banner) banner.style.display = 'none';
+                            }, 5000);
+                        } else {
+                            if (status) status.textContent = '❌ ' + (data.error || 'Failed');
+                        }
+                    })
+                    .catch(e => {
+                        if (status) status.textContent = '❌ Network error';
+                    });
+                };
+
+                window.ytCookieUpload = function(fileInput) {
+                    const status = document.getElementById('cookie-upload-status');
+                    if (!fileInput.files || !fileInput.files[0]) return;
+                    if (status) status.textContent = '⏳ Uploading...';
+                    const formData = new FormData();
+                    formData.append('file', fileInput.files[0]);
+                    fetch('/api/ytcookies/upload', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.ok) {
+                            if (status) status.innerHTML = '✅ Uploaded! Playback resuming...';
+                            setTimeout(() => {
+                                const banner = document.getElementById('yt-auth-banner');
+                                if (banner) banner.style.display = 'none';
+                            }, 5000);
+                        } else {
+                            if (status) status.textContent = '❌ ' + (data.error || 'Failed');
+                        }
+                    })
+                    .catch(e => {
+                        if (status) status.textContent = '❌ Network error';
+                    });
+                };
+            })();
+            </script>
             {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
             <ul class="flashes">

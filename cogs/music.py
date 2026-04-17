@@ -15,8 +15,13 @@ from cogs.youtube import (
     PlaceholderTrack,
     FFMPEG_OPTIONS,
     YTDL_FORMAT_OPTIONS,
-    get_ytdl_format_options,
 )
+
+try:
+    from cogs.youtube import get_ytdl_format_options
+except ImportError:
+    # Fallback for older youtube.py that doesn't have this function yet
+    get_ytdl_format_options = YTDL_FORMAT_OPTIONS.copy
 from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
     EDGE_TTS_AVAILABLE,
@@ -92,6 +97,14 @@ class Music(commands.Cog):
         # Battle of the Beats — live voting showdowns (per-guild)
         self._battles = {}  # guild_id -> dict {song_a, song_b, votes_a, votes_b, message_id, channel_id, timer_task, created_at}
 
+        # YouTube auth state — tracks whether cookies are needed
+        self._yt_auth_blocked = False  # True when YouTube requires auth (cookies)
+        self._yt_auth_blocked_at = None  # Timestamp when auth was blocked (epoch)
+        self._yt_auth_retries = 0  # How many times we've retried after cookie update
+        self._pending_cookie_retry = (
+            False  # True when cookies were just updated and queue should retry
+        )
+
         # ── Persist voice settings across restarts ──
         self._voice_settings_file = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "voice_settings.json"
@@ -160,6 +173,47 @@ class Music(commands.Cog):
         if guild_id not in self.song_queues:
             self.song_queues[guild_id] = asyncio.Queue()
         return self.song_queues[guild_id]
+
+    def clear_yt_auth_block(self):
+        """Clear the YouTube auth-blocked flag after cookies are updated.
+        Called from the cookie refresh API endpoint. Returns True if
+        the flag was set (meaning a retry is needed)."""
+        was_blocked = self._yt_auth_blocked
+        self._yt_auth_blocked = False
+        self._yt_auth_blocked_at = None
+        self._yt_auth_retries = 0
+        if was_blocked:
+            logging.info(
+                "YouTube auth block cleared — cookies updated via Mission Control"
+            )
+        return was_blocked
+
+    async def retry_playback_after_cookie_fix(self, guild_id):
+        """Attempt to resume playback after cookies were refreshed.
+        Starts the inactivity timer which will trigger auto-DJ / queue processing,
+        or directly calls play_next if there are items in the queue."""
+        for guild in self.bot.guilds:
+            if guild.id == guild_id:
+                queue = self.song_queues.get(guild_id)
+                voice = guild.voice_client
+                if voice and queue and not queue.empty():
+                    # Items in queue — trigger play_next via the inactivity callback
+                    # which handles finding the right channel
+                    logging.info(
+                        f"Cookie fix: items in queue for guild {guild_id}, "
+                        "starting inactivity timer to resume playback"
+                    )
+                    self._pending_cookie_retry = True
+                    self._start_inactivity_timer(guild_id)
+                elif voice:
+                    # Queue empty — start inactivity timer for auto-DJ
+                    logging.info(
+                        f"Cookie fix: queue empty for guild {guild_id}, "
+                        "starting inactivity timer for auto-DJ"
+                    )
+                    self._pending_cookie_retry = True
+                    self._start_inactivity_timer(guild_id)
+                return
 
     def _get_np_channel(self, guild):
         """Return the channel where now-playing messages should be sent.
@@ -658,14 +712,19 @@ class Music(commands.Cog):
                         f"play_next: {_skip_count} consecutive resolution failures in "
                         f"{ctx.guild.name}. Stopping — possible site block or auth issue."
                     )
+                    # ── Detect YouTube auth block specifically ──
+                    # This triggers the self-healing cookie banner in Mission Control
+                    self._yt_auth_blocked = True
+                    self._yt_auth_blocked_at = time.time()
                     channel = self.bot.get_channel(ctx.channel.id)
                     if channel:
                         await channel.send(
                             embed=self.create_embed(
                                 "Playback Error",
                                 f"{config.ERROR_EMOJI} Multiple songs failed to resolve. "
-                                "YouTube may be blocking requests. Try `?fetch_and_set_cookies` "
-                                "or check your network.",
+                                "YouTube may be blocking requests. "
+                                "Open **Mission Control** → **Settings** → **Cookie Auth** "
+                                "to fix this with one click, or try `?ytcookies browser:firefox`.",
                                 discord.Color.red(),
                             )
                         )
@@ -704,9 +763,18 @@ class Music(commands.Cog):
                         f"(stream url ready)"
                     )
                 except Exception as e:
+                    error_str = str(e).lower()
                     logging.error(
                         f"play_next: Failed to resolve PlaceholderTrack '{data.title}': {e}"
                     )
+                    # Detect YouTube auth errors early (don't wait for 5 failures)
+                    if "sign in to confirm" in error_str or "bot" in error_str:
+                        self._yt_auth_blocked = True
+                        self._yt_auth_blocked_at = time.time()
+                        logging.warning(
+                            "play_next: YouTube auth block detected — "
+                            "cookies required. Mission Control can fix this."
+                        )
                     await asyncio.sleep(2)
                     await self.play_next(ctx, _skip_count=_skip_count + 1)
                     return

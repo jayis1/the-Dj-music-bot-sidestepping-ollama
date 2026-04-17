@@ -2283,3 +2283,221 @@ def api_ytcookies_set():
                 "error": "Invalid source. Use 'browser:chrome', 'file', or 'clear'",
             }
         ), 400
+
+
+# ── Self-Healing Cookie Injection ──────────────────────────────────────
+# These endpoints let Mission Control push fresh YouTube cookies to the bot
+# when YouTube blocks playback with "Sign in to confirm you're not a bot".
+# The dashboard auto-detects auth failures and shows one-click fix options.
+
+
+@app.route("/api/ytcookies/auth_status")
+def api_ytcookies_auth_status():
+    """Return whether YouTube auth is currently blocked and needs cookies.
+    The Mission Control dashboard polls this to show the self-healing banner."""
+    music = _get_music_cog()
+    blocked = getattr(music, "_yt_auth_blocked", False) if music else False
+    blocked_at = getattr(music, "_yt_auth_blocked_at", None) if music else None
+
+    # Also check recent log buffer for auth-related errors
+    from utils.discord_log_handler import log_buffer
+
+    recent_auth_error = False
+    for entry in list(log_buffer)[-30:]:
+        msg = entry.get("message", "").lower()
+        if (
+            "sign in to confirm" in msg or "bot" in msg and "resolution" in msg
+        ) and entry.get("level") in ("ERROR", "WARNING"):
+            recent_auth_error = True
+            break
+
+    return jsonify(
+        {
+            "auth_blocked": blocked,
+            "auth_blocked_at": blocked_at,
+            "recent_auth_error": recent_auth_error,
+            "cookie_source": getattr(config, "YTDDL_COOKIES_FROM_BROWSER", "").strip()
+            or (
+                "file"
+                if os.path.exists(
+                    getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+                )
+                else "none"
+            ),
+        }
+    )
+
+
+@app.route("/api/ytcookies/inject", methods=["POST"])
+def api_ytcookies_inject():
+    """Inject cookies directly into the bot. Accepts Netscape-format cookie text.
+    This is the main self-healing endpoint — Mission Control sends cookies
+    extracted from the user's browser (via JS console snippet or paste).
+
+    Request body: { "cookies": "...", "source": "paste"|"snippet"|"upload" }
+    The cookies text should be in Netscape format:
+        .youtube.com	TRUE	/	TRUE	0	cookie_name	cookie_value
+
+    Or just the raw Cookie header from a browser request:
+        cookie_name1=value1; cookie_name2=value2
+    """
+    data = request.json or {}
+    cookie_text = data.get("cookies", "").strip()
+    source = data.get("source", "paste")
+
+    if not cookie_text:
+        return jsonify({"ok": False, "error": "No cookie data provided"}), 400
+
+    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+
+    # Auto-detect format: Netscape vs raw Cookie header
+    if "\t" in cookie_text and ("TRUE" in cookie_text or "FALSE" in cookie_text):
+        # Already Netscape format — write directly
+        lines = cookie_text.splitlines()
+        if not lines[0].startswith("#"):
+            cookie_text = "# Netscape HTTP Cookie File\n" + cookie_text
+    elif "=" in cookie_text and "\t" not in cookie_text:
+        # Raw Cookie header (name=value; name2=value2) — convert to Netscape
+        lines = ["# Netscape HTTP Cookie File"]
+        for pair in cookie_text.split(";"):
+            pair = pair.strip()
+            if "=" in pair:
+                name, value = pair.split("=", 1)
+                name = name.strip()
+                value = value.strip()
+                # Use .youtube.com as default domain, permanent session cookie
+                lines.append(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}")
+        cookie_text = "\n".join(lines) + "\n"
+    else:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Unrecognized cookie format. Provide either Netscape format (tab-separated) or raw Cookie header (name=value; name2=value2)",
+            }
+        ), 400
+
+    try:
+        with open(cookiefile, "w") as f:
+            f.write(cookie_text)
+        logging.info(
+            f"Cookies injected via Mission Control ({source}) — wrote {cookiefile}"
+        )
+    except Exception as e:
+        logging.error(f"Failed to write cookie file: {e}")
+        return jsonify({"ok": False, "error": f"Failed to write cookie file: {e}"}), 500
+
+    # Clear browser cookie setting so file takes priority
+    config.YTDDL_COOKIES_FROM_BROWSER = ""
+    from cogs.admin import _reload_ytdl_cookies
+
+    _reload_ytdl_cookies()
+
+    # Clear the auth block flag and retry playback
+    music = _get_music_cog()
+    if music:
+        was_blocked = music.clear_yt_auth_block()
+        if was_blocked:
+            # Schedule retry for all guilds with voice clients
+            for guild in bot.guilds:
+                if guild.voice_client:
+                    import asyncio
+
+                    asyncio.ensure_future(
+                        music.retry_playback_after_cookie_fix(guild.id),
+                        loop=bot.loop,
+                    )
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "✅ Cookies injected! YouTube playback should resume automatically.",
+            "was_blocked": was_blocked if music else False,
+        }
+    )
+
+
+@app.route("/api/ytcookies/upload", methods=["POST"])
+def api_ytcookies_upload():
+    """Upload a cookies.txt file directly to the bot.
+    Accepts multipart form data with a 'file' field containing
+    a Netscape-format cookie file.
+    """
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file uploaded"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"ok": False, "error": "Empty filename"}), 400
+
+    content = uploaded.read().decode("utf-8", errors="replace").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "Empty file"}), 400
+
+    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+    try:
+        with open(cookiefile, "w") as f:
+            f.write(content)
+        logging.info(f"Cookie file uploaded via Mission Control — wrote {cookiefile}")
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Failed to write cookie file: {e}"}), 500
+
+    config.YTDDL_COOKIES_FROM_BROWSER = ""
+    from cogs.admin import _reload_ytdl_cookies
+
+    _reload_ytdl_cookies()
+
+    # Clear auth block and retry
+    music = _get_music_cog()
+    was_blocked = False
+    if music:
+        was_blocked = music.clear_yt_auth_block()
+        if was_blocked:
+            for guild in bot.guilds:
+                if guild.voice_client:
+                    import asyncio
+
+                    asyncio.ensure_future(
+                        music.retry_playback_after_cookie_fix(guild.id),
+                        loop=bot.loop,
+                    )
+
+    return jsonify(
+        {
+            "ok": True,
+            "message": "✅ Cookie file uploaded! YouTube playback should resume automatically.",
+            "was_blocked": was_blocked,
+        }
+    )
+
+
+@app.route("/api/ytcookies/snippet")
+def api_ytcookies_snippet():
+    """Return a JavaScript snippet that the user can run in their YouTube
+    browser tab to extract and send cookies to the bot. This is the
+    one-click self-healing fix — paste the snippet into the YouTube
+    tab's DevTools console and it sends the cookies to Mission Control."""
+    # Build the bot's URL from the request
+    host = request.host_url.rstrip("/")
+    snippet = f"""// ── MBot Cookie Extractor ──────────────────────────────────
+// Run this in your YouTube tab's DevTools console (F12 → Console)
+// It extracts your YouTube cookies and sends them to the bot.
+(async function() {{
+    const resp = await fetch('{host}/api/ytcookies/inject', {{
+        method: 'POST',
+        headers: {{ 'Content-Type': 'application/json' }},
+        body: JSON.stringify({{
+            cookies: document.cookie,
+            source: 'snippet'
+        }})
+    }});
+    const data = await resp.json();
+    if (data.ok) {{
+        console.log('✅ Cookies sent to MBot! Playback should resume.');
+        alert('✅ Cookies sent to MBot! YouTube playback should resume automatically.');
+    }} else {{
+        console.error('❌ Failed:', data.error);
+        alert('❌ Failed to send cookies: ' + data.error);
+    }}
+}})();
+"""
+    return jsonify({"snippet": snippet.strip(), "bot_url": host})

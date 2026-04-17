@@ -106,12 +106,12 @@ class PCMBroadcaster(discord.AudioSource):
     def _autonomous_clock(self):
         """The headless 24/7 pulse. Only activates when Discord drops its connection."""
         silence = b'\x00' * 3840
+        next_time = time.perf_counter()
         while self._running:
-            start = time.perf_counter()
-            
             if self._is_discord_clocking:
                 time.sleep(0.1)
                 self._is_discord_clocking = False
+                next_time = time.perf_counter()
                 continue
                 
             data = b''
@@ -136,7 +136,9 @@ class PCMBroadcaster(discord.AudioSource):
             except Exception:
                 pass
                 
-            elapsed = time.perf_counter() - start
-            diff = 0.02 - elapsed
-            if diff > 0:
-                time.sleep(diff)
+            next_time += 0.02
+            delay = next_time - time.perf_counter()
+            if delay > 0:
+                time.sleep(delay)
+            else:
+                next_time = time.perf_counter()

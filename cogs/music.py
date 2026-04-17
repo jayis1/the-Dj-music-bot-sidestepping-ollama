@@ -15,6 +15,7 @@ from cogs.youtube import (
     PlaceholderTrack,
     FFMPEG_OPTIONS,
     YTDL_FORMAT_OPTIONS,
+    DRMProtectedError,
 )
 
 try:
@@ -968,7 +969,19 @@ class Music(commands.Cog):
                 )
             )
 
-    async def play_next(self, ctx, _skip_count=0):
+    async def _safe_change_presence(self, *, activity=None):
+        """
+        Safely update Discord presence. No-ops in headless mode where
+        the bot has no Discord connection (self.bot.user is None).
+        """
+        if self.bot.user is None:
+            return
+        try:
+            await self.bot.change_presence(activity=activity)
+        except Exception as e:
+            logging.debug(f"_safe_change_presence: failed (headless?): {e}")
+
+    async def play_next(self, ctx, _skip_count=0, _drm_skip_count=0):
         logging.info("play_next called.")
         queue = await self.get_queue(ctx.guild.id)
         if not queue.empty() and ctx.voice_client:
@@ -985,7 +998,7 @@ class Music(commands.Cog):
             # right now, right before playback. This keeps playlist
             # loading instant while ensuring reliable playback.
             if isinstance(data, PlaceholderTrack):
-                # Guard: if too many consecutive resolutions fail, stop
+                # Guard: if too many consecutive NON-DRM resolution failures, stop
                 # to avoid infinite recursion / rate limiting
                 if _skip_count >= 5:
                     logging.error(
@@ -1013,7 +1026,7 @@ class Music(commands.Cog):
                                 discord.Color.red(),
                             )
                         )
-                    await self.bot.change_presence(activity=None)
+                    await self._safe_change_presence(activity=None)
                     self._start_inactivity_timer(guild_id)
                     return
 
@@ -1052,6 +1065,33 @@ class Music(commands.Cog):
                     logging.error(
                         f"play_next: Failed to resolve PlaceholderTrack '{data.title}': {e}"
                     )
+
+                    # ── DRM-protected video: skip this track only, keep queue alive ──
+                    # DRM is a per-video issue, not a systemic auth problem.
+                    # Skip the track WITHOUT incrementing the consecutive failure
+                    # counter so the queue keeps playing non-DRM tracks.
+                    if isinstance(e, DRMProtectedError) or "drm protected" in error_str:
+                        logging.warning(
+                            f"play_next: Skipping DRM-protected track "
+                            f"'{data.title}' — not a systemic issue, queue continues."
+                        )
+                        # Guard: if entire playlist is DRM-protected, stop recursing
+                        if _drm_skip_count >= 20:
+                            logging.error(
+                                f"play_next: {_drm_skip_count} consecutive DRM skips in "
+                                f"{ctx.guild.name}. Stopping — playlist may be entirely DRM-protected."
+                            )
+                            await self._safe_change_presence(activity=None)
+                            self._start_inactivity_timer(guild_id)
+                            return
+                        # Don't sleep — just move on to the next track immediately
+                        await self.play_next(
+                            ctx,
+                            _skip_count=_skip_count,
+                            _drm_skip_count=_drm_skip_count + 1,
+                        )
+                        return
+
                     # Detect YouTube errors early (don't wait for 5 failures)
                     if "sign in to confirm" in error_str or (
                         "bot" in error_str and "resolve" in error_str
@@ -1150,7 +1190,7 @@ class Music(commands.Cog):
                 outro_text = generate_outro(last_song.title, has_next=False)
                 await self._dj_speak(ctx.voice_client, outro_text, guild_id)
 
-            await self.bot.change_presence(activity=None)
+            await self._safe_change_presence(activity=None)
             self._start_inactivity_timer(guild_id)
 
     async def _update_nowplaying_message(self, guild_id, channel_id):
@@ -1682,7 +1722,7 @@ class Music(commands.Cog):
             self.nowplaying_tasks[ctx.guild.id].cancel()
             del self.nowplaying_tasks[ctx.guild.id]
 
-        await self.bot.change_presence(activity=None)
+        await self._safe_change_presence(activity=None)
         await ctx.send(
             embed=self.create_embed(
                 "Playback Stopped",
@@ -2872,7 +2912,7 @@ class Music(commands.Cog):
             # Record to recently-played history
             self._record_history(guild_id, data)
 
-            await self.bot.change_presence(
+            await self._safe_change_presence(
                 activity=discord.Activity(
                     type=discord.ActivityType.listening, name=data.title
                 )

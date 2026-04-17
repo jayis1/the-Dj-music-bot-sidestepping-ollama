@@ -72,6 +72,12 @@ FORMAT_FALLBACK_CHAIN = [
 ]
 
 
+class DRMProtectedError(Exception):
+    """Raised when a video is DRM-protected and cannot be extracted."""
+
+    pass
+
+
 def _make_base_opts():
     """Base yt-dlp options without format string (shared across all attempts)."""
     return {
@@ -88,11 +94,7 @@ def _make_base_opts():
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36"
         },
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["ios", "tv", "web"]
-            }
-        },
+        "extractor_args": {"youtube": {"player_client": ["ios", "tv", "web"]}},
         "extract_flat": "discard_in_playlist",
     }
 
@@ -236,6 +238,17 @@ async def _resolve_with_fallback(url, loop):
             last_error = e
             is_format_error = "format is not available" in error_str.lower()
             is_signin_error = "sign in to confirm" in error_str.lower()
+            is_drm_error = "drm protected" in error_str.lower()
+
+            if is_drm_error:
+                # DRM-protected video — no format string will help, raise specific error
+                logging.warning(
+                    f"_resolve_with_fallback: DRM-protected video — skipping. "
+                    f"URL: {url}"
+                )
+                raise DRMProtectedError(
+                    f"Video is DRM-protected and cannot be extracted: {url}"
+                )
 
             if is_signin_error:
                 # Auth error — no format string will help, bail immediately

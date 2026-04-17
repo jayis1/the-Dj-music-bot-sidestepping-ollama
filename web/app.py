@@ -544,9 +544,8 @@ def api_stop(guild_id):
         queue = await music.get_queue(guild_id)
         while not queue.empty():
             await queue.get()
-        guild = bot.get_guild(guild_id)
         vc = music._get_audio_client(guild_id)
-        if guild and vc:
+        if vc:
             vc.stop()
 
     _run_async(_stop())
@@ -623,9 +622,9 @@ def api_volume(guild_id):
     vol = max(0, min(200, vol))
     music.current_volume[guild_id] = vol / 100.0
     # Apply to currently playing source
-    guild = bot.get_guild(guild_id) if bot else None
-    if guild and guild.voice_client and guild.voice_client.source:
-        guild.voice_client.source.volume = vol / 100.0
+    vc = music._get_audio_client(guild_id)
+    if vc and getattr(vc, 'source', None):
+        vc.source.volume = vol / 100.0
     return jsonify({"ok": True, "volume": vol})
 
 
@@ -972,11 +971,11 @@ def api_play(guild_id):
 
     async def _play():
         guild = bot.get_guild(guild_id)
-        if not guild:
+        if not guild and guild_id != 0:
             return "Guild not found"
 
         vc = music._get_audio_client(guild_id)
-        if not vc:
+        if not vc and guild:
             # Join a voice channel if not already in one
             voice_channel = None
             for member in guild.members:
@@ -1428,8 +1427,9 @@ def api_soundboard(guild_id):
     if not path:
         return jsonify({"error": f"Sound '{sound_id}' not found"}), 404
 
-    guild = bot.get_guild(guild_id) if bot else None
-    if not guild or not guild.voice_client:
+    music_cog = bot.get_cog("Music") if bot else None
+    vc = music_cog._get_audio_client(guild_id) if music_cog else None
+    if not vc:
         return jsonify({"error": "Bot not in voice"}), 400
 
     import discord
@@ -1439,10 +1439,6 @@ def api_soundboard(guild_id):
     async def _play_sound():
         """Play the sound effect safely routing to Discord or native YouTube Broadcast."""
         try:
-            vc = guild.voice_client if guild else None
-            if not vc and music_cog:
-                vc = music_cog._get_audio_client(guild_id)
-                
             if not vc:
                 return False
 

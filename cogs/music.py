@@ -164,29 +164,29 @@ class Music(commands.Cog):
         self._load_voice_settings()
 
     def _get_audio_client(self, guild_id: int):
-        """Returns the real VoiceClient, OR the Headless PCMBroadcasterWrapper if streaming autonomously."""
+        """Returns the real VoiceClient, OR the Headless PCMBroadcasterWrapper if not in a real voice channel."""
         guild = self.bot.get_guild(guild_id)
         if guild and guild.voice_client:
             # If the user connected the bot to a real Discord voice channel,
             # sync it to the broadcaster matrix natively if YouTube is live
-            if self._yt_stream_active and self._yt_stream_guild == guild_id:
+            if getattr(self, "_yt_stream_active", False) and getattr(self, "_yt_stream_guild", None) == guild_id:
                 if guild_id not in self._broadcasters:
                     from utils.broadcaster import PCMBroadcaster
                     self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
             return guild.voice_client
             
-        if self._yt_stream_active and self._yt_stream_guild == guild_id:
-            # Headless 24/7 Mode: The user wants it to stream autonomously
-            if guild_id not in self._broadcasters:
-                from utils.broadcaster import PCMBroadcaster
-                self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
-            if guild_id not in self._headless_clients:
-                self._headless_clients[guild_id] = PCMBroadcasterWrapper(
-                    self.bot, guild_id, self._broadcasters[guild_id]
-                )
-            return self._headless_clients[guild_id]
-            
-        return None
+        # Headless 24/7 Mode Fallback
+        # Even if YouTube stream is not active yet, we keep the audio engine alive
+        # so users can queue songs and use the dashboard without a Discord connection.
+        if guild_id not in self._broadcasters:
+            from utils.broadcaster import PCMBroadcaster
+            self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+        if guild_id not in self._headless_clients:
+            from utils.broadcaster import PCMBroadcasterWrapper
+            self._headless_clients[guild_id] = PCMBroadcasterWrapper(
+                self.bot, guild_id, self._broadcasters[guild_id]
+            )
+        return self._headless_clients[guild_id]
 
     def _is_headless_override(self, guild_id: int):
         """Allows bypassing user-voice dependency for purely headless bot instances."""

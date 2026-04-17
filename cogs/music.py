@@ -2304,6 +2304,13 @@ class Music(commands.Cog):
                 player = discord.PCMVolumeTransformer(source)
                 player.volume = self.current_volume.get(guild_id, 1.0)
 
+                # ── YouTube Live: Stream sound effect ──
+                if self._yt_stream_active and self._yt_streamer:
+                    asyncio.ensure_future(
+                        self._yt_streamer.play_tts(path, f"Sound Effect: {sound_id}"),
+                        loop=self.bot.loop,
+                    )
+
                 # Stop anything currently playing before playing the sound
                 if guild.voice_client.is_playing():
                     guild.voice_client.stop()

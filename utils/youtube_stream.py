@@ -823,21 +823,21 @@ class YouTubeLiveStreamer:
         vf += f"fontcolor=0xff4444:fontsize=20"
         if font_bold:
             vf += f":fontfile={font_bold}"
-        vf += f":x=470:y=160:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_station];"
+        vf += f":x=470:y=250:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_station];"
 
         # Song title (bold font)
         vf += f"[with_station]drawtext=text='{safe_title}':"
         vf += f"fontcolor=white:fontsize=26"
         if font_bold:
             vf += f":fontfile={font_bold}"
-        vf += f":x=470:y=200:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_title];"
+        vf += f":x=470:y=290:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_title];"
 
         # "Now Playing" indicator (regular font)
         vf += f"[with_title]drawtext=text='Now Playing':"
         vf += f"fontcolor=0x8888ff:fontsize=14"
         if font_reg:
             vf += f":fontfile={font_reg}"
-        vf += f":x=470:y=250[with_sub];"
+        vf += f":x=470:y=340[with_sub];"
 
         # Bottom bar background
         vf += f"[with_sub]drawbox=x=0:y={H - 55}:w={W}:h=55:"

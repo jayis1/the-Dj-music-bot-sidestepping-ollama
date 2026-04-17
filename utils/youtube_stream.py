@@ -256,22 +256,26 @@ class YouTubeLiveStreamer:
         cmd = [
             "ffmpeg",
             "-use_wallclock_as_timestamps", "1",
-            "-thread_queue_size", "2048",
+            "-thread_queue_size", "4096",
             "-f", "x11grab", "-video_size", f"{self.WIDTH}x{self.HEIGHT}",
             "-framerate", str(self.fps),
             "-i", ":99.0+0,0",
             # Audio source from the PCMBroadcaster master node
-            "-f", "s16le", "-ar", "48000", "-ac", "2", "-thread_queue_size", "1024",
+            "-thread_queue_size", "4096",
+            "-f", "s16le", "-ar", "48000", "-ac", "2",
             "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000",
             # Map explicitly
             "-map", "0:v", "-map", "1:a",
             # Streaming Codecs
             "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
             "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k", "-minrate", f"{self.bitrate_video}k", 
-            "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p", "-g", str(self.fps * 2),
+            "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p", 
+            "-g", str(self.fps * 2), "-keyint_min", str(self.fps * 2), "-sc_threshold", "0",
             "-nal-hrd", "cbr",
             "-r", str(self.fps),
             "-c:a", "aac", "-b:a", f"{self.bitrate_audio}k", "-ar", "48000",
+            "-af", "aresample=async=1",
+            "-max_muxing_queue_size", "9999",
             "-f", "flv", "-flvflags", "no_duration_filesize",
             "-rtmp_live", "live", "-rtmp_buffer", "2000"
         ]

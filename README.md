@@ -612,4 +612,11 @@ YouTube Live control panel (redesigned):
 ⚙️ Config: config.py + .env.example
 - New: YOUTUBE_STREAM_PLAYLIST — default playlist URL for autonomous mode
 - Startup config summary now shows stream mode options and playlist URL
+
+⚡ Zero-Latency Pre-Generation System (utils/pregen.py)
+- Implemented background lookahead cache that hooks into `_start_song_playback` via `_trigger_pregen()`
+- While a song plays, the bot spins up a `DjPregenerator` to asynchronously traverse the next 5 queue items
+- LLM completions (`_try_ai_side_host`), TTS generations (Moss/EdgeTTS), and Sound Effect string bindings are aggressively computed and written to `assets/part2/` locally.
+- When `_dj_speak` or `_play_song_after_dj` are triggered natively, they check the cache. 
+- Cache HIT yields an instant `discord.FFmpegPCMAudio` pointer fetch, literally reducing LLM and TTS internet API latency from ~10000ms down to zero overhead.
 -->

@@ -118,6 +118,11 @@ class Music(commands.Cog):
         self._yt_stream_active = False  # True while stream is running
         self._yt_stream_guild = None  # Guild ID of the streaming guild
 
+        # ── DJ/TTS Pre-generation (assets/part2/) ──
+        # While a song plays, the pregenerator creates TTS audio and DJ/AI
+        # lines for the next songs in the queue, so transitions are instant.
+        self._pregenerator = None  # Initialized lazily in on_ready
+
         # ── Persist voice settings across restarts ──
         self._voice_settings_file = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "voice_settings.json"
@@ -2115,51 +2120,94 @@ class Music(commands.Cog):
         if sound_ids:
             logging.info(f"DJ: Extracted sound tags: {sound_ids} for guild {guild_id}")
 
+        # ── Pre-generation cache check ──
+        # If a TTS file for this transition was pre-generated while the
+        # previous song was playing, use it instantly (zero latency!).
+        pregen_entry = None
+        if not is_ai:
+            try:
+                pregen = self._get_pregenerator()
+                prev_title = ""
+                current = self.current_song.get(guild_id)
+                if current:
+                    prev_title = getattr(current, "title", "")
+                # The "upcoming" title is whatever _dj_speak is speaking about
+                # which is typically contained in the text passed in
+                pregen_entry = pregen.consume(
+                    guild_id,
+                    text[:100],  # Use first 100 chars of text as a key hint
+                    prev_title=prev_title,
+                )
+            except Exception:
+                pregen_entry = None
+
+        if (
+            pregen_entry
+            and pregen_entry.dj_tts_path
+            and os.path.isfile(pregen_entry.dj_tts_path)
+        ):
+            # Use the pre-generated TTS file — skip TTS generation entirely
+            if pregen_entry.dj_text:
+                clean_text = pregen_entry.dj_text
+            if pregen_entry.dj_sound_ids:
+                sound_ids = pregen_entry.dj_sound_ids
+            tts_path = pregen_entry.dj_tts_path
+            voice = self.dj_voice.get(guild_id, config.DJ_VOICE)
+            logging.info(
+                f"DJ: Using pre-generated TTS for guild {guild_id}: "
+                f"{clean_text[:60]}..."
+            )
+        else:
+            pregen_entry = None  # No cache hit — generate on the fly
+
         # Store what the DJ is about to say so the AI side host can react to it.
         # Only store the main DJ's lines — not the AI's own lines.
         if not is_ai:
             self._last_dj_line[guild_id] = clean_text if clean_text else text
 
-        voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
+        if not pregen_entry:
+            voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
 
-        # ── TTS engine routing ──
-        # Main DJ uses the configured TTS engine (MOSS → edge-tts fallback).
-        # AI Side Host always uses edge-tts (cloud-based, different voice from the DJ)
-        # to create a clear distinction between the two hosts.
-        if is_ai:
-            tts_engine = "edge-tts"
-            # The AI side host needs a distinct MALE voice in edge-tts.
-            # Config voice (en_news_male) is a MOSS name — use edge-tts equivalent instead.
-            AI_SIDE_HOST_EDGE_VOICE = (
-                "en-US-GuyNeural"  # Deep male voice, distinct from DJ
-            )
-            voice = AI_SIDE_HOST_EDGE_VOICE
-            logging.info(
-                f"AI Side Host: Speaking in guild {guild_id} with voice '{voice}' "
-                f"(source=AI Side Host, engine=edge-tts)"
-            )
-        else:
-            tts_engine = TTS_MODE  # Use configured engine (MOSS → edge-tts fallback)
+            # ── TTS engine routing ──
+            # Main DJ uses the configured TTS engine (MOSS → edge-tts fallback).
+            # AI Side Host always uses edge-tts (cloud-based, different voice from the DJ)
+            # to create a clear distinction between the two hosts.
+            if is_ai:
+                tts_engine = "edge-tts"
+                # The AI side host needs a distinct MALE voice in edge-tts.
+                # Config voice (en_news_male) is a MOSS name — use edge-tts equivalent instead.
+                AI_SIDE_HOST_EDGE_VOICE = (
+                    "en-US-GuyNeural"  # Deep male voice, distinct from DJ
+                )
+                voice = AI_SIDE_HOST_EDGE_VOICE
+                logging.info(
+                    f"AI Side Host: Speaking in guild {guild_id} with voice '{voice}' "
+                    f"(source=AI Side Host, engine=edge-tts)"
+                )
+            else:
+                tts_engine = (
+                    TTS_MODE  # Use configured engine (MOSS → edge-tts fallback)
+                )
+                logging.info(
+                    f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
+                    f"(source=DJ, engine={tts_engine}, "
+                    f"guild_dj_voice={self.dj_voice.get(guild_id, '<unset>')}, "
+                    f"config_default={config.DJ_VOICE})"
+                )
+
             logging.info(
                 f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
-                f"(source=DJ, engine={tts_engine}, "
+                f"(source={'AI Side Host' if is_ai else 'DJ'}, "
+                f"engine={tts_engine}, "
                 f"guild_dj_voice={self.dj_voice.get(guild_id, '<unset>')}, "
                 f"config_default={config.DJ_VOICE})"
             )
-
-        logging.info(
-            f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
-            f"(source={'AI Side Host' if is_ai else 'DJ'}, "
-            f"engine={tts_engine}, "
-            f"guild_dj_voice={self.dj_voice.get(guild_id, '<unset>')}, "
-            f"config_default={config.DJ_VOICE})"
-        )
-        tts_path = await generate_tts(
-            clean_text if clean_text else text,
-            voice,
-            source="AI Side Host" if is_ai else "DJ",
-            engine=tts_engine,
-        )
+            tts_path = await generate_tts(
+                clean_text if clean_text else text,
+                voice,
+                source="AI Side Host" if is_ai else "DJ",
+                engine=tts_engine,
+            )
 
         if not tts_path:
             logging.warning(f"DJ: TTS generation returned None for guild {guild_id}")
@@ -2401,26 +2449,105 @@ class Music(commands.Cog):
             logging.info(
                 f"AI Side Host: awaiting line generation for guild {guild_id}..."
             )
+
+            # ── Check pre-generation cache for AI side host line ──
+            ai_tts_path = None
+            ai_line = None
+            pregen = None
             try:
-                ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
-            except Exception as e:
-                logging.error(f"AI Side Host: error generating line: {e}")
-                ai_line = None
+                pregen = self._get_pregenerator()
+            except Exception:
+                pass
+
+            if pregen:
+                # Look for a cached entry by song title
+                prev = self._last_dj_line.get(guild_id, "")
+                entry = pregen.get(
+                    guild_id, getattr(data, "title", ""), prev_title=prev
+                )
+                if entry and entry.ai_tts_path and os.path.isfile(entry.ai_tts_path):
+                    ai_line = entry.ai_text
+                    ai_tts_path = entry.ai_tts_path
+                    # Consume it so it's not used twice
+                    pregen.consume(
+                        guild_id, getattr(data, "title", ""), prev_title=prev
+                    )
+                    logging.info(
+                        f"AI Side Host: Using pre-generated line for guild {guild_id}"
+                    )
+
+            if not ai_line:
+                try:
+                    ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
+                except Exception as e:
+                    logging.error(f"AI Side Host: error generating line: {e}")
+                    ai_line = None
+
             if ai_line:
                 logging.info(
                     f"AI Side Host: got line for guild {guild_id}, speaking..."
                 )
-                # Get context for the AI side host
+                # If we have a pre-generated TTS file, pass it via a
+                # special attribute so _dj_speak can use it directly
+                if ai_tts_path and os.path.isfile(ai_tts_path):
+                    # Play the pre-generated AI TTS file directly
+                    voice_client = guild.voice_client
+                    try:
+                        if voice_client.is_playing():
+                            voice_client.stop()
+                            await asyncio.sleep(0.3)
+                        from utils.dj import extract_sound_tags
+
+                        ai_clean, ai_sfx = extract_sound_tags(ai_line)
+                        tts_source = discord.FFmpegPCMAudio(
+                            ai_tts_path,
+                            before_options="-nostdin",
+                            options="-vn -t 30",
+                        )
+                        tts_player = discord.PCMVolumeTransformer(tts_source)
+                        tts_player.volume = self.current_volume.get(guild_id, 1.0)
+                        loop = self.bot.loop
+                        voice_client.play(
+                            tts_player,
+                            after=lambda e: loop.call_soon_threadsafe(
+                                self._on_tts_done, guild_id, e
+                            ),
+                        )
+
+                        # ── YouTube Live: Stream AI TTS audio ──
+                        if self._yt_stream_active and self._yt_streamer:
+                            asyncio.ensure_future(
+                                self._yt_streamer.play_tts(
+                                    ai_tts_path,
+                                    f"AI Side Host: {ai_clean[:60]}",
+                                ),
+                                loop=self.bot.loop,
+                            )
+
+                        self._current_tts_path[guild_id] = ai_tts_path
+                        self.dj_playing_tts[guild_id] = True
+                        self._dj_pending_sounds[guild_id] = ai_sfx
+                        self._last_dj_line[guild_id] = ai_clean
+
+                        # Store pending data for _on_tts_done
+                        self._dj_pending[guild_id] = (ctx, data, channel_id)
+                        self._ai_dj_pending_line[guild_id] = ai_line
+                        logging.info(
+                            f"AI Side Host: Pre-gen TTS playing in guild {guild_id}"
+                        )
+                        return
+                    except Exception as e:
+                        logging.warning(
+                            f"AI Side Host: Pre-gen TTS playback failed: {e}, "
+                            "falling back to live generation"
+                        )
+
+                # No pregen — generate and play via _dj_speak as usual
                 voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
                 spoke = await self._dj_speak(
                     guild.voice_client, ai_line, guild_id, voice=voice, is_ai=True
                 )
                 if spoke:
-                    # AI side host spoke — the 'after' callback on this TTS
-                    # will handle song playback via _on_tts_done. Store the
-                    # pending data so _on_tts_done can find it.
-                    # CRITICAL: _on_tts_done will call _play_song_after_dj again,
-                    # but with skip_ai=True to prevent the AI from speaking again.
                     self._dj_pending[guild_id] = (ctx, data, channel_id)
                     self._ai_dj_pending_line[guild_id] = ai_line
                     logging.info(
@@ -2431,7 +2558,6 @@ class Music(commands.Cog):
                     logging.warning(
                         f"AI Side Host: TTS failed for guild {guild_id}, playing song directly"
                     )
-                # If TTS failed, fall through to play the song directly
             else:
                 logging.info(f"AI Side Host: no line generated for guild {guild_id}")
 
@@ -2529,6 +2655,39 @@ class Music(commands.Cog):
             # TTS failed — play the song directly
             await self._play_song_after_dj(guild_id)
 
+    # ── DJ/TTS Pre-generation ──────────────────────────────────────
+
+    def _get_pregenerator(self):
+        """Get or create the DJ pregenerator (lazy init)."""
+        if self._pregenerator is None:
+            from utils.pregen import get_pregenerator
+
+            self._pregenerator = get_pregenerator(self.bot)
+        return self._pregenerator
+
+    def _trigger_pregen(self, guild_id: int, current_title: str):
+        """Fire off pre-generation of DJ lines for upcoming songs.
+
+        Called when a new song starts playing. If the DJ is enabled,
+        this kicks off a background task that pre-generates TTS audio
+        for the next few songs in the queue.
+        """
+        if not self.dj_enabled.get(guild_id, False):
+            return
+
+        queue = self.song_queues.get(guild_id)
+        if not queue or queue.empty():
+            return
+
+        try:
+            pregen = self._get_pregenerator()
+            asyncio.ensure_future(
+                pregen.pregenerate_upcoming(guild_id, queue, current_title),
+                loop=self.bot.loop,
+            )
+        except Exception as e:
+            logging.debug(f"Pregen: Failed to trigger for guild {guild_id}: {e}")
+
     async def _start_song_playback(self, ctx, data, channel_id=None):
         """
         Core song playback — creates the FFmpeg player and starts it.
@@ -2610,6 +2769,11 @@ class Music(commands.Cog):
             )
             self.current_song[guild_id] = data
             self.song_start_time[guild_id] = time.time()
+
+            # ── Pre-generate DJ lines for upcoming songs ──
+            # While this song plays (especially long songs), generate
+            # TTS audio for the next few songs so transitions are instant.
+            self._trigger_pregen(guild_id, data.title)
 
             # ── YouTube Live: Stream the song (with thumbnail) ──
             if self._yt_stream_active and self._yt_streamer and data.url:

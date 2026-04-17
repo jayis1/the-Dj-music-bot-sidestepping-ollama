@@ -162,6 +162,13 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/assets/<path:filename>")
+def serve_assets(filename):
+    """Fallback static handler for top-level assets."""
+    assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+    return send_from_directory(assets_dir, filename)
+
+
 # ── Template Filters ──────────────────────────────────────────────────
 
 
@@ -2226,6 +2233,7 @@ def api_overlay_state():
                 "ai_enabled": music.ai_dj_enabled.get(gid, False),
                 "station_name": getattr(config, "STATION_NAME", "MBot"),
                 "source": source,
+                "booting": getattr(music, "is_booting", False),
                 "yt_live_active": music._yt_stream_active,
                 "yt_live_autonomous": music._yt_stream_active,
                 "yt_live_title": getattr(music.current_song.get(gid), "title", None) if (music._yt_stream_active and music.current_song.get(gid)) else None,

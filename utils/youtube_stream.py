@@ -194,7 +194,7 @@ class YouTubeLiveStreamer:
         # 1. Spawn Xvfb virtual frame buffer
         try:
             self._xvfb = await asyncio.create_subprocess_exec(
-                "Xvfb", ":99", "-screen", "0", f"{self.WIDTH}x{self.HEIGHT}x24",
+                "/usr/bin/Xvfb", ":99", "-screen", "0", f"{self.WIDTH}x{self.HEIGHT}x24",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
@@ -208,7 +208,7 @@ class YouTubeLiveStreamer:
         env["DISPLAY"] = ":99"
         try:
             self._chromium = await asyncio.create_subprocess_exec(
-                "chromium", 
+                "/usr/bin/chromium", 
                 "--kiosk", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
                 "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
                 f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",

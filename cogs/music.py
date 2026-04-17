@@ -308,6 +308,7 @@ class Music(commands.Cog):
             # Use Auto-DJ system natively to seed queue
             # And then explicitly start playback since we're the first track
             async def _fill_and_play():
+                self.is_booting = True
                 await self._autodj_fill(ctx)
                 
                 # Eagerly start pregeneration of DJ assets immediately to cover 
@@ -321,10 +322,21 @@ class Music(commands.Cog):
                             pregen.pregenerate_upcoming(guild.id, queue, ""),
                             loop=self.bot.loop
                         )
+                        
+                        # Wait for either 25 tracks to generate, or 120 seconds max timeout
+                        max_wait = 120
+                        queued_target = min(25, queue.qsize())
+                        if queued_target > 0:
+                            for _ in range(max_wait):
+                                if len(pregen.pregen_queue) >= queued_target:
+                                    break
+                                await asyncio.sleep(1)
+                                
                 except Exception as e:
                     logging.debug(f"Pregen: Failed eager startup pregen: {e}")
                     
-                self.bot.loop.call_soon_threadsafe(self.play_next, ctx)
+                self.is_booting = False
+                asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop)
                 
             self.bot.loop.create_task(_fill_and_play())
             

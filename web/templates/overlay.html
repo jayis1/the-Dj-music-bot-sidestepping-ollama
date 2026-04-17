@@ -123,10 +123,15 @@ body {
         <img class="art" id="art" src="" alt="" style="display:none;">
         <div class="art-placeholder" id="artPlaceholder">🎵</div>
     </div>
+    
+    <!-- Intro Sequence Video -->
+    <video id="introVideo" style="display: none; position: absolute; z-index: 9999; top: 0; left: 0; width: 1280px; height: 720px; object-fit: cover;" autoplay loop muted>
+        <source src="/assets/intro.mp4" type="video/mp4">
+    </video>
 
 <script>
 // ── State ──
-let prevState = { playing: false, title: null, dj_speaking: false, ai_speaking: false };
+let prevState = { playing: false, title: null, dj_speaking: false, ai_speaking: false, booting: false };
 let pollInterval = 1000;
 
 // ── Elements ──
@@ -136,6 +141,7 @@ const speakingLabel = document.getElementById('speakingLabel');
 const tickerText = document.getElementById('tickerText');
 const art = document.getElementById('art');
 const artPlaceholder = document.getElementById('artPlaceholder');
+const introVideo = document.getElementById('introVideo');
 
 // ── Format time ──
 function fmt(sec) {
@@ -165,15 +171,28 @@ function updateOverlay(data) {
     if (data.paused) {
         title.innerHTML = `${data.title || 'Waiting'} <span style="font-size: 32px; color: #ff5555; vertical-align: middle;">[PAUSED]</span>`;
     }
-
-    // Ticker Text Logic (Dynamic FFmpeg Equivalent)
-    let elapsed = fmt(data.elapsed);
-    let duration = fmt(data.duration);
     
-    if (data.playing && data.title) {
-        tickerText.textContent = `▶ NOW PLAYING: ${data.title}  |  ${elapsed} / ${duration}`;
+    // Boot Sequence Logic
+    if (data.booting) {
+        if (!prevState.booting) {
+            introVideo.style.display = 'block';
+            introVideo.play();
+        }
+        tickerText.textContent = "⚙️ Booting Auto-DJ Mainframes... Generating opening sequence (Waiting for 25 tracks)";
     } else {
-        tickerText.textContent = "Radio sequence initialized — waiting in standby...";
+        if (prevState.booting) {
+            introVideo.style.display = 'none';
+            introVideo.pause();
+        }
+        // Normal Ticker Text Logic
+        let elapsed = fmt(data.elapsed);
+        let duration = fmt(data.duration);
+        
+        if (data.playing && data.title) {
+            tickerText.textContent = `▶ NOW PLAYING: ${data.title}  |  ${elapsed} / ${duration}`;
+        } else {
+            tickerText.textContent = "Radio sequence initialized — waiting in standby...";
+        }
     }
 
     // Speaking Hook Indicator

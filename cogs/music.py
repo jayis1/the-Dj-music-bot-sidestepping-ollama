@@ -281,10 +281,11 @@ class Music(commands.Cog):
             
             ctx = DummyContext(self.bot, guild)
             self.autodj_enabled[guild.id] = True
+            self.autodj_source[guild.id] = playlist_url
             
             # Use Auto-DJ system natively to seed queue
             # (which triggers `play_next` automatically if queue is zero)
-            self.bot.loop.create_task(self._process_autodj(ctx, override=playlist_url))
+            self.bot.loop.create_task(self._autodj_fill(ctx))
             
             self._yt_stream_active = True
             logging.info(

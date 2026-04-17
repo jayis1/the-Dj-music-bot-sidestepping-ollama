@@ -128,6 +128,12 @@
 
 
 </div>
+{% else %}
+<div class="card" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">
+    <div style="font-size: 32px; margin-bottom: 16px;">⏳</div>
+    <h3 style="margin-bottom: 8px; color: var(--text-primary);">Waiting for connection...</h3>
+    <p>The bot is still connecting to Discord or hasn't joined any servers yet.<br>Please wait a moment and refresh the page.</p>
+</div>
 {% endfor %}
 
 <!-- ==================== STYLES ==================== -->

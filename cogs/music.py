@@ -275,17 +275,18 @@ class Music(commands.Cog):
             
             # Start Headless AutoDJ Master Loop natively!
             class DummyContext:
-                def __init__(self, bot, guild):
+                def __init__(self, bot, guild, wrapper):
                     self.bot = bot
                     self.guild = guild
                     self.author = guild.me
-                    self.voice_client = None
+                    self.voice_client = wrapper
                     self.channel = guild.text_channels[0] if guild.text_channels else None
                     self.message = type("Mock", (), {"author": self.author})()
                 async def send(self, *args, **kwargs):
                     pass
             
-            ctx = DummyContext(self.bot, guild)
+            wrapper = PCMBroadcasterWrapper(self.bot, guild.id, self._broadcasters[guild.id])
+            ctx = DummyContext(self.bot, guild, wrapper)
             self.autodj_enabled[guild.id] = True
             self.dj_enabled[guild.id] = True
             self.ai_dj_enabled[guild.id] = True

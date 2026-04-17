@@ -249,7 +249,8 @@ class YouTubeLiveStreamer:
             vf += f"[0:v]format=yuva420p[bg];"
 
         # Dynamically build a modern audio spectrum effect using the UDP audio input [1:a]
-        vf += f"[1:a]showwaves=s={W}x240:mode=cline:colors=0x00FFFF|0xFF00FF:rate={fps}[viz];"
+        vf += f"[1:a]asplit=2[a_viz][outa];"
+        vf += f"[a_viz]showwaves=s={W}x240:mode=cline:colors=0x00FFFF|0xFF00FF:rate={fps}[viz];"
 
         # Prepare Thumbnail scaling [2:v]
         vf += f"[2:v]scale=120:120:force_original_aspect_ratio=decrease,format=yuva420p[thumb_scaled];"
@@ -296,7 +297,7 @@ class YouTubeLiveStreamer:
         vf += filter_chain
         
         cmd.extend(["-filter_complex", vf])
-        cmd.extend(["-map", "[outv]", "-map", "1:a"]) # Tie video to raw UDP audio stream 
+        cmd.extend(["-map", "[outv]", "-map", "[outa]"]) # Tie video to the split audio pass-through 
 
         # ── RTMP encoding settings ──
         cmd.extend([

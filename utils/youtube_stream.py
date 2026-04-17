@@ -49,6 +49,8 @@ class YouTubeLiveStreamer:
         self.udp_port = udp_port
 
         self._process: asyncio.subprocess.Process | None = None
+        self._chromium: asyncio.subprocess.Process | None = None
+        self._xvfb: asyncio.subprocess.Process | None = None
         self._running = False
         self._watchdog_task: asyncio.Task | None = None
         self._started_at: float = 0

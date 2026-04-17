@@ -404,16 +404,20 @@ def radio():
 
             if music:
                 current = music.current_song.get(guild_id)
+                vc = music._get_audio_client(guild_id)
+
+            in_discord = guild.voice_client is not None
+            in_voice = vc is not None if music else False
 
             guilds_data.append(
                 {
                     "id": guild_id,
                     "name": guild.name,
                     "member_count": guild.member_count,
-                    "in_voice": voice is not None,
-                    "voice_channel": voice.channel.name if voice else None,
-                    "playing": voice.is_playing() if voice else False,
-                    "paused": voice.is_paused() if voice else False,
+                    "in_voice": in_voice,
+                    "voice_channel": guild.voice_client.channel.name if in_discord else ("Headless YouTube Stream" if in_voice else None),
+                    "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,
+                    "paused": getattr(vc, 'is_paused', lambda: False)() if in_voice else False,
                     "current_song": current.title if current else None,
                     "current_song_url": current.webpage_url if current else None,
                     "current_thumbnail": current.thumbnail if current else None,

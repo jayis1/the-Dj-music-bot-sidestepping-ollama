@@ -27,7 +27,7 @@
         </div>
     </div>
 
-    {% if g.in_voice %}
+
 
     <!-- ── Add to Queue ──────────────────────────────────────── -->
     <div style="margin-bottom: 24px;">
@@ -126,12 +126,7 @@
         {% endif %}
     </div>
 
-    {% else %}
-    <div style="text-align: center; padding: 24px 0; color: var(--text-muted);">
-        <p>{{ bot_name }} is not connected to a voice channel in this server.</p>
-        <p style="font-size: 12px; margin-top: 4px;">Use <code>?join</code> in Discord to connect.</p>
-    </div>
-    {% endif %}
+
 </div>
 {% endfor %}
 

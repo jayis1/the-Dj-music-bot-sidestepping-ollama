@@ -1247,6 +1247,7 @@ def settings_page():
 
     return render_template(
         "settings.html",
+        bot_name=bot_user,
         bot_user=bot_user,
         bot_avatar=bot_avatar,
         guild_count=guild_count,

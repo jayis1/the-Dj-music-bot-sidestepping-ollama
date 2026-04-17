@@ -84,23 +84,28 @@ class PCMBroadcaster(discord.AudioSource):
         """Called automatically by Discord VoiceClient. Drives the clock native to the server."""
         self._is_discord_clocking = True
         data = b''
+        source = None
         
         with self._source_lock:
-            if self._source:
-                try:
-                    data = self._source.read()
-                except Exception as e:
-                    log.error(f"Broadcaster read error: {e}")
-                    data = b''
-                
-                if not data:
-                    self._trigger_after()
-                    try:
-                        self._source.cleanup()
-                    except Exception:
-                        pass
-                    self._source = None
-                    
+            source = self._source
+            
+        if source:
+            try:
+                data = source.read()
+            except Exception as e:
+                log.error(f"Broadcaster read error: {e}")
+                data = b''
+            
+            if not data:
+                with self._source_lock:
+                    if self._source is source:
+                        self._trigger_after()
+                        try:
+                            self._source.cleanup()
+                        except Exception:
+                            pass
+                        self._source = None
+                        
         payload = data if data else b'\x00' * 3840
         try:
             self.sock.sendto(payload, self.target)
@@ -131,21 +136,27 @@ class PCMBroadcaster(discord.AudioSource):
                 continue
                 
             data = b''
+            source = None
+            
             with self._source_lock:
-                if self._source:
-                    try:
-                        data = self._source.read()
-                    except Exception:
-                        data = b''
-                        
-                    if not data:
-                        self._trigger_after()
-                        try:
-                            self._source.cleanup()
-                        except Exception:
-                            pass
-                        self._source = None
-                        
+                source = self._source
+                
+            if source:
+                try:
+                    data = source.read()
+                except Exception:
+                    data = b''
+                    
+                if not data:
+                    with self._source_lock:
+                        if self._source is source:
+                            self._trigger_after()
+                            try:
+                                self._source.cleanup()
+                            except Exception:
+                                pass
+                            self._source = None
+                            
             payload = data if data else silence
             try:
                 self.sock.sendto(payload, self.target)

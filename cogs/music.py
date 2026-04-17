@@ -206,12 +206,14 @@ class Music(commands.Cog):
                 self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
                 
             broadcaster = self._broadcasters[guild_id]
-            broadcaster.set_source(source, guild_id=guild_id, bot=self.bot, after=after)
             
             if isinstance(vc, discord.VoiceClient):
+                # Multiplex to both Discord and autonomous RTMP stream
+                broadcaster.set_source(source, guild_id=guild_id, bot=self.bot, after=after)
                 vc.play(broadcaster, after=None)
             else:
-                vc.play(source, after=after)  # Headless Wrapper
+                # Pure Headless Wrapper handles set_source inherently
+                vc.play(source, after=after)
         else:
             vc.play(source, after=after)
         return True

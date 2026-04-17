@@ -861,8 +861,8 @@ class YouTubeLiveStreamer:
 
         cmd.extend(["-filter_complex", vf])
 
-        # Map outputs — audio index shifts when GIF is present
-        audio_idx = "3:a" if has_gif else "2:a"
+        # Map outputs — audio is always [2:a]
+        audio_idx = "2:a"
         cmd.extend(["-map", "[outv]", "-map", audio_idx])
 
         # Encoding settings

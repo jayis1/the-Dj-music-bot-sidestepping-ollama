@@ -2304,13 +2304,6 @@ class Music(commands.Cog):
                 player = discord.PCMVolumeTransformer(source)
                 player.volume = self.current_volume.get(guild_id, 1.0)
 
-                # ── YouTube Live: Stream sound effect ──
-                if self._yt_stream_active and self._yt_streamer:
-                    asyncio.ensure_future(
-                        self._yt_streamer.play_tts(path, f"Sound Effect: {sound_id}"),
-                        loop=self.bot.loop,
-                    )
-
                 # Stop anything currently playing before playing the sound
                 if guild.voice_client.is_playing():
                     guild.voice_client.stop()
@@ -2594,12 +2587,17 @@ class Music(commands.Cog):
             # ── YouTube Live: Stream the song (with thumbnail) ──
             if self._yt_stream_active and self._yt_streamer and data.url:
                 thumb = getattr(data, "thumbnail", None)
-                asyncio.ensure_future(
-                    self._yt_streamer.play_song(
+                
+                async def _play_yt_song():
+                    # Give the preceding FFmpeg process (DJ TTS / Waiting list)
+                    # 2 seconds to natively flush its RTMP packets to YouTube
+                    # perfectly over the internet before tearing down the pipe.
+                    await asyncio.sleep(2.0)
+                    await self._yt_streamer.play_song(
                         data.url, data.title or "Unknown", thumbnail=thumb
-                    ),
-                    loop=self.bot.loop,
-                )
+                    )
+                    
+                asyncio.ensure_future(_play_yt_song(), loop=self.bot.loop)
 
             # Record to recently-played history
             self._record_history(guild_id, data)

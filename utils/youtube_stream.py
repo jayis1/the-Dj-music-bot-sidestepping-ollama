@@ -779,16 +779,34 @@ class YouTubeLiveStreamer:
     # ── FFmpeg process management ───────────────────────────────────
 
     async def _kill_process(self):
-        """Kill the current FFmpeg process gracefully."""
+        """Kill the current FFmpeg process gracefully.
+
+        Sends 'q' to FFmpeg's stdin for a graceful shutdown (flushes
+        RTMP buffer) before falling back to SIGTERM/SIGKILL.
+        """
         if self._process and self._process.returncode is None:
             try:
-                self._process.terminate()
-                await asyncio.wait_for(self._process.wait(), timeout=5)
-            except (asyncio.TimeoutError, ProcessLookupError):
+                # Send 'q' to FFmpeg stdin for graceful quit — this lets
+                # FFmpeg flush its output buffers and send final RTMP packets
+                if self._process.stdin:
+                    self._process.stdin.write(b"q")
+                    self._process.stdin.flush()
+                    try:
+                        await asyncio.wait_for(self._process.wait(), timeout=3)
+                    except asyncio.TimeoutError:
+                        pass
+            except Exception:
+                pass
+
+            if self._process and self._process.returncode is None:
                 try:
-                    self._process.kill()
-                except ProcessLookupError:
-                    pass
+                    self._process.terminate()
+                    await asyncio.wait_for(self._process.wait(), timeout=5)
+                except (asyncio.TimeoutError, ProcessLookupError):
+                    try:
+                        self._process.kill()
+                    except ProcessLookupError:
+                        pass
         self._process = None
 
     # ── FFmpeg command builders ─────────────────────────────────────
@@ -1121,7 +1139,6 @@ class YouTubeLiveStreamer:
         cmd.extend(["-map", "[outv]", "-map", "1:a"])
 
         cmd.extend(self._encoding_args())
-        cmd.append("-shortest")
 
         await self._run_ffmpeg(cmd, "waiting")
 
@@ -1272,6 +1289,7 @@ class YouTubeLiveStreamer:
             self._stderr_lines = []
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.PIPE,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
@@ -1322,10 +1340,11 @@ class YouTubeLiveStreamer:
 
         In autonomous mode, the _run_autonomous_loop handles re-advancement.
         In mirror mode, we restart the waiting card so the stream stays alive.
+        Checks every 3 seconds (fast recovery to avoid YouTube "no data" gaps).
         """
         try:
             while self._running:
-                await asyncio.sleep(10)
+                await asyncio.sleep(3)
                 if (
                     self._process
                     and self._process.returncode is not None
@@ -1340,7 +1359,7 @@ class YouTubeLiveStreamer:
                                 log.warning(f"YouTube Live [stderr]: {line[:200]}")
 
                     if not self._autonomous:
-                        # Mirror mode: restart waiting card
+                        # Mirror mode: restart waiting card immediately
                         log.warning("YouTube Live: Restarting waiting card...")
                         await self.play_waiting()
                     # In autonomous mode, the loop handles advancement

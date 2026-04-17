@@ -88,6 +88,11 @@ def _make_base_opts():
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36"
         },
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web", "mweb"]
+            }
+        },
         "extract_flat": "discard_in_playlist",
     }
 

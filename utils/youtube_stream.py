@@ -198,7 +198,7 @@ class YouTubeLiveStreamer:
             "-ar", "48000", 
             "-ac", "2", 
             "-thread_queue_size", "1024",
-            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536"
+            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000"
         ])
 
         # Input 2: Animated GIF overlay wrapper

@@ -44,6 +44,7 @@ import os
 import random
 import time
 import hashlib
+import subprocess
 import aiohttp
 from pathlib import Path
 
@@ -676,10 +677,60 @@ class YouTubeLiveStreamer:
         """Escape text for FFmpeg drawtext filter."""
         return text.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:max_len]
 
+    # ── Font resolution ──────────────────────────────────────────────
+    # FFmpeg drawtext doesn't support "bold=1" — that causes "Option not found".
+    # "font=Sans" requires --enable-fontconfig at compile time and isn't reliable.
+    # Instead, we use fontfile= with absolute paths. For bold text, we use
+    # the -Bold variant of the font.
+
+    _FONT_BOLD: str | None = None
+    _FONT_REGULAR: str | None = None
+
+    @classmethod
+    def _resolve_font(cls, bold: bool = False) -> str:
+        """Resolve a font file path for FFmpeg drawtext.
+
+        Tries Noto Sans, then DejaVu Sans, then falls back to a basic X11 font.
+        Returns a fontfile= parameter value (absolute path).
+        """
+        cache_key = "_FONT_BOLD" if bold else "_FONT_REGULAR"
+        cached = getattr(cls, cache_key)
+        if cached is not None:
+            return cached
+
+        candidates_bold = [
+            "/usr/share/fonts/noto/NotoSans-Bold.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
+        ]
+        candidates_regular = [
+            "/usr/share/fonts/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
+        ]
+        candidates = candidates_bold if bold else candidates_regular
+
+        for path in candidates:
+            if os.path.isfile(path):
+                setattr(cls, cache_key, path)
+                log.debug(f"YouTube Live: Using font: {path}")
+                return path
+
+        # Fallback: no font file found — drawtext will use no fontfile
+        # (this usually fails, but at least we tried)
+        log.warning(
+            "YouTube Live: No suitable font found! drawtext may fail. "
+            "Install fonts-noto or fonts-dejavu: apt install fonts-dejavu-core"
+        )
+        setattr(cls, cache_key, "")
+        return ""
+
     async def _start_ffmpeg_song(
         self, audio_url: str, title: str, thumb_path: str | None
     ):
-        """Start FFmpeg: audio from URL + animated video card → RTMP.
+        """Start FFmpeg: audio from URL + animated video card -> RTMP.
 
         Input layout:
             [0] = background color source (lavfi)
@@ -687,20 +738,9 @@ class YouTubeLiveStreamer:
             [2] = audio from URL
             [3] = animated GIF (optional, if has_gif)
 
-        Filter chain:
-            [1:v] → scale/pad → [thumb]
-            [0:v] → format → [bg]
-            [bg][thumb] → overlay → [with_thumb]
-            [3:v] → split → [gif_big][gif_small]   (if has_gif)
-            [with_thumb][gif_big] → overlay → [with_gif]
-            [with_gif] → drawtext(station) → [with_station]
-            [with_station] → drawtext(title) → [with_title]
-            [with_title] → drawtext("Now Playing") → [with_sub]
-            [with_sub] → drawbox(bottom bar) → [with_bar]
-            [with_bar] → drawtext("LIVE") → [with_live]
-            [with_live][gif_small] → overlay → [with_gifbar]  (if has_gif)
-            [with_gifbar] → drawtext(station) → [outv]        (if has_gif)
-            [with_live] → drawtext(station) → [outv]           (if no gif)
+        Uses fontfile= with absolute paths (not font=Name) for reliability.
+        Uses NotoSans-Bold.ttf for bold text, NotoSans-Regular.ttf for normal.
+        No 'bold=1' parameter — FFmpeg drawtext does not support it.
         """
         image = self._resolve_image()
         safe_station = self._safe_text(self.station_name, 30)
@@ -708,21 +748,37 @@ class YouTubeLiveStreamer:
         W, H = self.WIDTH, self.HEIGHT
         fps = self.fps
 
+        font_bold = self._resolve_font(bold=True)
+        font_reg = self._resolve_font(bold=False)
+
         cmd = ["ffmpeg", "-re"]
 
         # Input 0: Background color source
         cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
 
-        # Input 1: Thumbnail or logo image
+        # Input 1: Thumbnail or logo image (looped, with framerate set)
         if thumb_path and os.path.isfile(thumb_path):
-            cmd.extend(["-loop", "1", "-i", thumb_path])
+            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", thumb_path])
         elif image:
-            cmd.extend(["-loop", "1", "-i", image])
+            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", image])
         else:
             cmd.extend(["-f", "lavfi", "-i", f"color=c=0x1a1a2e:s=360x360:r={fps}"])
 
-        # Input 2: Audio URL
-        cmd.extend(["-i", audio_url])
+        # Input 2: Audio URL (with user-agent + reconnect for YouTube)
+        cmd.extend(
+            [
+                "-user_agent",
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "-reconnect",
+                "1",
+                "-reconnect_streamed",
+                "1",
+                "-reconnect_delay_max",
+                "5",
+                "-i",
+                audio_url,
+            ]
+        )
 
         # Input 3: Animated GIF (optional)
         gif_path = self._resolve_gif()
@@ -733,7 +789,7 @@ class YouTubeLiveStreamer:
         # ── Build filter_complex ────────────────────────────────────
         vf = ""
 
-        # Scale thumbnail to 400x400, pad to allow shadow space
+        # Scale thumbnail
         vf += f"[1:v]scale=400:400:force_original_aspect_ratio=decrease,"
         vf += f"pad=410:420:(ow-iw)/2:(oh-ih)/2:color=black@0,"
         vf += f"format=yuva420p[thumb];"
@@ -744,60 +800,68 @@ class YouTubeLiveStreamer:
         # Overlay thumbnail on left
         vf += f"[bg][thumb]overlay=30:150:format=auto[with_thumb];"
 
-        # GIF overlay (badge on thumbnail + small bar badge)
+        # GIF overlay (use split so one GIF input feeds two filters)
         if has_gif:
-            # Split GIF input into two streams: one for badge, one for bar
             vf += f"[3:v]split=2[gif_big_in][gif_small_in];"
-            # Scale the big badge
             vf += f"[gif_big_in]scale=120:120:force_original_aspect_ratio=decrease,"
             vf += f"format=yuva420p[gif_big];"
-            # Scale the small bar badge
             vf += f"[gif_small_in]scale=60:60:force_original_aspect_ratio=decrease,"
             vf += f"format=yuva420p[gif_small];"
-            # Overlay big GIF badge on thumbnail area
             vf += f"[with_thumb][gif_big]overlay=320:440:format=auto[with_gif];"
             current = "with_gif"
         else:
             current = "with_thumb"
 
-        # Station name (top right area)
+        # Station name (top right, bold font)
         vf += f"[{current}]drawtext=text='{safe_station}':"
-        vf += f"fontcolor=0xff4444:fontsize=20:font=Sans:bold=1:"
-        vf += f"x=470:y=160:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_station];"
+        vf += f"fontcolor=0xff4444:fontsize=20"
+        if font_bold:
+            vf += f":fontfile={font_bold}"
+        vf += f":x=470:y=160:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_station];"
 
-        # Song title
+        # Song title (bold font)
         vf += f"[with_station]drawtext=text='{safe_title}':"
-        vf += f"fontcolor=white:fontsize=26:font=Sans:bold=1:"
-        vf += f"x=470:y=200:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_title];"
+        vf += f"fontcolor=white:fontsize=26"
+        if font_bold:
+            vf += f":fontfile={font_bold}"
+        vf += f":x=470:y=200:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_title];"
 
-        # "Now Playing" indicator
-        vf += f"[with_title]drawtext=text='♪ Now Playing':"
-        vf += f"fontcolor=0x8888ff:fontsize=14:font=Sans:"
-        vf += f"x=470:y=250[with_sub];"
+        # "Now Playing" indicator (regular font)
+        vf += f"[with_title]drawtext=text='Now Playing':"
+        vf += f"fontcolor=0x8888ff:fontsize=14"
+        if font_reg:
+            vf += f":fontfile={font_reg}"
+        vf += f":x=470:y=250[with_sub];"
 
         # Bottom bar background
         vf += f"[with_sub]drawbox=x=0:y={H - 55}:w={W}:h=55:"
         vf += f"color=0x0a0a23@0.95:t=fill[with_bar];"
 
-        # LIVE indicator
-        vf += f"[with_bar]drawtext=text='▶ LIVE':"
-        vf += f"fontcolor=0xff0000:fontsize=18:font=Sans:bold=1:"
-        vf += f"x=15:y={H - 38}[with_live];"
+        # LIVE indicator (bold font)
+        vf += f"[with_bar]drawtext=text='LIVE':"
+        vf += f"fontcolor=0xff0000:fontsize=18"
+        if font_bold:
+            vf += f":fontfile={font_bold}"
+        vf += f":x=15:y={H - 38}[with_live];"
 
-        # Station name in bottom bar + small GIF badge
+        # Station name in bottom bar + optional GIF badge
         if has_gif:
             vf += f"[with_live][gif_small]overlay={W - 75}:{H - 50}:format=auto[with_gifbar];"
             vf += f"[with_gifbar]drawtext=text='{safe_station}':"
-            vf += f"fontcolor=0xffffff@0.6:fontsize=14:font=Sans:"
-            vf += f"x=100:y={H - 35}[outv]"
+            vf += f"fontcolor=0xffffff@0.6:fontsize=14"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=100:y={H - 35}[outv]"
         else:
             vf += f"[with_live]drawtext=text='{safe_station}':"
-            vf += f"fontcolor=0xffffff@0.6:fontsize=14:font=Sans:"
-            vf += f"x=100:y={H - 35}[outv]"
+            vf += f"fontcolor=0xffffff@0.6:fontsize=14"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=100:y={H - 35}[outv]"
 
         cmd.extend(["-filter_complex", vf])
 
-        # Map outputs — audio index depends on GIF presence
+        # Map outputs — audio index shifts when GIF is present
         audio_idx = "3:a" if has_gif else "2:a"
         cmd.extend(["-map", "[outv]", "-map", audio_idx])
 
@@ -807,28 +871,12 @@ class YouTubeLiveStreamer:
         await self._run_ffmpeg(cmd, "song")
 
     async def _start_ffmpeg_waiting(self, message: str):
-        """Start FFmpeg: animated waiting card + silence → RTMP.
+        """Start FFmpeg: animated waiting card + silence -> RTMP.
 
         Input layout:
             [0] = background image (looped) or color source (lavfi)
             [1] = silence audio source (lavfi anullsrc)
             [2] = animated GIF (optional, if has_gif)
-
-        Filter chain (no GIF):
-            [0:v] → scale/pad → [bg]
-            [bg] → drawtext(station) → drawtext(message) → drawtext(standby bar) → [outv]
-
-        Filter chain (with GIF):
-            [0:v] → scale/pad → [bg]
-            [bg] → drawtext(station) → [with_station]
-            [2:v] → split → [gif_center_in][gif_bar_in]
-            [gif_center_in] → scale → [gif_center]
-            [with_station][gif_center] → overlay → [with_gif]
-            [with_gif] → drawtext(message) → [msg]
-            [gif_bar_in] → scale → [gif_bar]
-            [msg] → drawbox/drawtext(standby) → [with_bar]
-            [with_bar][gif_bar] → overlay → [with_bar_gif]
-            [with_bar_gif] → drawtext(station) → [outv]
         """
         image = self._resolve_image()
         safe_msg = self._safe_text(message, 60)
@@ -836,11 +884,14 @@ class YouTubeLiveStreamer:
         W, H = self.WIDTH, self.HEIGHT
         fps = self.fps
 
+        font_bold = self._resolve_font(bold=True)
+        font_reg = self._resolve_font(bold=False)
+
         cmd = ["ffmpeg", "-re"]
 
         # Input 0: Background image or color
         if image:
-            cmd.extend(["-loop", "1", "-i", image])
+            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", image])
         else:
             cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
 
@@ -866,10 +917,12 @@ class YouTubeLiveStreamer:
         else:
             vf += f"[0:v]format=yuva420p[bg];"
 
-        # Station name centered
+        # Station name centered (bold)
         vf += f"[bg]drawtext=text='{safe_station}':"
-        vf += f"fontcolor=0xff4444:fontsize=32:font=Sans:bold=1:"
-        vf += f"x=(w-text_w)/2:y=h*0.30:"
+        vf += f"fontcolor=0xff4444:fontsize=32"
+        if font_bold:
+            vf += f":fontfile={font_bold}"
+        vf += f":x=(w-text_w)/2:y=h*0.30:"
         vf += f"box=1:boxcolor=0x0a0a23@0.8:boxborderw=8[with_station];"
 
         if has_gif:
@@ -879,16 +932,20 @@ class YouTubeLiveStreamer:
             vf += f"format=yuva420p[gif_center];"
             vf += f"[with_station][gif_center]overlay=(w-200)/2:h*0.42:format=auto[with_gif];"
 
-            # Waiting message
+            # Waiting message (regular)
             vf += f"[with_gif]drawtext=text='{safe_msg}':"
-            vf += f"fontcolor=white@0.7:fontsize=18:font=Sans:"
-            vf += f"x=(w-text_w)/2:y=h*0.72:"
+            vf += f"fontcolor=white@0.7:fontsize=18"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=(w-text_w)/2:y=h*0.72:"
             vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
 
             # Bottom bar
             vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-            vf += f"drawtext=text='▶ STANDBY':fontcolor=0xffaa00:fontsize=16:font=Sans:bold=1:"
-            vf += f"x=15:y={H - 35}[with_bar];"
+            vf += f"drawtext=text='STANDBY':fontcolor=0xffaa00:fontsize=16"
+            if font_bold:
+                vf += f":fontfile={font_bold}"
+            vf += f":x=15:y={H - 35}[with_bar];"
 
             # Small GIF badge in bar
             vf += f"[gif_bar_in]scale=40:40:force_original_aspect_ratio=decrease,"
@@ -897,70 +954,64 @@ class YouTubeLiveStreamer:
 
             # Station name in bar
             vf += f"[with_bar_gif]drawtext=text='{safe_station}':"
-            vf += f"fontcolor=0xffffff@0.5:fontsize=14:font=Sans:"
-            vf += f"x=130:y={H - 35}[outv]"
+            vf += f"fontcolor=0xffffff@0.5:fontsize=14"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=130:y={H - 35}[outv]"
         else:
             # No GIF — simple chain
             vf += f"[with_station]drawtext=text='{safe_msg}':"
-            vf += f"fontcolor=white@0.7:fontsize=18:font=Sans:"
-            vf += f"x=(w-text_w)/2:y=h*0.72:"
+            vf += f"fontcolor=white@0.7:fontsize=18"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=(w-text_w)/2:y=h*0.72:"
             vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
 
             # Bottom bar
             vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-            vf += f"drawtext=text='▶ STANDBY':fontcolor=0xffaa00:fontsize=16:font=Sans:bold=1:"
-            vf += f"x=15:y={H - 35},"
-            vf += f"drawtext=text='{safe_station}':fontcolor=0xffffff@0.5:fontsize=14:font=Sans:"
-            vf += f"x=130:y={H - 35}"
+            vf += f"drawtext=text='STANDBY':fontcolor=0xffaa00:fontsize=16"
+            if font_bold:
+                vf += f":fontfile={font_bold}"
+            vf += f":x=15:y={H - 35},"
+            vf += f"drawtext=text='{safe_station}':fontcolor=0xffffff@0.5:fontsize=14"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=130:y={H - 35}"
             vf += f"[outv]"
 
         cmd.extend(["-filter_complex", vf])
         cmd.extend(["-map", "[outv]", "-map", "1:a"])
 
-        # Encoding settings + shortest flag (waiting card has infinite silence,
-        # but we'll kill the process when switching cards)
         cmd.extend(self._encoding_args())
         cmd.append("-shortest")
 
         await self._run_ffmpeg(cmd, "waiting")
 
     async def _start_ffmpeg_tts(self, tts_path: str, text: str):
-        """Start FFmpeg: TTS audio + animated DJ card → RTMP.
+        """Start FFmpeg: TTS audio + animated DJ card -> RTMP.
 
         Input layout:
             [0] = background image (looped) or color source
             [1] = TTS audio file
             [2] = animated GIF (optional, if has_gif)
-
-        Filter chain (with GIF):
-            [0:v] → scale/pad → [bg]
-            [bg] → drawtext("DJ Speaking") → [with_label]
-            [2:v] → split → [gif_center_in][gif_bar_in]
-            [gif_center_in] → scale → [gif_center]
-            [with_label][gif_center] → overlay → [with_gif]
-            [with_gif] → drawtext(text) → [msg]
-            [gif_bar_in] → scale → [gif_bar]
-            [msg] → drawbox/drawtext(bar) → [with_bar]
-            [with_bar][gif_bar] → overlay → [outv]
-
-        Filter chain (no GIF):
-            [0:v] → scale/pad → [bg]
-            [bg] → drawtext("DJ Speaking") → drawtext(text) → drawbox/drawtext(bar) → [outv]
         """
         image = self._resolve_image()
         gif_path = self._resolve_gif()
         has_gif = gif_path and os.path.isfile(gif_path)
-        label = self._safe_text("🎙️ DJ Speaking", 30)
+        label = "DJ Speaking"
         safe_text = self._safe_text(text, 50)
         safe_station = self._safe_text(self.station_name, 30)
         W, H = self.WIDTH, self.HEIGHT
         fps = self.fps
 
+        font_bold = self._resolve_font(bold=True)
+        font_reg = self._resolve_font(bold=False)
+
         cmd = ["ffmpeg", "-re"]
 
         # Input 0: Background image or color
         if image:
-            cmd.extend(["-loop", "1", "-i", image])
+            cmd.extend(["-loop", "1", "-framerate", str(fps), "-i", image])
         else:
             cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
 
@@ -982,10 +1033,12 @@ class YouTubeLiveStreamer:
         else:
             vf += f"[0:v]format=yuva420p[bg];"
 
-        # "DJ Speaking" label
+        # "DJ Speaking" label (bold, green)
         vf += f"[bg]drawtext=text='{label}':"
-        vf += f"fontcolor=0x00ff88:fontsize=28:font=Sans:bold=1:"
-        vf += f"x=(w-text_w)/2:y=h*0.32:"
+        vf += f"fontcolor=0x00ff88:fontsize=28"
+        if font_bold:
+            vf += f":fontfile={font_bold}"
+        vf += f":x=(w-text_w)/2:y=h*0.32:"
         vf += f"box=1:boxcolor=0x0a0a23@0.8:boxborderw=8[with_label];"
 
         if has_gif:
@@ -995,37 +1048,47 @@ class YouTubeLiveStreamer:
             vf += f"format=yuva420p[gif_center];"
             vf += f"[with_label][gif_center]overlay=(w-150)/2:h*0.48:format=auto[with_gif];"
 
-            # DJ text
+            # DJ text (regular)
             vf += f"[with_gif]drawtext=text='{safe_text}':"
-            vf += f"fontcolor=white@0.8:fontsize=18:font=Sans:"
-            vf += f"x=(w-text_w)/2:y=h*0.65:"
+            vf += f"fontcolor=white@0.8:fontsize=18"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=(w-text_w)/2:y=h*0.65:"
             vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
 
             # Bottom bar
             vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-            vf += f"drawtext=text='🎙️ LIVE • {safe_station}':"
-            vf += f"fontcolor=0xff4444:fontsize=16:font=Sans:bold=1:"
-            vf += f"x=15:y={H - 35}[with_bar];"
+            vf += f"drawtext=text='LIVE - {safe_station}':"
+            vf += f"fontcolor=0xff4444:fontsize=16"
+            if font_bold:
+                vf += f":fontfile={font_bold}"
+            vf += f":x=15:y={H - 35}[with_bar];"
 
             # Small GIF badge
             vf += f"[gif_bar_in]scale=40:40:force_original_aspect_ratio=decrease,"
             vf += f"format=yuva420p[gif_bar];"
             vf += f"[with_bar][gif_bar]overlay={W - 55}:{H - 45}:format=auto[outv]"
         else:
-            # DJ text
+            # DJ text (regular)
             vf += f"[with_label]drawtext=text='{safe_text}':"
-            vf += f"fontcolor=white@0.8:fontsize=18:font=Sans:"
-            vf += f"x=(w-text_w)/2:y=h*0.65:"
+            vf += f"fontcolor=white@0.8:fontsize=18"
+            if font_reg:
+                vf += f":fontfile={font_reg}"
+            vf += f":x=(w-text_w)/2:y=h*0.65:"
             vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
 
             # Bottom bar
             vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-            vf += f"drawtext=text='🎙️ LIVE • {safe_station}':"
-            vf += f"fontcolor=0xff4444:fontsize=16:font=Sans:bold=1:"
-            vf += f"x=15:y={H - 35}"
+            vf += f"drawtext=text='LIVE - {safe_station}':"
+            vf += f"fontcolor=0xff4444:fontsize=16"
+            if font_bold:
+                vf += f":fontfile={font_bold}"
+            vf += f":x=15:y={H - 35}"
             vf += f"[outv]"
 
         cmd.extend(["-filter_complex", vf])
+
+        # Map outputs: audio is always [1:a]
         cmd.extend(["-map", "[outv]", "-map", "1:a"])
 
         cmd.extend(self._encoding_args())
@@ -1078,7 +1141,8 @@ class YouTubeLiveStreamer:
                 f"YouTube Live: FFmpeg {label} started "
                 f"(pid={self._process.pid}, cmd has {len(cmd)} args)"
             )
-            log.debug(f"YouTube Live: FFmpeg command: {' '.join(cmd[:8])}...")
+            # Log the full command for debugging (very helpful for filter_complex issues)
+            log.debug(f"YouTube Live: FFmpeg command:\n{' '.join(cmd)}")
             asyncio.create_task(self._drain_stderr(label))
         except FileNotFoundError:
             self._last_error = "ffmpeg not found — install with: apt install ffmpeg"
@@ -1090,7 +1154,12 @@ class YouTubeLiveStreamer:
             self._running = False
 
     async def _drain_stderr(self, label: str):
-        """Drain FFmpeg stderr to prevent pipe buffer deadlocks."""
+        """Drain FFmpeg stderr to prevent pipe buffer deadlocks.
+
+        Logs ALL lines at WARNING level so we see exactly what FFmpeg complains about.
+        Previous code only logged lines containing 'error'/'warning', which missed
+        the actual "Option not found" lines that FFmpeg emits at normal log level.
+        """
         if not self._process or not self._process.stderr:
             return
         try:
@@ -1099,14 +1168,14 @@ class YouTubeLiveStreamer:
                 if not line:
                     break
                 txt = line.decode("utf-8", errors="replace").strip()
-                # Keep last 20 lines for debugging
+                # Keep last 30 lines for debugging
                 self._stderr_lines.append(txt)
-                if len(self._stderr_lines) > 20:
+                if len(self._stderr_lines) > 30:
                     self._stderr_lines.pop(0)
-                if "error" in txt.lower():
-                    log.warning(f"YouTube Live [{label}]: {txt[:200]}")
-                elif "warning" in txt.lower():
-                    log.debug(f"YouTube Live [{label}]: {txt[:120]}")
+                # Log everything — filter_complex errors often appear on
+                # lines that don't contain "error" (e.g. "Option not found")
+                if txt:
+                    log.warning(f"YouTube Live [{label}]: {txt[:300]}")
         except Exception:
             pass
 

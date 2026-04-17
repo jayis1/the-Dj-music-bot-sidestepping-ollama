@@ -372,7 +372,13 @@ async def main():
     # YouTube Live Streaming
     if stream_enabled:
         stream_url = getattr(config, "YOUTUBE_STREAM_URL", "")
+        stream_playlist = getattr(config, "YOUTUBE_STREAM_PLAYLIST", "")
         logging.info(f"  YouTube Live: ✅ Enabled → {stream_url}")
+        if stream_playlist:
+            logging.info(f"  YouTube Live playlist: 📜 {stream_playlist[:60]}")
+        logging.info(
+            "  YouTube Live modes: 🪞 Mirror (Discord) · 🤖 Autonomous (24/7, no Discord needed)"
+        )
     else:
         logging.info("  YouTube Live: ⚪ Disabled")
 

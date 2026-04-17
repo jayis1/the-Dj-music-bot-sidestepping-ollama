@@ -209,6 +209,12 @@ YOUTUBE_STREAM_IMAGE = os.environ.get(
 # Set to "" to disable the GIF overlay.
 YOUTUBE_STREAM_GIF = os.environ.get("YOUTUBE_STREAM_GIF", "")
 
+# Default playlist URL for YouTube Live autonomous (24/7) mode.
+# When starting autonomous streaming without specifying a playlist,
+# this URL is used. Can be a YouTube playlist URL or a search query.
+# Example: https://youtube.com/playlist?list=PLxxxxxxx
+YOUTUBE_STREAM_PLAYLIST = os.environ.get("YOUTUBE_STREAM_PLAYLIST", "")
+
 # ── yt-dlp Cookie Authentication ──────────────────────────────────────────
 # YouTube increasingly requires authentication to avoid "Sign in to confirm
 # you're not a bot" errors. There are two ways to provide cookies:

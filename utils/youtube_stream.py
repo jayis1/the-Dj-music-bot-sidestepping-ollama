@@ -1,44 +1,51 @@
 """
 utils/youtube_stream.py — YouTube Live streaming for MBot Radio.
 
-Streams the bot's audio output to a YouTube Live event via RTMP.
-Requires a YouTube Live stream key (from YouTube Studio → Go Live).
+Streams music to a YouTube Live event via RTMP, with animated video cards
+showing song thumbnails, titles, and station branding.
 
-Architecture:
-- For each song, a separate FFmpeg process reads the audio URL,
-  composes an animated video card (thumbnail + equalizer + title),
-  and pushes to YouTube's RTMP ingest.
-- When the song ends, the process is killed and a new one starts for the next song.
-- Between songs (during DJ intros/TTS/silence), a "waiting" card is shown.
-- The DJ's TTS audio is also captured and streamed.
+Two streaming modes:
+
+1. **Mirror mode** (default): Shadows the Discord bot's audio playback.
+   The streamer is notified by the music cog whenever a song plays,
+   DJ speaks, or playback stops. No Discord voice connection needed for
+   the stream itself — the FFmpeg process pulls audio directly from URLs.
+
+2. **Autonomous mode** (24/7): The streamer runs its own playlist scheduler.
+   It pulls songs from a YouTube playlist URL, resolves audio URLs via yt-dlp,
+   and plays them one after another with auto-advance. When the playlist
+   runs out, it can loop or pull fresh entries. DJ TTS intros play between
+   songs. No Discord interaction required — perfect for headless servers.
 
 Video Card Layout (1280x720):
-  ┌──────────────────────────────────────────┐
-  │  ┌──────────┐   ┌─ Station Name ─────┐ │
-  │  │ Thumbnail │   │  Song Title          │ │
-  │  │  360x360  │   │  Artist / Channel   │ │
-  │  │           │   │                      │ │
-  │  │           │   │  ▮▮▮▮▮▮ Equalizer ▮ │ │
-  │  │           │   └─────────────────────┘ │
-  │  └──────────┘                            │
-  │          ▶ LIVE • Station Name           │
-  └──────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────┐
+  │  ┌──────────┐  📻 Station Name                      │
+  │  │ Thumbnail │  Song Title (large)                   │
+  │  │  360x360  │  ♪ Now Playing                       │
+  │  │           │                                       │
+  │  │  🎬GIF🎬  │                                       │
+  │  └──────────┘                                       │
+  │             ▶ LIVE • Station Name   🎬GIF🎬          │
+  └──────────────────────────────────────────────────────┘
 
 Environment variables:
-  YOUTUBE_STREAM_KEY   - The stream key from YouTube Studio → Go Live
+  YOUTUBE_STREAM_KEY     - Stream key from YouTube Studio → Go Live
   YOUTUBE_STREAM_ENABLED - "true" to enable on startup
-  YOUTUBE_STREAM_URL   - RTMP URL (default: rtmp://a.rtmp.youtube.com/live2)
-  YOUTUBE_STREAM_IMAGE - Path to station logo/card image (default: assets/logo.png)
+  YOUTUBE_STREAM_URL     - RTMP URL (default: rtmp://a.rtmp.youtube.com/live2)
+  YOUTUBE_STREAM_IMAGE    - Path to station logo/card image (default: assets/logo.png)
+  YOUTUBE_STREAM_GIF     - Path to animated GIF overlay (default: assets/giphy.gif)
+  YOUTUBE_STREAM_PLAYLIST - Default playlist URL for autonomous mode
 """
 
 import asyncio
+import json
 import logging
 import os
+import random
 import time
 import hashlib
 import aiohttp
 from pathlib import Path
-
 
 log = logging.getLogger("youtube-stream")
 
@@ -57,12 +64,9 @@ async def download_thumbnail(url: str) -> str | None:
     if not url:
         return None
 
-    # Create cache directory
     os.makedirs(_THUMBNAIL_CACHE_DIR, exist_ok=True)
 
-    # Hash the URL for a stable filename
     url_hash = hashlib.md5(url.encode()).hexdigest()[:12]
-    # Try to keep the original file extension
     ext = ".jpg"
     if url.endswith(".png"):
         ext = ".png"
@@ -70,13 +74,11 @@ async def download_thumbnail(url: str) -> str | None:
         ext = ".webp"
     cache_path = os.path.join(_THUMBNAIL_CACHE_DIR, f"{url_hash}{ext}")
 
-    # Return cached file if it exists and is recent (< 7 days)
     if os.path.exists(cache_path):
         age_hours = (time.time() - os.path.getmtime(cache_path)) / 3600
         if age_hours < 168:  # 7 days
             return cache_path
 
-    # Download
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
@@ -97,18 +99,55 @@ async def download_thumbnail(url: str) -> str | None:
         return None
 
 
-class YouTubeLiveStreamer:
-    """Manages a YouTube Live RTMP stream from the bot's audio.
+# ── Playlist state persistence ────────────────────────────────────────────
+_STREAM_STATE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)), "yt_stream_state.json"
+)
 
-    Usage:
+
+def _load_stream_state() -> dict:
+    """Load persisted autonomous stream state (playlist position, etc)."""
+    try:
+        if os.path.isfile(_STREAM_STATE_FILE):
+            with open(_STREAM_STATE_FILE, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        log.warning(f"YouTube Live: Failed to load stream state: {e}")
+    return {}
+
+
+def _save_stream_state(state: dict):
+    """Persist autonomous stream state so it survives restarts."""
+    try:
+        with open(_STREAM_STATE_FILE, "w") as f:
+            json.dump(state, f, indent=2)
+    except Exception as e:
+        log.warning(f"YouTube Live: Failed to save stream state: {e}")
+
+
+class YouTubeLiveStreamer:
+    """Manages a YouTube Live RTMP stream.
+
+    Two modes:
+        - Mirror mode: Call play_song()/play_tts()/play_waiting() from
+          the music cog. The streamer just mirrors whatever Discord is doing.
+        - Autonomous mode: Call start_autonomous() with a playlist URL.
+          The streamer resolves and plays songs on its own, 24/7.
+
+    Usage (mirror):
         streamer = YouTubeLiveStreamer(stream_key="xxxx-xxxx-xxxx")
-        await streamer.start()                      # Start the stream
-        await streamer.play_song(url, title, thumb) # Stream a song
-        await streamer.play_waiting()               # Show waiting card
-        await streamer.stop()                      # Stop streaming
+        await streamer.start()
+        await streamer.play_song(url, title, thumbnail)
+        await streamer.play_waiting()
+        await streamer.stop()
+
+    Usage (autonomous / 24/7):
+        streamer = YouTubeLiveStreamer(stream_key="xxxx-xxxx-xxxx")
+        await streamer.start_autonomous(playlist_url="https://youtube.com/playlist?list=...")
+        # ...it runs forever until you call stop()
+        await streamer.stop()
     """
 
-    # Stream dimensions
     WIDTH = 1280
     HEIGHT = 720
 
@@ -136,10 +175,23 @@ class YouTubeLiveStreamer:
         self._running = False
         self._current_url: str | None = None
         self._restart_task: asyncio.Task | None = None
+        self._stderr_lines: list[str] = []  # Recent stderr for debugging
 
-        # Current song info (for overlay)
+        # Current song info (for overlay / Mission Control)
         self._current_title: str = ""
-        self._current_thumbnail: str | None = None  # Local path to downloaded thumb
+        self._current_thumbnail: str | None = None
+
+        # ── Autonomous mode state ──────────────────────────────────
+        self._autonomous = False
+        self._autonomous_task: asyncio.Task | None = None
+        self._playlist_url: str = ""
+        self._playlist_entries: list[dict] = []  # [{id, title, url, thumbnail}, ...]
+        self._playlist_index: int = 0
+        self._playlist_loop: bool = True
+        self._shuffle: bool = False
+        self._song_count: int = 0  # Total songs streamed (for status)
+        self._started_at: float = 0  # Timestamp when stream started
+        self._last_error: str = ""  # Most recent error (for Mission Control)
 
     @property
     def is_running(self) -> bool:
@@ -149,47 +201,186 @@ class YouTubeLiveStreamer:
     def current_url(self) -> str | None:
         return self._current_url
 
+    @property
+    def current_title(self) -> str:
+        return self._current_title
+
+    @property
+    def is_autonomous(self) -> bool:
+        return self._autonomous
+
+    @property
+    def playlist_url(self) -> str:
+        return self._playlist_url
+
+    @property
+    def playlist_size(self) -> int:
+        return len(self._playlist_entries)
+
+    @property
+    def playlist_index(self) -> int:
+        return self._playlist_index
+
+    @property
+    def song_count(self) -> int:
+        return self._song_count
+
+    @property
+    def uptime_seconds(self) -> float:
+        if not self._started_at:
+            return 0
+        return time.time() - self._started_at
+
+    @property
+    def last_error(self) -> str:
+        return self._last_error
+
+    def get_status(self) -> dict:
+        """Return a full status dict for Mission Control / API endpoints."""
+        return {
+            "running": self._running,
+            "autonomous": self._autonomous,
+            "current_title": self._current_title,
+            "current_url": self._current_url,
+            "playlist_url": self._playlist_url,
+            "playlist_size": len(self._playlist_entries),
+            "playlist_index": self._playlist_index,
+            "playlist_loop": self._playlist_loop,
+            "shuffle": self._shuffle,
+            "song_count": self._song_count,
+            "uptime_seconds": round(self.uptime_seconds, 1),
+            "last_error": self._last_error,
+            "ffmpeg_pid": self._process.pid
+            if self._process and self._process.returncode is None
+            else None,
+        }
+
     # ── Lifecycle ──────────────────────────────────────────────────
 
     async def start(self):
-        """Start the YouTube Live stream with a waiting card."""
+        """Start the YouTube Live stream with a waiting card (mirror mode)."""
         if self._running:
             log.warning("YouTube Live: Already streaming")
             return
         self._running = True
+        self._started_at = time.time()
         log.info(
             f"YouTube Live: Starting stream → {self.rtmp_url}/...{self.stream_key[-6:]}"
         )
         await self.play_waiting()
         self._restart_task = asyncio.create_task(self._watchdog())
 
+    async def start_autonomous(
+        self,
+        playlist_url: str,
+        loop_playlist: bool = True,
+        shuffle: bool = False,
+    ):
+        """Start the stream in autonomous 24/7 mode.
+
+        Resolves a YouTube playlist, then plays songs one after another
+        via FFmpeg → RTMP. When the playlist runs out, loops from the
+        start (if loop_playlist=True). No Discord connection needed.
+
+        Args:
+            playlist_url: YouTube playlist URL or search query
+            loop_playlist: Whether to loop the playlist when it ends
+            shuffle: Whether to shuffle the playlist order
+        """
+        if self._running:
+            log.warning(
+                "YouTube Live: Already streaming — stopping existing stream first"
+            )
+            await self.stop()
+
+        self._autonomous = True
+        self._playlist_url = playlist_url
+        self._playlist_loop = loop_playlist
+        self._shuffle = shuffle
+        self._running = True
+        self._started_at = time.time()
+
+        log.info(
+            f"YouTube Live: Starting AUTONOMOUS stream → {self.rtmp_url}/...{self.stream_key[-6:]}"
+        )
+        log.info(
+            f"YouTube Live: Playlist: {playlist_url} (loop={loop_playlist}, shuffle={shuffle})"
+        )
+
+        # Load persisted state (playlist position from last run)
+        state = _load_stream_state()
+        saved_index = state.get("playlist_index", 0)
+        saved_url = state.get("playlist_url", "")
+        if saved_url == playlist_url:
+            self._playlist_index = saved_index
+            log.info(f"YouTube Live: Resuming from playlist position {saved_index}")
+
+        # Start the autonomous scheduler as a background task
+        self._autonomous_task = asyncio.create_task(self._run_autonomous_loop())
+        self._restart_task = asyncio.create_task(self._watchdog())
+
     async def stop(self):
-        """Stop the stream."""
+        """Stop the stream (works for both mirror and autonomous mode)."""
+        was_autonomous = self._autonomous
         self._running = False
+        self._autonomous = False
+
+        if self._autonomous_task:
+            self._autonomous_task.cancel()
+            self._autonomous_task = None
+
         if self._restart_task:
             self._restart_task.cancel()
             self._restart_task = None
+
         await self._kill_process()
+
+        if was_autonomous:
+            # Save state so we can resume later
+            _save_stream_state(
+                {
+                    "playlist_url": self._playlist_url,
+                    "playlist_index": self._playlist_index,
+                    "song_count": self._song_count,
+                    "last_running": time.time(),
+                }
+            )
+
         log.info("YouTube Live: Stream stopped")
+
+    async def skip_song(self):
+        """Skip to the next song in autonomous mode.
+
+        Kills the current FFmpeg process, which triggers the autonomous
+        loop to advance to the next track.
+        """
+        if not self._autonomous:
+            return
+        log.info("YouTube Live: Skipping to next song (autonomous)")
+        await self._kill_process()
+
+    # ── Mirror mode playback ───────────────────────────────────────
 
     async def play_song(
         self, audio_url: str, title: str = "", thumbnail: str | None = None
     ):
-        """Switch the stream to playing a song's audio with an animated video card.
+        """Switch the stream to playing a song (mirror mode).
 
         Args:
-            audio_url: The direct audio stream URL (same one FFmpegPCMAudio uses)
-            title: The song title (shown on the stream card)
-            thumbnail: URL or local path to the song's thumbnail image
+            audio_url: Direct audio stream URL
+            title: Song title for the video card
+            thumbnail: URL or local path to the song's thumbnail
         """
         if not self._running:
+            return
+        if self._autonomous:
+            log.warning("YouTube Live: play_song() called in autonomous mode — ignored")
             return
 
         self._current_url = audio_url
         self._current_title = title
         await self._kill_process()
 
-        # Download thumbnail if it's a URL
         thumb_path = None
         if thumbnail:
             if thumbnail.startswith("http"):
@@ -202,7 +393,7 @@ class YouTubeLiveStreamer:
         await self._start_ffmpeg_song(audio_url, title, thumb_path)
 
     async def play_waiting(self, message: str = ""):
-        """Show a "waiting" card between songs."""
+        """Show a "waiting" card between songs (mirror mode)."""
         if not self._running:
             return
 
@@ -216,13 +407,241 @@ class YouTubeLiveStreamer:
         await self._start_ffmpeg_waiting(self._current_title)
 
     async def play_tts(self, tts_path: str, text: str = ""):
-        """Stream a TTS file (DJ intro, AI side host) to YouTube Live."""
+        """Stream a TTS file to YouTube Live (mirror mode)."""
         if not self._running or not tts_path or not os.path.isfile(tts_path):
             return
 
         await self._kill_process()
         log.info(f"YouTube Live: Streaming TTS → {text[:60]}...")
         await self._start_ffmpeg_tts(tts_path, text)
+
+    # ── Autonomous mode scheduler ──────────────────────────────────
+
+    async def _run_autonomous_loop(self):
+        """Main loop for autonomous 24/7 streaming.
+
+        1. Load the playlist via yt-dlp
+        2. Play each song via FFmpeg → RTMP
+        3. When the song ends (FFmpeg process exits), advance to next
+        4. Loop or stop when playlist runs out
+        """
+        try:
+            # Load the playlist
+            await self._load_playlist()
+            if not self._playlist_entries:
+                self._last_error = "No tracks found in playlist"
+                log.error(f"YouTube Live: {self._last_error}")
+                await self.play_waiting(
+                    "No tracks found in playlist — add a playlist URL"
+                )
+                return
+
+            # Start with waiting card
+            await self.play_waiting(f"{self.station_name} Radio — Starting Soon...")
+
+            while self._running:
+                # Advance to next track
+                if self._playlist_index >= len(self._playlist_entries):
+                    if self._playlist_loop:
+                        self._playlist_index = 0
+                        if self._shuffle:
+                            random.shuffle(self._playlist_entries)
+                        log.info("YouTube Live: Playlist looped — starting over")
+                        # Reload playlist to pick up additions
+                        await self._load_playlist()
+                    else:
+                        log.info(
+                            "YouTube Live: Playlist exhausted — showing waiting card"
+                        )
+                        await self.play_waiting(
+                            f"Playlist ended — {self.station_name} Radio Standby"
+                        )
+                        # Keep the waiting card running forever
+                        return
+
+                # Get the current track
+                entry = self._playlist_entries[self._playlist_index]
+                title = entry.get("title", "Unknown")
+                webpage_url = entry.get("webpage_url", "")
+                thumbnail = entry.get("thumbnail", "")
+
+                if not webpage_url:
+                    log.warning(f"YouTube Live: Skipping track with no URL: {title}")
+                    self._playlist_index += 1
+                    continue
+
+                # Resolve the actual audio stream URL via yt-dlp
+                log.info(
+                    f"YouTube Live: [{self._playlist_index + 1}/{len(self._playlist_entries)}] "
+                    f"Resolving: {title}"
+                )
+
+                try:
+                    audio_url = await self._resolve_audio_url(webpage_url)
+                except Exception as e:
+                    self._last_error = f"Failed to resolve '{title}': {e}"
+                    log.error(f"YouTube Live: {self._last_error}")
+                    self._playlist_index += 1
+                    # Show a brief waiting card, then try next track
+                    await self.play_waiting(
+                        f"Skipping: {title[:40]}... — resolving next track"
+                    )
+                    await asyncio.sleep(3)
+                    continue
+
+                if not audio_url:
+                    self._last_error = f"No audio URL for: {title}"
+                    log.error(f"YouTube Live: {self._last_error}")
+                    self._playlist_index += 1
+                    continue
+
+                # Download thumbnail
+                thumb_path = None
+                if thumbnail:
+                    if thumbnail.startswith("http"):
+                        thumb_path = await download_thumbnail(thumbnail)
+                    elif os.path.isfile(thumbnail):
+                        thumb_path = thumbnail
+
+                # Play the song
+                self._current_title = title
+                self._current_url = audio_url
+                self._current_thumbnail = thumb_path
+                self._song_count += 1
+
+                log.info(
+                    f"YouTube Live: ► Playing [{self._playlist_index + 1}/{len(self._playlist_entries)}] "
+                    f"#{self._song_count}: {title}"
+                )
+
+                await self._start_ffmpeg_song(audio_url, title, thumb_path)
+
+                # Save state every 5 songs
+                if self._song_count % 5 == 0:
+                    _save_stream_state(
+                        {
+                            "playlist_url": self._playlist_url,
+                            "playlist_index": self._playlist_index + 1,
+                            "song_count": self._song_count,
+                            "last_running": time.time(),
+                        }
+                    )
+
+                # Wait for the FFmpeg song process to finish (song ends)
+                # _wait_for_process() blocks until FFmpeg exits
+                await self._wait_for_process()
+
+                if not self._running:
+                    break
+
+                # Song ended — advance
+                self._playlist_index += 1
+
+                # Brief waiting card between songs (prevents YouTube "not receiving data" errors)
+                await self.play_waiting(f"Up next... | {self.station_name} Radio")
+                await asyncio.sleep(2)
+
+        except asyncio.CancelledError:
+            log.info("YouTube Live: Autonomous loop cancelled")
+        except Exception as e:
+            self._last_error = f"Autonomous loop crashed: {e}"
+            log.error(f"YouTube Live: {self._last_error}", exc_info=True)
+
+    async def _load_playlist(self):
+        """Load playlist entries via yt-dlp (flat extraction — fast)."""
+        import yt_dlp
+        from cogs.youtube import YTDL_PLAYLIST_FLAT_OPTIONS
+
+        log.info(f"YouTube Live: Loading playlist: {self._playlist_url}")
+
+        opts = YTDL_PLAYLIST_FLAT_OPTIONS.copy()
+
+        try:
+            loop = asyncio.get_event_loop()
+            data = await loop.run_in_executor(
+                None,
+                lambda: yt_dlp.YoutubeDL(opts).extract_info(
+                    self._playlist_url, download=False
+                ),
+            )
+        except Exception as e:
+            self._last_error = f"Playlist load failed: {e}"
+            log.error(f"YouTube Live: Failed to load playlist: {e}")
+            return
+
+        if not data:
+            log.warning("YouTube Live: Playlist extraction returned nothing")
+            return
+
+        entries = []
+        if "entries" in data:
+            for entry in data["entries"]:
+                if entry is None:
+                    continue
+                # Build a proper watch URL from the video ID
+                video_id = entry.get("id") or entry.get("url", "")
+                raw_url = entry.get("url") or ""
+                if raw_url.startswith("http"):
+                    webpage_url = raw_url
+                elif video_id and len(video_id) == 11:
+                    webpage_url = f"https://www.youtube.com/watch?v={video_id}"
+                else:
+                    webpage_url = entry.get("webpage_url") or ""
+
+                entries.append(
+                    {
+                        "id": video_id,
+                        "title": entry.get("title", "Unknown"),
+                        "webpage_url": webpage_url,
+                        "thumbnail": entry.get("thumbnail")
+                        or f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+                        "duration": entry.get("duration"),
+                    }
+                )
+        else:
+            # Single video, not a playlist
+            video_id = data.get("id") or ""
+            webpage_url = (
+                data.get("webpage_url") or f"https://www.youtube.com/watch?v={video_id}"
+            )
+            entries.append(
+                {
+                    "id": video_id,
+                    "title": data.get("title", "Unknown"),
+                    "webpage_url": webpage_url,
+                    "thumbnail": data.get("thumbnail")
+                    or f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+                    "duration": data.get("duration"),
+                }
+            )
+
+        self._playlist_entries = entries
+        if self._shuffle:
+            random.shuffle(self._playlist_entries)
+
+        log.info(
+            f"YouTube Live: Loaded {len(self._playlist_entries)} tracks from playlist"
+        )
+
+    async def _resolve_audio_url(self, webpage_url: str) -> str | None:
+        """Resolve a YouTube watch URL to a direct audio stream URL."""
+        from cogs.youtube import YTDLSource
+
+        try:
+            source = await YTDLSource.resolve(webpage_url)
+            return source.url if source else None
+        except Exception as e:
+            log.error(f"YouTube Live: Failed to resolve {webpage_url}: {e}")
+            return None
+
+    async def _wait_for_process(self):
+        """Wait for the current FFmpeg process to exit (song ends naturally)."""
+        if not self._process:
+            return
+        try:
+            await self._process.wait()
+        except asyncio.CancelledError:
+            pass
 
     # ── FFmpeg process management ───────────────────────────────────
 
@@ -239,478 +658,183 @@ class YouTubeLiveStreamer:
                     pass
         self._process = None
 
-    # ── FFmpeg filter builders ─────────────────────────────────────────
+    # ── FFmpeg command builders ─────────────────────────────────────
+    # Each builder constructs a complete ffmpeg command with proper
+    # filter_complex pad labels. Every input stream is used exactly once
+    # (or split first if needed by multiple filters).
+    #
+    # Key rules for valid filter_complex:
+    #   1. Every [label] used as input must be produced by a prior filter
+    #   2. Every [label] produced must be used as input by a later filter
+    #      (except the final output [outv])
+    #   3. A single input stream (e.g. [3:v]) can only feed ONE filter
+    #      chain. Use split/asplit if you need it in multiple chains.
+    #   4. drawtext/drawbox are FILTERS, not pad labels — they chain
+    #      onto the previous pad: [pad]drawtext=...[new_pad]
 
-    def _build_animated_song_card(
-        self, title: str, thumb_path: str | None
-    ) -> tuple[list, list]:
-        """Build FFmpeg inputs and filter_complex for an animated song card.
-
-        Returns: (inputs_list, filter_complex_str)
-
-        Card layout (1280x720):
-        - Left: thumbnail (scaled to 360x360 with rounded mask) OR station logo
-        - Right: station name, song title (scrolling if long), animated equalizer
-        - Bottom: "▶ LIVE" indicator + station name bar
-
-        The equalizer is driven by the audio amplitude for a true beat-sync effect.
-        """
-        W, H = self.WIDTH, self.HEIGHT
-        safe_station = (
-            self.station_name.replace("'", "\\'")
-            .replace(":", "\\:")
-            .replace("%", "%%")[:30]
-        )
-        safe_title = (
-            title.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:70]
-        )
-
-        inputs = []
-        filter_parts = []
-
-        # Input index mapping:
-        # [0] = audio (added by caller)
-        # [1] = thumbnail or logo (image)
-        # [2] = background gradient (color source)
-        # (optionally [3] = second image for overlay effects)
-
-        # ── Background: animated gradient ──
-        # Subtle dark gradient that slowly shifts
-        filter_parts.append(f"[2:v]scale={W}:{H},format=yuva420p[bg]")
-
-        # ── Thumbnail ──
-        if thumb_path and os.path.isfile(thumb_path):
-            inputs.append("-i")
-            inputs.append(thumb_path)
-            # Scale thumbnail to 360x360, round corners, add subtle shadow
-            # vflip gives us a subtle pulse animation every 3 seconds
-            filter_parts.append(
-                f"[1:v]scale=360:360,format=yuva420p,"
-                # Rounded corners mask
-                f"geq=lum='p(X,Y)':cb='128':cr='128':a='"
-                f"if(gt(abs(X-180),300),0,"
-                f"if(gt(abs(Y-180),300),0,"
-                f"if(gt(hypot(X-180,Y-180),18),if(lt(hypot(X-180,Y-180),30),1,0),1)))',"
-                # Add subtle shadow behind (border effect)
-                f"pad=w=370:h=370:x=5:y=5:color=black@0.3,"
-                f"format=yuva420p[thumb]"
-            )
-        else:
-            # No thumbnail — use station logo or a solid card
-            image = self._resolve_image()
-            if image:
-                inputs.append("-i")
-                inputs.append(image)
-                filter_parts.append(f"[1:v]scale=360:360,format=yuva420p[thumb]")
-            else:
-                # No image at all — use a colored rectangle
-                filter_parts.append(
-                    f"color=c=0x1a1a2e:s=360x360:d=0.1,format=yuva420p[thumb]"
-                )
-                # Note: color source doesn't need an input, it's generated
-
-        # ── Overlay the card elements onto the background ──
-        # Station name at top-right
-        filter_parts.append(
-            f"drawbox=x=iw-420:y=50:w=400:h=50:color=0x0f0f23@0.8:t=fill,"
-            f"drawtext=text='{safe_station}':"
-            f"fontcolor=0xff4444:fontsize=22:font=Sans:"
-            f"x=iw-415:y=58[bg_with_station]"
-        )
-
-        # Song title below station name — scroll if too long
-        title_filter = (
-            f"drawtext=text='{safe_title}':"
-            f"fontcolor=white:fontsize=28:font=Sans Bold:"
-            f"x=iw-415:y=110"
-        )
-
-        filter_parts.append(f"[bg_with_station]{title_filter}[card]")
-
-        # ── Animated equalizer bars (audio-reactive) ──
-        # 20 bars, positioned at bottom-right area
-        # showwaves and showvolume create a visual representation of the audio
-        # We draw 12 bars that pulse with bass/mid/treble
-        eq_y = H - 80
-        eq_x_start = W - 410
-        eq_bar_w = 8
-        eq_bar_gap = 4
-        eq_height = 50
-
-        # Simple approach: use showwaves for a waveform overlay at bottom
-        # This is much more reliable than trying to do per-frequency bars
-        filter_parts.append(
-            f"[card]drawbox=x=0:y={H - 60}:w={W}:h=60:color=0x0a0a1e@0.9:t=fill,"
-            # Station name bottom bar
-            f"drawtext=text='▶ LIVE':fontcolor=0xff0000:fontsize=16:font=Sans Bold:x=15:y={H - 35},"
-            f"drawtext=text='{safe_station}':fontcolor=0xffffff@0.7:fontsize=14:font=Sans:x=80:y={H - 35}"
-            f"[card_with_bar]"
-        )
-
-        return inputs, filter_parts, "card_with_bar"
+    def _safe_text(self, text: str, max_len: int = 60) -> str:
+        """Escape text for FFmpeg drawtext filter."""
+        return text.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:max_len]
 
     async def _start_ffmpeg_song(
         self, audio_url: str, title: str, thumb_path: str | None
     ):
-        """Start FFmpeg: audio from URL + animated video card → RTMP."""
+        """Start FFmpeg: audio from URL + animated video card → RTMP.
+
+        Input layout:
+            [0] = background color source (lavfi)
+            [1] = thumbnail/logo image (looped still)
+            [2] = audio from URL
+            [3] = animated GIF (optional, if has_gif)
+
+        Filter chain:
+            [1:v] → scale/pad → [thumb]
+            [0:v] → format → [bg]
+            [bg][thumb] → overlay → [with_thumb]
+            [3:v] → split → [gif_big][gif_small]   (if has_gif)
+            [with_thumb][gif_big] → overlay → [with_gif]
+            [with_gif] → drawtext(station) → [with_station]
+            [with_station] → drawtext(title) → [with_title]
+            [with_title] → drawtext("Now Playing") → [with_sub]
+            [with_sub] → drawbox(bottom bar) → [with_bar]
+            [with_bar] → drawtext("LIVE") → [with_live]
+            [with_live][gif_small] → overlay → [with_gifbar]  (if has_gif)
+            [with_gifbar] → drawtext(station) → [outv]        (if has_gif)
+            [with_live] → drawtext(station) → [outv]           (if no gif)
+        """
         image = self._resolve_image()
-
-        safe_station = (
-            self.station_name.replace("'", "\\'")
-            .replace(":", "\\:")
-            .replace("%", "%%")[:30]
-        )
-        safe_title = (
-            title.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:70]
-        )
-
+        safe_station = self._safe_text(self.station_name, 30)
+        safe_title = self._safe_text(title, 70)
         W, H = self.WIDTH, self.HEIGHT
-
-        # ── Build FFmpeg command ──
-        cmd = ["ffmpeg", "-re"]
-
-        # Background: dark gradient
-        cmd.extend(
-            [
-                "-f",
-                "lavfi",
-                "-i",
-                f"color=c=0x0f0f23:s={W}x{H}:r={self.fps}:d=86400,"
-                f"color=c=0x16213e:s={W}x{H}:r={self.fps}:d=86400"
-                f"[bg];[bg]overlay=0:0:eval=init[bg2]",
-            ]
-        )
-        # Wait—this is getting too complex for a single -i. Let me simplify.
-        # Reset and use a simpler, more reliable approach:
+        fps = self.fps
 
         cmd = ["ffmpeg", "-re"]
 
-        # ── Input 1: Background color ──
-        # Dark blue gradient background via color source
-        cmd.extend(
-            [
-                "-f",
-                "lavfi",
-                "-i",
-                f"color=c=0x0f0f23:s={W}x{H}:r={self.fps},"
-                f"color=c=0x16213e:s={W}x{H}:r={self.fps}",
-            ]
-        )
+        # Input 0: Background color source
+        cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
 
-        # ── Input 2: Thumbnail image (if available) ──
+        # Input 1: Thumbnail or logo image
         if thumb_path and os.path.isfile(thumb_path):
             cmd.extend(["-loop", "1", "-i", thumb_path])
-            has_thumb = True
         elif image:
             cmd.extend(["-loop", "1", "-i", image])
-            has_thumb = True
         else:
-            # No image available — use a colored placeholder
-            cmd.extend(
-                ["-f", "lavfi", "-i", f"color=c=0x1a1a2e:s=360x360:r={self.fps}"]
-            )
-            has_thumb = True
+            cmd.extend(["-f", "lavfi", "-i", f"color=c=0x1a1a2e:s=360x360:r={fps}"])
 
-        # ── Input 3: Audio ──
+        # Input 2: Audio URL
         cmd.extend(["-i", audio_url])
 
-        # ── Input 4: Animated GIF overlay (if available) ──
-        # The GIF adds visual energy to the stream card — it loops infinitely.
+        # Input 3: Animated GIF (optional)
         gif_path = self._resolve_gif()
         has_gif = gif_path and os.path.isfile(gif_path)
         if has_gif:
-            # -stream_loop -1 = infinite loop, -ignore_loop 0 = don't override
             cmd.extend(["-stream_loop", "-1", "-ignore_loop", "0", "-i", gif_path])
-            log.info(f"YouTube Live: Adding animated GIF overlay: {gif_path}")
-        else:
-            has_gif = False
 
-        # ── Build filter_complex ──
-        # Input indices: [0]=bg_colors, [1]=image, [2]=audio
-        #
-        # Layout:
-        # ┌────────────────────────────────────────────────────────┐
-        # │  ┌──────────┐  📻 Station Name                        │
-        # │  │ Thumbnail │  song title                              │
-        # │  │  360x360  │  ♪ Now Playing                          │
-        # │  │           │                                          │
-        # │  │   🎬GIF🎬 │                                          │
-        # │  └──────────┘                                          │
-        # │              ▶ LIVE • Station Name   🎬GIF🎬            │
-        # └────────────────────────────────────────────────────────┘
-        # The animated GIF overlays the thumbnail as a badge and also
-        # appears as a small animated element in the bottom bar.
+        # ── Build filter_complex ────────────────────────────────────
+        vf = ""
 
-        # ── Resolve GIF overlay ──
-        gif_path = self._resolve_gif()
-        has_gif = gif_path and os.path.isfile(gif_path)
+        # Scale thumbnail to 400x400, pad to allow shadow space
+        vf += f"[1:v]scale=400:400:force_original_aspect_ratio=decrease,"
+        vf += f"pad=410:420:(ow-iw)/2:(oh-ih)/2:color=black@0,"
+        vf += f"format=yuva420p[thumb];"
+
+        # Background
+        vf += f"[0:v]format=yuva420p[bg];"
+
+        # Overlay thumbnail on left
+        vf += f"[bg][thumb]overlay=30:150:format=auto[with_thumb];"
+
+        # GIF overlay (badge on thumbnail + small bar badge)
         if has_gif:
-            log.info(f"YouTube Live: Using animated GIF overlay: {gif_path}")
-
-        vfilter = ""
-
-        # Step 1: Scale and pad the image to fill left side
-        vfilter += f"[1:v]scale=400:400:force_original_aspect_ratio=decrease,"
-        vfilter += f"pad=410:420:(ow-iw)/2:(oh-ih)/2:color=black@0,"
-        vfilter += f"format=yuva420p[thumb];"
-
-        # Step 2: Background — dark blue
-        vfilter += f"[0:v]format=yuva420p[bg];"
-
-        # Step 3: Overlay thumbnail on left side
-        vfilter += f"[bg][thumb]overlay=30:150:format=auto[with_thumb];"
-
-        # Step 4: GIF overlay on the thumbnail (animated badge, bottom-right of thumb area)
-        if has_gif:
-            # GIF is input 3 (after bg=0, image=1, audio=2)
-            # Scale GIF to 120x120 and place it over the bottom-right of the thumbnail
-            vfilter += f"[3:v]scale=120:120:force_original_aspect_ratio=decrease,"
-            vfilter += f"format=yuva420p[gif_scaled];"
-            # Overlay GIF at bottom-right corner of the thumbnail area (30+290=320, 150+290=440)
-            vfilter += f"[with_thumb][gif_scaled]overlay=320:440:format=auto[with_gif];"
-            # Continue with GIF version
-            current_label = "with_gif"
+            # Split GIF input into two streams: one for badge, one for bar
+            vf += f"[3:v]split=2[gif_big_in][gif_small_in];"
+            # Scale the big badge
+            vf += f"[gif_big_in]scale=120:120:force_original_aspect_ratio=decrease,"
+            vf += f"format=yuva420p[gif_big];"
+            # Scale the small bar badge
+            vf += f"[gif_small_in]scale=60:60:force_original_aspect_ratio=decrease,"
+            vf += f"format=yuva420p[gif_small];"
+            # Overlay big GIF badge on thumbnail area
+            vf += f"[with_thumb][gif_big]overlay=320:440:format=auto[with_gif];"
+            current = "with_gif"
         else:
-            current_label = "with_thumb"
+            current = "with_thumb"
 
-        # Step 5: Station name (top right area)
-        vfilter += f"[{current_label}]drawtext=text='{safe_station}':"
-        vfilter += f"fontcolor=0xff4444:fontsize=20:font=Sans:bold=1:"
-        vfilter += (
-            f"x=470:y=160:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_station];"
-        )
+        # Station name (top right area)
+        vf += f"[{current}]drawtext=text='{safe_station}':"
+        vf += f"fontcolor=0xff4444:fontsize=20:font=Sans:bold=1:"
+        vf += f"x=470:y=160:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_station];"
 
-        # Step 6: Song title (large, white)
-        vfilter += f"[with_station]drawtext=text='{safe_title}':"
-        vfilter += f"fontcolor=white:fontsize=26:font=Sans:bold=1:"
-        vfilter += f"x=470:y=200:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_title];"
+        # Song title
+        vf += f"[with_station]drawtext=text='{safe_title}':"
+        vf += f"fontcolor=white:fontsize=26:font=Sans:bold=1:"
+        vf += f"x=470:y=200:box=1:boxcolor=0x0a0a23@0.7:boxborderw=4[with_title];"
 
-        # Step 7: "Now Playing" indicator
-        vfilter += f"[with_title]drawtext=text='♪ Now Playing':"
-        vfilter += f"fontcolor=0x8888ff:fontsize=14:font=Sans:"
-        vfilter += f"x=470:y=250[with_subtitle];"
+        # "Now Playing" indicator
+        vf += f"[with_title]drawtext=text='♪ Now Playing':"
+        vf += f"fontcolor=0x8888ff:fontsize=14:font=Sans:"
+        vf += f"x=470:y=250[with_sub];"
 
-        # Step 8: Bottom bar
-        vfilter += f"[with_subtitle]drawbox=x=0:y={H - 55}:w={W}:h=55:"
-        vfilter += f"color=0x0a0a23@0.95:t=fill[with_bar];"
+        # Bottom bar background
+        vf += f"[with_sub]drawbox=x=0:y={H - 55}:w={W}:h=55:"
+        vf += f"color=0x0a0a23@0.95:t=fill[with_bar];"
 
         # LIVE indicator
-        vfilter += f"[with_bar]drawtext=text='▶ LIVE':"
-        vfilter += f"fontcolor=0xff0000:fontsize=18:font=Sans:bold=1:"
-        vfilter += f"x=15:y={H - 38}[with_live];"
+        vf += f"[with_bar]drawtext=text='▶ LIVE':"
+        vf += f"fontcolor=0xff0000:fontsize=18:font=Sans:bold=1:"
+        vf += f"x=15:y={H - 38}[with_live];"
 
-        # Station name in bottom bar + small GIF badge if available
+        # Station name in bottom bar + small GIF badge
         if has_gif:
-            # Small animated GIF in bottom bar (60x60)
-            vfilter += f"[3:v]scale=60:60:force_original_aspect_ratio=decrease,"
-            vfilter += f"format=yuva420p[gif_bar];"
-            vfilter += f"[with_live][gif_bar]overlay={W - 75}:{H - 50}:format=auto[with_gifbar];"
-            vfilter += f"[with_gifbar]drawtext=text='{safe_station}':"
-            vfilter += f"fontcolor=0xffffff@0.6:fontsize=14:font=Sans:"
-            vfilter += f"x=100:y={H - 35}[outv]"
+            vf += f"[with_live][gif_small]overlay={W - 75}:{H - 50}:format=auto[with_gifbar];"
+            vf += f"[with_gifbar]drawtext=text='{safe_station}':"
+            vf += f"fontcolor=0xffffff@0.6:fontsize=14:font=Sans:"
+            vf += f"x=100:y={H - 35}[outv]"
         else:
-            vfilter += f"[with_live]drawtext=text='{safe_station}':"
-            vfilter += f"fontcolor=0xffffff@0.6:fontsize=14:font=Sans:"
-            vfilter += f"x=100:y={H - 35}[outv]"
+            vf += f"[with_live]drawtext=text='{safe_station}':"
+            vf += f"fontcolor=0xffffff@0.6:fontsize=14:font=Sans:"
+            vf += f"x=100:y={H - 35}[outv]"
 
-            cmd.extend(["-filter_complex", vfilter])
+        cmd.extend(["-filter_complex", vf])
 
-        # ── Map outputs ──
-        # Audio input index shifts when GIF is present:
-        # No GIF:  [0]=bg, [1]=image, [2]=audio
-        # With GIF: [0]=bg, [1]=image, [2]=audio, [3]=gif
+        # Map outputs — audio index depends on GIF presence
         audio_idx = "3:a" if has_gif else "2:a"
+        cmd.extend(["-map", "[outv]", "-map", audio_idx])
 
-        cmd.extend(
-            [
-                "-map",
-                "[outv]",  # Video from filter
-                "-map",
-                audio_idx,  # Audio stream
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-g",
-                str(self.fps * 2),  # Keyframe every 2s (YouTube requires ≤4s)
-                "-keyint_min",
-                str(self.fps),  # Min keyframe interval 1s
-                "-b:v",
-                f"{self.bitrate_video}k",
-                "-r",
-                str(self.fps),
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                f"{self.bitrate_audio}k",
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                "-f",
-                "flv",
-                "-flvflags",
-                "no_duration_filesize",
-                f"{self.rtmp_url}/{self.stream_key}",
-            ]
-        )
+        # Encoding settings
+        cmd.extend(self._encoding_args())
 
         await self._run_ffmpeg(cmd, "song")
 
     async def _start_ffmpeg_waiting(self, message: str):
-        """Start FFmpeg: animated waiting card + silence → RTMP."""
+        """Start FFmpeg: animated waiting card + silence → RTMP.
+
+        Input layout:
+            [0] = background image (looped) or color source (lavfi)
+            [1] = silence audio source (lavfi anullsrc)
+            [2] = animated GIF (optional, if has_gif)
+
+        Filter chain (no GIF):
+            [0:v] → scale/pad → [bg]
+            [bg] → drawtext(station) → drawtext(message) → drawtext(standby bar) → [outv]
+
+        Filter chain (with GIF):
+            [0:v] → scale/pad → [bg]
+            [bg] → drawtext(station) → [with_station]
+            [2:v] → split → [gif_center_in][gif_bar_in]
+            [gif_center_in] → scale → [gif_center]
+            [with_station][gif_center] → overlay → [with_gif]
+            [with_gif] → drawtext(message) → [msg]
+            [gif_bar_in] → scale → [gif_bar]
+            [msg] → drawbox/drawtext(standby) → [with_bar]
+            [with_bar][gif_bar] → overlay → [with_bar_gif]
+            [with_bar_gif] → drawtext(station) → [outv]
+        """
         image = self._resolve_image()
-        safe_msg = (
-            message.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:60]
-        )
-        safe_station = (
-            self.station_name.replace("'", "\\'")
-            .replace(":", "\\:")
-            .replace("%", "%%")[:30]
-        )
+        safe_msg = self._safe_text(message, 60)
+        safe_station = self._safe_text(self.station_name, 30)
         W, H = self.WIDTH, self.HEIGHT
-
-        # Animated waiting card with logo + GIF + text overlays
-        cmd = ["ffmpeg", "-re"]
-
-        # Resolve animated GIF
-        gif_path = self._resolve_gif()
-        has_gif = gif_path and os.path.isfile(gif_path)
-
-        # Input 0: Background image or color source
-        if image:
-            cmd.extend(["-loop", "1", "-i", image])
-        else:
-            cmd.extend(
-                ["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={self.fps}"]
-            )
-
-        # Input 1: Audio silence
-        cmd.extend(
-            ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
-        )
-
-        # Input 2: Animated GIF (optional)
-        if has_gif:
-            cmd.extend(["-stream_loop", "-1", "-ignore_loop", "0", "-i", gif_path])
-            log.info(f"YouTube Live: Adding animated GIF to waiting card")
-
-        # Build filter_complex — always use consistent input numbering
-        # [0] = bg image, [1] = silence audio, [2] = gif (if present)
-        if image:
-            vfilter = (
-                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
-                f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x0f0f23,"
-                f"format=yuva420p[bg];"
-            )
-        else:
-            vfilter = f"[0:v]format=yuva420p[bg];"
-
-        # Station name
-        vfilter += (
-            f"[bg]drawtext=text='{safe_station}':"
-            f"fontcolor=0xff4444:fontsize=32:font=Sans:bold=1:"
-            f"x=(w-text_w)/2:y=h*0.30:"
-            f"box=1:boxcolor=0x0a0a23@0.8:boxborderw=8"
-        )
-
-        # Animated GIF in the center (if available)
-        if has_gif:
-            vfilter += (
-                f"[gif];"
-                f"[2:v]scale=200:200:force_original_aspect_ratio=decrease,"
-                f"format=yuva420p[gif_w];"
-                f"[gif][gif_w]overlay=(w-200)/2:h*0.42:format=auto[with_gif]"
-            )
-        else:
-            vfilter += "[station]"
-
-        # Waiting message
-        current = "with_gif" if has_gif else "station"
-        vfilter += (
-            f";[{current}]drawtext=text='{safe_msg}':"
-            f"fontcolor=white@0.7:fontsize=18:font=Sans:"
-            f"x=(w-text_w)/2:y=h*0.72:"
-            f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg]"
-        )
-
-        # Bottom bar with STANDBY
-        if has_gif:
-            vfilter += (
-                f";[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-                f"drawtext=text='▶ STANDBY':fontcolor=0xffaa00:fontsize=16:font=Sans:bold=1:"
-                f"x=15:y={H - 35},"
-                f"[2:v]scale=40:40:force_original_aspect_ratio=decrease,"
-                f"format=yuva420p[gif_bar];"
-                f"[msg2][gif_bar]overlay={W - 55}:{H - 45}:format=auto,"
-                f"drawtext=text='{safe_station}':fontcolor=0xffffff@0.5:fontsize=14:font=Sans:"
-                f"x=130:y={H - 35}"
-                f"[outv]"
-            )
-        else:
-            vfilter += (
-                f";[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-                f"drawtext=text='▶ STANDBY':fontcolor=0xffaa00:fontsize=16:font=Sans:bold=1:"
-                f"x=15:y={H - 35},"
-                f"drawtext=text='{safe_station}':fontcolor=0xffffff@0.5:fontsize=14:font=Sans:"
-                f"x=130:y={H - 35}"
-                f"[outv]"
-            )
-
-        cmd.extend(["-filter_complex", vfilter])
-        # Audio index is always [1:a] for waiting card
-        cmd.extend(["-map", "[outv]", "-map", "1:a"])
-
-        cmd.extend(
-            [
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-g",
-                str(self.fps * 2),  # Keyframe every 2s (YouTube requires ≤4s)
-                "-keyint_min",
-                str(self.fps),  # Min keyframe interval 1s
-                "-b:v",
-                f"{self.bitrate_video}k",
-                "-r",
-                str(self.fps),
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                f"{self.bitrate_audio}k",
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                "-f",
-                "flv",
-                "-flvflags",
-                "no_duration_filesize",
-                "-shortest",
-                f"{self.rtmp_url}/{self.stream_key}",
-            ]
-        )
-
-        await self._run_ffmpeg(cmd, "waiting")
-
-    async def _start_ffmpeg_tts(self, tts_path: str, text: str):
-        """Start FFmpeg: TTS audio + animated DJ card with GIF → RTMP."""
-        image = self._resolve_image()
-        gif_path = self._resolve_gif()
-        has_gif = gif_path and os.path.isfile(gif_path)
-        label = "🎙️ DJ Speaking"
-        safe_text = text.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:50]
-        safe_station = (
-            self.station_name.replace("'", "\\'")
-            .replace(":", "\\:")
-            .replace("%", "%%")[:30]
-        )
-        W, H = self.WIDTH, self.HEIGHT
+        fps = self.fps
 
         cmd = ["ffmpeg", "-re"]
 
@@ -718,9 +842,127 @@ class YouTubeLiveStreamer:
         if image:
             cmd.extend(["-loop", "1", "-i", image])
         else:
-            cmd.extend(
-                ["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={self.fps}"]
-            )
+            cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
+
+        # Input 1: Silence
+        cmd.extend(
+            ["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=44100"]
+        )
+
+        # Input 2: Animated GIF (optional)
+        gif_path = self._resolve_gif()
+        has_gif = gif_path and os.path.isfile(gif_path)
+        if has_gif:
+            cmd.extend(["-stream_loop", "-1", "-ignore_loop", "0", "-i", gif_path])
+
+        # ── Build filter_complex ────────────────────────────────────
+        vf = ""
+
+        # Scale background
+        if image:
+            vf += f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
+            vf += f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x0f0f23,"
+            vf += f"format=yuva420p[bg];"
+        else:
+            vf += f"[0:v]format=yuva420p[bg];"
+
+        # Station name centered
+        vf += f"[bg]drawtext=text='{safe_station}':"
+        vf += f"fontcolor=0xff4444:fontsize=32:font=Sans:bold=1:"
+        vf += f"x=(w-text_w)/2:y=h*0.30:"
+        vf += f"box=1:boxcolor=0x0a0a23@0.8:boxborderw=8[with_station];"
+
+        if has_gif:
+            # Split GIF into center and bar copies
+            vf += f"[2:v]split=2[gif_center_in][gif_bar_in];"
+            vf += f"[gif_center_in]scale=200:200:force_original_aspect_ratio=decrease,"
+            vf += f"format=yuva420p[gif_center];"
+            vf += f"[with_station][gif_center]overlay=(w-200)/2:h*0.42:format=auto[with_gif];"
+
+            # Waiting message
+            vf += f"[with_gif]drawtext=text='{safe_msg}':"
+            vf += f"fontcolor=white@0.7:fontsize=18:font=Sans:"
+            vf += f"x=(w-text_w)/2:y=h*0.72:"
+            vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
+
+            # Bottom bar
+            vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
+            vf += f"drawtext=text='▶ STANDBY':fontcolor=0xffaa00:fontsize=16:font=Sans:bold=1:"
+            vf += f"x=15:y={H - 35}[with_bar];"
+
+            # Small GIF badge in bar
+            vf += f"[gif_bar_in]scale=40:40:force_original_aspect_ratio=decrease,"
+            vf += f"format=yuva420p[gif_bar];"
+            vf += f"[with_bar][gif_bar]overlay={W - 55}:{H - 45}:format=auto[with_bar_gif];"
+
+            # Station name in bar
+            vf += f"[with_bar_gif]drawtext=text='{safe_station}':"
+            vf += f"fontcolor=0xffffff@0.5:fontsize=14:font=Sans:"
+            vf += f"x=130:y={H - 35}[outv]"
+        else:
+            # No GIF — simple chain
+            vf += f"[with_station]drawtext=text='{safe_msg}':"
+            vf += f"fontcolor=white@0.7:fontsize=18:font=Sans:"
+            vf += f"x=(w-text_w)/2:y=h*0.72:"
+            vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
+
+            # Bottom bar
+            vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
+            vf += f"drawtext=text='▶ STANDBY':fontcolor=0xffaa00:fontsize=16:font=Sans:bold=1:"
+            vf += f"x=15:y={H - 35},"
+            vf += f"drawtext=text='{safe_station}':fontcolor=0xffffff@0.5:fontsize=14:font=Sans:"
+            vf += f"x=130:y={H - 35}"
+            vf += f"[outv]"
+
+        cmd.extend(["-filter_complex", vf])
+        cmd.extend(["-map", "[outv]", "-map", "1:a"])
+
+        # Encoding settings + shortest flag (waiting card has infinite silence,
+        # but we'll kill the process when switching cards)
+        cmd.extend(self._encoding_args())
+        cmd.append("-shortest")
+
+        await self._run_ffmpeg(cmd, "waiting")
+
+    async def _start_ffmpeg_tts(self, tts_path: str, text: str):
+        """Start FFmpeg: TTS audio + animated DJ card → RTMP.
+
+        Input layout:
+            [0] = background image (looped) or color source
+            [1] = TTS audio file
+            [2] = animated GIF (optional, if has_gif)
+
+        Filter chain (with GIF):
+            [0:v] → scale/pad → [bg]
+            [bg] → drawtext("DJ Speaking") → [with_label]
+            [2:v] → split → [gif_center_in][gif_bar_in]
+            [gif_center_in] → scale → [gif_center]
+            [with_label][gif_center] → overlay → [with_gif]
+            [with_gif] → drawtext(text) → [msg]
+            [gif_bar_in] → scale → [gif_bar]
+            [msg] → drawbox/drawtext(bar) → [with_bar]
+            [with_bar][gif_bar] → overlay → [outv]
+
+        Filter chain (no GIF):
+            [0:v] → scale/pad → [bg]
+            [bg] → drawtext("DJ Speaking") → drawtext(text) → drawbox/drawtext(bar) → [outv]
+        """
+        image = self._resolve_image()
+        gif_path = self._resolve_gif()
+        has_gif = gif_path and os.path.isfile(gif_path)
+        label = self._safe_text("🎙️ DJ Speaking", 30)
+        safe_text = self._safe_text(text, 50)
+        safe_station = self._safe_text(self.station_name, 30)
+        W, H = self.WIDTH, self.HEIGHT
+        fps = self.fps
+
+        cmd = ["ffmpeg", "-re"]
+
+        # Input 0: Background image or color
+        if image:
+            cmd.extend(["-loop", "1", "-i", image])
+        else:
+            cmd.extend(["-f", "lavfi", "-i", f"color=c=0x0f0f23:s={W}x{H}:r={fps}"])
 
         # Input 1: TTS audio
         cmd.extend(["-i", tts_path])
@@ -729,123 +971,122 @@ class YouTubeLiveStreamer:
         if has_gif:
             cmd.extend(["-stream_loop", "-1", "-ignore_loop", "0", "-i", gif_path])
 
-        # Build filter_complex
-        # [0]=bg, [1]=audio, [2]=gif (if present)
+        # ── Build filter_complex ────────────────────────────────────
+        vf = ""
+
+        # Scale background
         if image:
-            vfilter = (
-                f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
-                f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x0f0f23,"
-                f"format=yuva420p[bg];"
-            )
+            vf += f"[0:v]scale={W}:{H}:force_original_aspect_ratio=decrease,"
+            vf += f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:color=0x0f0f23,"
+            vf += f"format=yuva420p[bg];"
         else:
-            vfilter = f"[0:v]format=yuva420p[bg];"
+            vf += f"[0:v]format=yuva420p[bg];"
 
-        # DJ Speaking label
-        vfilter += (
-            f"[bg]drawtext=text='{label}':"
-            f"fontcolor=0x00ff88:fontsize=28:font=Sans:bold=1:"
-            f"x=(w-text_w)/2:y=h*0.32:"
-            f"box=1:boxcolor=0x0a0a23@0.8:boxborderw=8"
-        )
+        # "DJ Speaking" label
+        vf += f"[bg]drawtext=text='{label}':"
+        vf += f"fontcolor=0x00ff88:fontsize=28:font=Sans:bold=1:"
+        vf += f"x=(w-text_w)/2:y=h*0.32:"
+        vf += f"box=1:boxcolor=0x0a0a23@0.8:boxborderw=8[with_label];"
 
-        # Animated GIF overlay (if available)
         if has_gif:
-            vfilter += (
-                f";[label];"
-                f"[2:v]scale=150:150:force_original_aspect_ratio=decrease,"
-                f"format=yuva420p[gif_tts];"
-                f"[label][gif_tts]overlay=(w-150)/2:h*0.48:format=auto[with_gif]"
-            )
-            current = "with_gif"
+            # Split GIF for center and bar
+            vf += f"[2:v]split=2[gif_center_in][gif_bar_in];"
+            vf += f"[gif_center_in]scale=150:150:force_original_aspect_ratio=decrease,"
+            vf += f"format=yuva420p[gif_center];"
+            vf += f"[with_label][gif_center]overlay=(w-150)/2:h*0.48:format=auto[with_gif];"
+
+            # DJ text
+            vf += f"[with_gif]drawtext=text='{safe_text}':"
+            vf += f"fontcolor=white@0.8:fontsize=18:font=Sans:"
+            vf += f"x=(w-text_w)/2:y=h*0.65:"
+            vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
+
+            # Bottom bar
+            vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
+            vf += f"drawtext=text='🎙️ LIVE • {safe_station}':"
+            vf += f"fontcolor=0xff4444:fontsize=16:font=Sans:bold=1:"
+            vf += f"x=15:y={H - 35}[with_bar];"
+
+            # Small GIF badge
+            vf += f"[gif_bar_in]scale=40:40:force_original_aspect_ratio=decrease,"
+            vf += f"format=yuva420p[gif_bar];"
+            vf += f"[with_bar][gif_bar]overlay={W - 55}:{H - 45}:format=auto[outv]"
         else:
-            current = "label"
+            # DJ text
+            vf += f"[with_label]drawtext=text='{safe_text}':"
+            vf += f"fontcolor=white@0.8:fontsize=18:font=Sans:"
+            vf += f"x=(w-text_w)/2:y=h*0.65:"
+            vf += f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg];"
 
-        # DJ text
-        vfilter += (
-            f";[{current}]drawtext=text='{safe_text}':"
-            f"fontcolor=white@0.8:fontsize=18:font=Sans:"
-            f"x=(w-text_w)/2:y=h*0.65:"
-            f"box=1:boxcolor=0x0a0a23@0.5:boxborderw=4[msg]"
-        )
+            # Bottom bar
+            vf += f"[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
+            vf += f"drawtext=text='🎙️ LIVE • {safe_station}':"
+            vf += f"fontcolor=0xff4444:fontsize=16:font=Sans:bold=1:"
+            vf += f"x=15:y={H - 35}"
+            vf += f"[outv]"
 
-        # Bottom bar
-        if has_gif:
-            vfilter += (
-                f";[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-                f"drawtext=text='🎙️ LIVE • {safe_station}':"
-                f"fontcolor=0xff4444:fontsize=16:font=Sans:bold=1:"
-                f"x=15:y={H - 35},"
-                f"[2:v]scale=40:40:force_original_aspect_ratio=decrease,"
-                f"format=yuva420p[gif_bar];"
-                f"[msg2][gif_bar]overlay={W - 55}:{H - 45}:format=auto"
-                f"[outv]"
-            )
-        else:
-            vfilter += (
-                f";[msg]drawbox=x=0:y={H - 50}:w={W}:h=50:color=0x0a0a23@0.9:t=fill,"
-                f"drawtext=text='🎙️ LIVE • {safe_station}':"
-                f"fontcolor=0xff4444:fontsize=16:font=Sans:bold=1:"
-                f"x=15:y={H - 35}"
-                f"[outv]"
-            )
-
-        cmd.extend(["-filter_complex", vfilter])
-
-        # Map outputs: audio is always [1:a]
+        cmd.extend(["-filter_complex", vf])
         cmd.extend(["-map", "[outv]", "-map", "1:a"])
 
-        cmd.extend(
-            [
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-g",
-                str(self.fps * 2),
-                "-keyint_min",
-                str(self.fps),
-                "-b:v",
-                f"{self.bitrate_video}k",
-                "-r",
-                str(self.fps),
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                f"{self.bitrate_audio}k",
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                "-f",
-                "flv",
-                "-flvflags",
-                "no_duration_filesize",
-                "-shortest",
-                f"{self.rtmp_url}/{self.stream_key}",
-            ]
-        )
+        cmd.extend(self._encoding_args())
+        cmd.append("-shortest")
 
         await self._run_ffmpeg(cmd, "tts")
+
+    def _encoding_args(self) -> list:
+        """Return the common FFmpeg encoding argument list."""
+        return [
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-g",
+            str(self.fps * 2),  # Keyframe every 2s
+            "-keyint_min",
+            str(self.fps),  # Min keyframe 1s
+            "-b:v",
+            f"{self.bitrate_video}k",
+            "-r",
+            str(self.fps),
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            f"{self.bitrate_audio}k",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            "-f",
+            "flv",
+            "-flvflags",
+            "no_duration_filesize",
+            f"{self.rtmp_url}/{self.stream_key}",
+        ]
 
     async def _run_ffmpeg(self, cmd: list, label: str):
         """Start an FFmpeg subprocess and monitor it."""
         try:
+            self._stderr_lines = []
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
-            log.info(f"YouTube Live: FFmpeg {label} started (pid={self._process.pid})")
+            log.info(
+                f"YouTube Live: FFmpeg {label} started "
+                f"(pid={self._process.pid}, cmd has {len(cmd)} args)"
+            )
+            log.debug(f"YouTube Live: FFmpeg command: {' '.join(cmd[:8])}...")
             asyncio.create_task(self._drain_stderr(label))
         except FileNotFoundError:
-            log.error(
-                "YouTube Live: ffmpeg not found — install with: apt install ffmpeg"
-            )
+            self._last_error = "ffmpeg not found — install with: apt install ffmpeg"
+            log.error(f"YouTube Live: {self._last_error}")
             self._running = False
         except Exception as e:
-            log.error(f"YouTube Live: Failed to start FFmpeg {label}: {e}")
+            self._last_error = f"FFmpeg start failed: {e}"
+            log.error(f"YouTube Live: {self._last_error}")
             self._running = False
 
     async def _drain_stderr(self, label: str):
@@ -858,26 +1099,44 @@ class YouTubeLiveStreamer:
                 if not line:
                     break
                 txt = line.decode("utf-8", errors="replace").strip()
-                if "error" in txt.lower() or "warning" in txt.lower():
+                # Keep last 20 lines for debugging
+                self._stderr_lines.append(txt)
+                if len(self._stderr_lines) > 20:
+                    self._stderr_lines.pop(0)
+                if "error" in txt.lower():
+                    log.warning(f"YouTube Live [{label}]: {txt[:200]}")
+                elif "warning" in txt.lower():
                     log.debug(f"YouTube Live [{label}]: {txt[:120]}")
         except Exception:
             pass
 
     async def _watchdog(self):
-        """Watchdog that restarts the waiting card if FFmpeg dies unexpectedly."""
+        """Watchdog that restarts the stream if FFmpeg dies unexpectedly.
+
+        In autonomous mode, the _run_autonomous_loop handles re-advancement.
+        In mirror mode, we restart the waiting card so the stream stays alive.
+        """
         try:
             while self._running:
-                await asyncio.sleep(5)
+                await asyncio.sleep(10)
                 if (
                     self._process
                     and self._process.returncode is not None
                     and self._running
                 ):
-                    log.warning(
-                        f"YouTube Live: FFmpeg exited with code {self._process.returncode}, "
-                        "restarting waiting card..."
-                    )
-                    await self.play_waiting()
+                    code = self._process.returncode
+                    log.warning(f"YouTube Live: FFmpeg exited with code {code}")
+                    if code != 0:
+                        # Log the last few stderr lines for diagnosis
+                        if self._stderr_lines:
+                            for line in self._stderr_lines[-5:]:
+                                log.warning(f"YouTube Live [stderr]: {line[:200]}")
+
+                    if not self._autonomous:
+                        # Mirror mode: restart waiting card
+                        log.warning("YouTube Live: Restarting waiting card...")
+                        await self.play_waiting()
+                    # In autonomous mode, the loop handles advancement
         except asyncio.CancelledError:
             pass
 
@@ -896,7 +1155,6 @@ class YouTubeLiveStreamer:
             os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png"
         )
         if os.path.isfile(logo):
-            log.info(f"YouTube Live: Using station logo as stream card ({logo})")
             return logo
         log.warning(
             "YouTube Live: No stream card image found — will use a dark background. "
@@ -905,17 +1163,11 @@ class YouTubeLiveStreamer:
         return None
 
     def _resolve_gif(self) -> str | None:
-        """Resolve the animated GIF overlay path.
-
-        Looks for YOUTUBE_STREAM_GIF config, then falls back to assets/giphy.gif.
-        The GIF is overlaid on the stream card as an animated visual element.
-        """
-        # Config override
+        """Resolve the animated GIF overlay path."""
         if self.stream_gif:
             if os.path.isfile(self.stream_gif):
                 return self.stream_gif
             log.warning(f"YouTube Live: Configured GIF not found: {self.stream_gif}")
-        # Default location
         default_gif = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "assets", "giphy.gif"
         )

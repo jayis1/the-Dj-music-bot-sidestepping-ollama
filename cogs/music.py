@@ -124,6 +124,72 @@ class Music(commands.Cog):
         )
         self._load_voice_settings()
 
+    # ── Auto-start YouTube Live autonomous stream on boot ──
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Auto-start YouTube Live autonomous stream when bot connects.
+
+        If YOUTUBE_STREAM_ENABLED=true and YOUTUBE_STREAM_KEY is set
+        and YOUTUBE_STREAM_PLAYLIST (or AUTODJ_DEFAULT_SOURCE) has a
+        playlist URL, the bot starts streaming in autonomous (24/7) mode
+        immediately — no Discord voice channel needed.
+        """
+        if not getattr(config, "YOUTUBE_STREAM_ENABLED", False):
+            return
+        if not YOUTUBE_STREAMER_CLASS:
+            return
+        if self._yt_stream_active:
+            return  # Already streaming
+
+        key = getattr(config, "YOUTUBE_STREAM_KEY", "")
+        if not key:
+            return
+
+        playlist_url = getattr(config, "YOUTUBE_STREAM_PLAYLIST", "") or getattr(
+            config, "AUTODJ_DEFAULT_SOURCE", ""
+        )
+        if not playlist_url:
+            logging.info(
+                "YouTube Live: YOUTUBE_STREAM_ENABLED is true but no playlist URL set. "
+                "Use ?golive or Mission Control to start manually."
+            )
+            return
+
+        # Wait a moment for the bot to fully connect
+        await asyncio.sleep(3)
+
+        # Use the first available guild
+        guild = self.bot.guilds[0] if self.bot.guilds else None
+        if not guild:
+            logging.warning("YouTube Live: No guilds available for auto-start")
+            return
+
+        rtmp_url = getattr(
+            config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+        )
+        stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
+
+        try:
+            self._yt_streamer = YOUTUBE_STREAMER_CLASS(
+                stream_key=key,
+                rtmp_url=rtmp_url,
+                stream_image=stream_image,
+                stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+            )
+            self._yt_stream_guild = guild.id
+            await self._yt_streamer.start_autonomous(
+                playlist_url=playlist_url,
+                loop_playlist=True,
+                shuffle=True,
+            )
+            self._yt_stream_active = True
+            logging.info(
+                f"YouTube Live: ✅ Auto-started autonomous 24/7 stream "
+                f"with playlist: {playlist_url[:60]}"
+            )
+        except Exception as e:
+            logging.error(f"YouTube Live: Auto-start failed: {e}")
+
     # ── Voice settings persistence ────────────────────────────────────
 
     def _load_voice_settings(self):
@@ -264,6 +330,13 @@ class Music(commands.Cog):
             del self.inactivity_timers[guild_id]
         guild = self.bot.get_guild(guild_id)
         if guild and guild.voice_client and not guild.voice_client.is_playing():
+            # Don't disconnect if YouTube Live stream is active —
+            # the stream may still be running even during brief silences
+            if self._yt_stream_active:
+                logging.info(
+                    f"Skipping inactivity disconnect in {guild.name} — YouTube Live stream is active"
+                )
+                return
             await guild.voice_client.disconnect()
             logging.info(
                 f"Bot disconnected from voice channel in {guild.name} due to inactivity."
@@ -3287,15 +3360,9 @@ class BattleView(discord.ui.View):
                 )
             )
 
-        if not ctx.voice_client or not ctx.voice_client.is_connected():
-            return await ctx.send(
-                embed=self.create_embed(
-                    "Not in Voice",
-                    f"{config.ERROR_EMOJI} The bot must be in a voice channel to stream. "
-                    "Join a channel and use `?play` first.",
-                    discord.Color.red(),
-                )
-            )
+        # Voice connection is only required for mirror mode.
+        # Autonomous (24/7) mode streams without Discord.
+        has_voice = ctx.voice_client and ctx.voice_client.is_connected()
 
         # Use provided key, or fall back to .env config
         key = stream_key or getattr(config, "YOUTUBE_STREAM_KEY", "")
@@ -3324,27 +3391,159 @@ class BattleView(discord.ui.View):
         )
         self._yt_stream_guild = ctx.guild.id
 
-        await self._yt_streamer.start()
-        self._yt_stream_active = True
+        # Check if user wants autonomous (24/7) mode or mirror mode
+        # Autonomous: no Discord voice needed, plays from playlist
+        # Mirror: shadows Discord playback
+        playlist_url = getattr(config, "AUTODJ_DEFAULT_SOURCE", "") or ""
+        use_autonomous = not has_voice or (playlist_url and not has_voice)
 
-        # If a song is currently playing, start streaming it immediately
-        current = self.current_song.get(ctx.guild.id)
-        if current and current.url:
-            thumb = getattr(current, "thumbnail", None)
-            await self._yt_streamer.play_song(
-                current.url, current.title or "Unknown", thumbnail=thumb
+        if use_autonomous and playlist_url:
+            # 24/7 autonomous mode — no Discord voice needed
+            await self._yt_streamer.start_autonomous(
+                playlist_url=playlist_url,
+                loop_playlist=True,
+                shuffle=True,
+            )
+            self._yt_stream_active = True
+            key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+            await ctx.send(
+                embed=self.create_embed(
+                    "🔴 YouTube Live Started (24/7)",
+                    f"{config.SUCCESS_EMOJI} Streaming to YouTube Live in **autonomous mode**!\n"
+                    f"📡 RTMP: `{rtmp_url}`\n"
+                    f"🔑 Key: `{key_display}`\n"
+                    f"🖼️ Card: `{stream_image or 'logo.png'}`\n"
+                    f"📜 Playlist: `{playlist_url[:60]}`\n\n"
+                    "The stream runs 24/7 — no Discord voice channel needed. "
+                    "Songs play automatically from the playlist.\n"
+                    "Use `?stoplive` to stop. Use Mission Control for controls.",
+                    discord.Color.green(),
+                )
+            )
+        else:
+            # Mirror mode — shadows Discord playback
+            if not has_voice:
+                return await ctx.send(
+                    embed=self.create_embed(
+                        "Not in Voice",
+                        f"{config.ERROR_EMOJI} The bot must be in a voice channel for mirror mode. "
+                        "Join a channel and use `?play` first, or set `AUTODJ_DEFAULT_SOURCE` "
+                        "in .env for 24/7 autonomous streaming.",
+                        discord.Color.red(),
+                    )
+                )
+
+            await self._yt_streamer.start()
+            self._yt_stream_active = True
+
+            # If a song is currently playing, start streaming it immediately
+            current = self.current_song.get(ctx.guild.id)
+            if current and current.url:
+                thumb = getattr(current, "thumbnail", None)
+                await self._yt_streamer.play_song(
+                    current.url, current.title or "Unknown", thumbnail=thumb
+                )
+
+            key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+            await ctx.send(
+                embed=self.create_embed(
+                    "🔴 YouTube Live Started",
+                    f"{config.SUCCESS_EMOJI} Streaming to YouTube Live (mirror mode)!\n"
+                    f"📡 RTMP: `{rtmp_url}`\n"
+                    f"🔑 Key: `{key_display}`\n"
+                    f"🖼️ Card: `{stream_image or 'logo.png'}`\n\n"
+                    "Go to **YouTube Studio → Go Live** to see the stream. "
+                    "Use `?stoplive` to stop.",
+                    discord.Color.green(),
+                )
             )
 
-        key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+    @commands.command(name="autolive")
+    @commands.is_owner()
+    async def autolive(self, ctx, playlist_url: str = ""):
+        """Start YouTube Live in autonomous 24/7 mode.
+
+        Usage:
+          ?autolive <playlist_url>   — Stream from a specific playlist
+          ?autolive                  — Use AUTODJ_DEFAULT_SOURCE from .env
+
+        No Discord voice channel needed — runs 24/7 independently.
+        """
+        if not YOUTUBE_STREAMER_CLASS:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Not Available",
+                    f"{config.ERROR_EMOJI} YouTube Live streaming module not available. "
+                    "Check that `utils/youtube_stream.py` exists and FFmpeg is installed.",
+                    discord.Color.red(),
+                )
+            )
+
+        if self._yt_stream_active:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Already Live",
+                    f"{config.SUCCESS_EMOJI} YouTube Live stream is already running! "
+                    "Use `?stoplive` to stop it.",
+                    discord.Color.blue(),
+                )
+            )
+
+        # Resolve playlist URL
+        if not playlist_url:
+            playlist_url = getattr(config, "YOUTUBE_STREAM_PLAYLIST", "") or getattr(
+                config, "AUTODJ_DEFAULT_SOURCE", ""
+            )
+        if not playlist_url:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "No Playlist",
+                    f"{config.ERROR_EMOJI} No playlist URL provided. "
+                    "Usage: `?autolive <playlist_url>`\n"
+                    "Or set `YOUTUBE_STREAM_PLAYLIST` in .env",
+                    discord.Color.orange(),
+                )
+            )
+
+        key = getattr(config, "YOUTUBE_STREAM_KEY", "")
+        if not key:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "No Stream Key",
+                    f"{config.ERROR_EMOJI} Set `YOUTUBE_STREAM_KEY` in .env first.",
+                    discord.Color.red(),
+                )
+            )
+
+        rtmp_url = getattr(
+            config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+        )
+        stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
+
+        self._yt_streamer = YOUTUBE_STREAMER_CLASS(
+            stream_key=key,
+            rtmp_url=rtmp_url,
+            stream_image=stream_image,
+            stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+        )
+        self._yt_stream_guild = ctx.guild.id
+
+        await self._yt_streamer.start_autonomous(
+            playlist_url=playlist_url,
+            loop_playlist=True,
+            shuffle=True,
+        )
+        self._yt_stream_active = True
+
         await ctx.send(
             embed=self.create_embed(
-                "🔴 YouTube Live Started",
-                f"{config.SUCCESS_EMOJI} Streaming to YouTube Live!\n"
-                f"📡 RTMP: `{rtmp_url}`\n"
-                f"🔑 Key: `{key_display}`\n"
-                f"🖼️ Card: `{stream_image or 'logo.png'}`\n\n"
-                "Go to **YouTube Studio → Go Live** to see the stream. "
-                "Use `?stoplive` to stop.",
+                "🔴 YouTube Live Started (24/7)",
+                f"{config.SUCCESS_EMOJI} Autonomous streaming started!\n"
+                f"📜 Playlist: `{playlist_url[:60]}`\n"
+                f"🔁 Loop: On | 🔀 Shuffle: On\n\n"
+                "No Discord voice channel needed — runs 24/7.\n"
+                "Use `?stoplive` to stop. "
+                "Use `?livestatus` to check position.",
                 discord.Color.green(),
             )
         )
@@ -3357,7 +3556,7 @@ class BattleView(discord.ui.View):
             return await ctx.send(
                 embed=self.create_embed(
                     "Not Streaming",
-                    "YouTube Live stream is not running. Use `?golive` to start.",
+                    "YouTube Live stream is not running. Use `?golive` or `?autolive` to start.",
                     discord.Color.blue(),
                 )
             )
@@ -3375,23 +3574,53 @@ class BattleView(discord.ui.View):
             )
         )
 
+    @commands.command(name="ytskip")
+    @commands.is_owner()
+    async def ytskip(self, ctx):
+        """Skip to the next song in autonomous YouTube Live stream."""
+        if not self._yt_stream_active or not self._yt_streamer:
+            return await ctx.send("No active YouTube Live stream.")
+        if not self._yt_streamer.is_autonomous:
+            return await ctx.send(
+                "Skip only works in autonomous mode. Use `?skip` for Discord playback."
+            )
+
+        await self._yt_streamer.skip_song()
+        await ctx.send("⏭️ Skipping to next song in YouTube Live stream...")
+
     @commands.command(name="livestatus")
     async def livestatus(self, ctx):
         """Check the YouTube Live stream status."""
         if self._yt_stream_active and self._yt_streamer:
-            current = self._yt_streamer.current_url
             status = "🔴 Live" if self._yt_streamer.is_running else "⚠️ Reconnecting"
             lines = [
                 f"Status: **{status}**",
-                f"Guild: {ctx.guild.name}",
+                f"Mode: **{'🤖 Autonomous (24/7)' if self._yt_streamer.is_autonomous else '🪞 Mirror (Discord)'}**",
             ]
-            if current:
-                song = self.current_song.get(ctx.guild.id)
+            if self._yt_streamer.is_autonomous:
+                lines.append(f"Playlist: `{self._yt_streamer.playlist_url[:60]}`")
                 lines.append(
-                    f"Now Streaming: **{song.title if song else current[:60]}**"
+                    f"Position: {self._yt_streamer.playlist_index + 1}/{self._yt_streamer.playlist_size}"
                 )
+                lines.append(f"Songs streamed: {self._yt_streamer.song_count}")
+                uptime = self._yt_streamer.uptime_seconds
+                if uptime < 60:
+                    lines.append(f"Uptime: {uptime:.0f}s")
+                elif uptime < 3600:
+                    lines.append(f"Uptime: {uptime / 60:.0f}m")
+                else:
+                    lines.append(f"Uptime: {uptime / 3600:.1f}h")
             else:
-                lines.append("Now Streaming: Waiting card (between songs)")
+                current = self._yt_streamer.current_url
+                if current:
+                    song = self.current_song.get(ctx.guild.id)
+                    lines.append(
+                        f"Now Streaming: **{song.title if song else current[:60]}**"
+                    )
+                else:
+                    lines.append("Now Streaming: Waiting card (between songs)")
+            if self._yt_streamer.last_error:
+                lines.append(f"⚠️ Last error: {self._yt_streamer.last_error[:80]}")
             await ctx.send(
                 embed=self.create_embed(
                     "YouTube Live Status", "\n".join(lines), discord.Color.blue()

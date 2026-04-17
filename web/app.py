@@ -2206,6 +2206,41 @@ def api_overlay_state():
                 "ai_enabled": music.ai_dj_enabled.get(gid, False),
                 "station_name": getattr(config, "STATION_NAME", "MBot"),
                 "source": source,
+                "yt_live_active": music._yt_stream_active,
+                "yt_live_autonomous": (
+                    music._yt_streamer.is_autonomous
+                    if music._yt_stream_active and music._yt_streamer
+                    else False
+                ),
+                "yt_live_title": (
+                    music._yt_streamer.current_title
+                    if music._yt_stream_active and music._yt_streamer
+                    else None
+                ),
+            }
+        )
+
+    # No Discord voice client — check if YouTube Live autonomous is running
+    if music and music._yt_stream_active and music._yt_streamer:
+        return jsonify(
+            {
+                "playing": True,
+                "paused": False,
+                "title": music._yt_streamer.current_title or "YouTube Live Stream",
+                "thumbnail": None,
+                "duration": None,
+                "elapsed": 0,
+                "dj_speaking": False,
+                "ai_speaking": False,
+                "dj_enabled": False,
+                "ai_enabled": False,
+                "station_name": getattr(config, "STATION_NAME", "MBot"),
+                "source": "YouTube Live (autonomous)"
+                if music._yt_streamer.is_autonomous
+                else "YouTube Live (mirror)",
+                "yt_live_active": True,
+                "yt_live_autonomous": music._yt_streamer.is_autonomous,
+                "yt_live_title": music._yt_streamer.current_title,
             }
         )
 
@@ -2693,7 +2728,11 @@ def api_ytcookies_health():
 
 @app.route("/api/<int:guild_id>/youtube_stream/status")
 def api_youtube_stream_status(guild_id):
-    """Return the current YouTube Live stream status."""
+    """Return the current YouTube Live stream status.
+
+    Returns detailed status including autonomous mode info, playlist
+    position, song count, uptime, and any errors.
+    """
     music = _get_music_cog()
     if not music:
         return jsonify({"active": False, "error": "Music cog not loaded"})
@@ -2705,6 +2744,7 @@ def api_youtube_stream_status(guild_id):
         "active": active,
         "running": streamer.is_running if active and streamer else False,
         "current_url": streamer.current_url if active and streamer else None,
+        "current_title": streamer.current_title if active and streamer else None,
         "stream_guild": music._yt_stream_guild,
         "stream_key_set": bool(
             getattr(config, "YOUTUBE_STREAM_KEY", "")
@@ -2712,8 +2752,18 @@ def api_youtube_stream_status(guild_id):
         ),
     }
 
-    # Include current song info if streaming
-    if active and guild_id in music.current_song:
+    # Include autonomous mode details
+    if active and streamer:
+        result.update(streamer.get_status())
+    else:
+        result["autonomous"] = False
+
+    # Include Discord song info if available (mirror mode)
+    if (
+        active
+        and not (streamer and streamer.is_autonomous)
+        and guild_id in music.current_song
+    ):
         song = music.current_song[guild_id]
         result["song_title"] = song.title if song else None
 
@@ -2722,7 +2772,18 @@ def api_youtube_stream_status(guild_id):
 
 @app.route("/api/<int:guild_id>/youtube_stream/toggle", methods=["POST"])
 def api_youtube_stream_toggle(guild_id):
-    """Start or stop the YouTube Live stream from Mission Control."""
+    """Start or stop the YouTube Live stream from Mission Control.
+
+    Works for both mirror mode and autonomous mode.
+
+    Request body (JSON):
+        action: "start" | "stop" | "toggle" (default: toggle)
+        stream_key: YouTube stream key (optional, falls back to .env)
+        mode: "mirror" | "autonomous" (default: mirror)
+        playlist_url: YouTube playlist URL (required for autonomous mode)
+        loop: true/false (default: true, autonomous only)
+        shuffle: true/false (default: false, autonomous only)
+    """
     music = _get_music_cog()
     if not music:
         return jsonify({"ok": False, "error": "Music cog not loaded"}), 503
@@ -2737,14 +2798,16 @@ def api_youtube_stream_toggle(guild_id):
 
     data = request.json or {}
     stream_key = data.get("stream_key", "").strip()
-    action = data.get("action", "toggle")  # "toggle", "start", "stop"
+    action = data.get("action", "toggle")
+    mode = data.get("mode", "mirror")  # "mirror" or "autonomous"
+    playlist_url = data.get("playlist_url", "").strip()
+    loop_playlist = data.get("loop", True)
+    shuffle = data.get("shuffle", False)
 
     if music._yt_stream_active:
         # Stop the stream
         if action == "start":
             return jsonify({"ok": False, "error": "Stream is already running"}), 409
-
-        import asyncio
 
         async def _stop():
             if music._yt_streamer:
@@ -2764,16 +2827,6 @@ def api_youtube_stream_toggle(guild_id):
         if action == "stop":
             return jsonify({"ok": False, "error": "Stream is not running"}), 409
 
-        # Check that the bot is in a voice channel in this guild
-        guild = bot.get_guild(guild_id)
-        if not guild or not guild.voice_client:
-            return jsonify(
-                {
-                    "ok": False,
-                    "error": "Bot is not in a voice channel in this server. Play a song first.",
-                }
-            ), 400
-
         # Use provided key, or fall back to config
         key = stream_key or getattr(config, "YOUTUBE_STREAM_KEY", "")
         if not key:
@@ -2789,38 +2842,179 @@ def api_youtube_stream_toggle(guild_id):
         )
         stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
 
-        import asyncio
+        # ── Mirror mode: requires Discord voice connection ──
+        if mode == "mirror":
+            guild = bot.get_guild(guild_id)
+            if not guild or not guild.voice_client:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "Bot is not in a voice channel. Use autonomous mode for 24/7 streaming without Discord, "
+                        "or play a song first for mirror mode.",
+                    }
+                ), 400
 
-        async def _start():
-            from utils.youtube_stream import YouTubeLiveStreamer
+            async def _start_mirror():
+                from utils.youtube_stream import YouTubeLiveStreamer
 
-            music._yt_streamer = YouTubeLiveStreamer(
-                stream_key=key,
-                rtmp_url=rtmp_url,
-                stream_image=stream_image,
-                stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
-            )
-            music._yt_stream_guild = guild_id
-            await music._yt_streamer.start()
-            music._yt_stream_active = True
-
-            # If a song is currently playing, start streaming it
-            current = music.current_song.get(guild_id)
-            if current and current.url:
-                thumb = getattr(current, "thumbnail", None)
-                await music._yt_streamer.play_song(
-                    current.url, current.title or "Unknown", thumbnail=thumb
+                music._yt_streamer = YouTubeLiveStreamer(
+                    stream_key=key,
+                    rtmp_url=rtmp_url,
+                    stream_image=stream_image,
+                    stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
                 )
-            logging.info(
-                f"YouTube Live: Stream started via Mission Control for guild {guild_id}"
+                music._yt_stream_guild = guild_id
+                await music._yt_streamer.start()
+                music._yt_stream_active = True
+
+                # If a song is currently playing, start streaming it
+                current = music.current_song.get(guild_id)
+                if current and current.url:
+                    thumb = getattr(current, "thumbnail", None)
+                    await music._yt_streamer.play_song(
+                        current.url, current.title or "Unknown", thumbnail=thumb
+                    )
+                logging.info(
+                    f"YouTube Live: Mirror stream started via Mission Control for guild {guild_id}"
+                )
+
+            asyncio.ensure_future(_start_mirror(), loop=bot.loop)
+            key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+            return jsonify(
+                {
+                    "ok": True,
+                    "active": True,
+                    "mode": "mirror",
+                    "message": f"🔴 YouTube Live started (mirror mode)! Key: {key_display}",
+                }
             )
 
-        asyncio.ensure_future(_start(), loop=bot.loop)
-        key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+        # ── Autonomous mode: no Discord required ──
+        elif mode == "autonomous":
+            if not playlist_url:
+                playlist_url = getattr(config, "AUTODJ_DEFAULT_SOURCE", "") or ""
+            if not playlist_url:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "No playlist URL provided. Enter a YouTube playlist URL or set "
+                        "AUTODJ_DEFAULT_SOURCE in .env",
+                    }
+                ), 400
+
+            async def _start_autonomous():
+                from utils.youtube_stream import YouTubeLiveStreamer
+
+                music._yt_streamer = YouTubeLiveStreamer(
+                    stream_key=key,
+                    rtmp_url=rtmp_url,
+                    stream_image=stream_image,
+                    stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+                )
+                music._yt_stream_guild = guild_id
+                await music._yt_streamer.start_autonomous(
+                    playlist_url=playlist_url,
+                    loop_playlist=loop_playlist,
+                    shuffle=shuffle,
+                )
+                music._yt_stream_active = True
+                logging.info(
+                    f"YouTube Live: AUTONOMOUS stream started via Mission Control "
+                    f"for guild {guild_id} — playlist: {playlist_url[:80]}"
+                )
+
+            asyncio.ensure_future(_start_autonomous(), loop=bot.loop)
+            key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+            return jsonify(
+                {
+                    "ok": True,
+                    "active": True,
+                    "mode": "autonomous",
+                    "message": f"🔴 YouTube Live started (24/7 autonomous)! Key: {key_display}",
+                    "playlist_url": playlist_url,
+                }
+            )
+
+        else:
+            return jsonify(
+                {"ok": False, "error": "Invalid mode. Use 'mirror' or 'autonomous'"}
+            ), 400
+
+
+@app.route("/api/<int:guild_id>/youtube_stream/skip", methods=["POST"])
+def api_youtube_stream_skip(guild_id):
+    """Skip to the next song in autonomous streaming mode."""
+    music = _get_music_cog()
+    if not music or not music._yt_stream_active or not music._yt_streamer:
+        return jsonify({"ok": False, "error": "No active stream"}), 400
+
+    if not music._yt_streamer.is_autonomous:
         return jsonify(
-            {
-                "ok": True,
-                "active": True,
-                "message": f"🔴 YouTube Live started! Key: {key_display}",
-            }
-        )
+            {"ok": False, "error": "Skip only works in autonomous mode"}
+        ), 400
+
+    async def _skip():
+        await music._yt_streamer.skip_song()
+
+    asyncio.ensure_future(_skip(), loop=bot.loop)
+    return jsonify({"ok": True, "message": "⏭️ Skipping to next song"})
+
+
+@app.route("/api/<int:guild_id>/youtube_stream/config", methods=["POST"])
+def api_youtube_stream_config(guild_id):
+    """Update autonomous stream configuration at runtime.
+
+    Request body (JSON):
+        playlist_url: New playlist URL (reloads the playlist)
+        loop: true/false
+        shuffle: true/false
+        reload: true (reload the current playlist to pick up additions)
+    """
+    music = _get_music_cog()
+    if not music or not music._yt_stream_active or not music._yt_streamer:
+        return jsonify({"ok": False, "error": "No active stream"}), 400
+
+    if not music._yt_streamer.is_autonomous:
+        return jsonify(
+            {"ok": False, "error": "Config only works in autonomous mode"}
+        ), 400
+
+    data = request.json or {}
+    streamer = music._yt_streamer
+
+    changes = []
+
+    if "loop" in data:
+        streamer._playlist_loop = bool(data["loop"])
+        changes.append(f"loop={'on' if streamer._playlist_loop else 'off'}")
+
+    if "shuffle" in data:
+        streamer._shuffle = bool(data["shuffle"])
+        changes.append(f"shuffle={'on' if streamer._shuffle else 'off'}")
+
+    if data.get("playlist_url"):
+        new_url = data["playlist_url"].strip()
+        streamer._playlist_url = new_url
+        changes.append(f"playlist updated")
+
+        # Reload playlist in background
+        async def _reload():
+            await streamer._load_playlist()
+            streamer._playlist_index = 0
+            logging.info(f"YouTube Live: Playlist reloaded: {new_url[:80]}")
+
+        asyncio.ensure_future(_reload(), loop=bot.loop)
+
+    if data.get("reload"):
+
+        async def _reload():
+            await streamer._load_playlist()
+            logging.info(f"YouTube Live: Playlist reloaded (refresh)")
+
+        asyncio.ensure_future(_reload(), loop=bot.loop)
+        changes.append("playlist refreshed")
+
+    if not changes:
+        return jsonify({"ok": False, "error": "No changes specified"}), 400
+
+    return jsonify({"ok": True, "changes": changes})

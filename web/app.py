@@ -503,9 +503,9 @@ def queue_manager():
                     "id": guild_id,
                     "name": guild.name,
                     "member_count": guild.member_count,
-                    "in_voice": voice is not None,
-                    "voice_channel": voice.channel.name if voice else None,
-                    "playing": voice.is_playing() if voice else False,
+                    "in_voice": (voice is not None) or (music and getattr(music, "_yt_stream_active", False) and getattr(music, "_yt_stream_guild", None) == guild_id),
+                    "voice_channel": voice.channel.name if voice else ("Headless YouTube Stream" if (music and getattr(music, "_yt_stream_active", False)) else None),
+                    "playing": (voice.is_playing() if voice else False) or (current is not None),
                     "paused": voice.is_paused() if voice else False,
                     "current_song": current.title if current else None,
                     "current_song_url": current.webpage_url if current else None,
@@ -1116,7 +1116,7 @@ def api_play(guild_id):
             ctx = WebCtx()
             ctx.guild = guild
             ctx.author = guild.me
-            ctx.voice_client = getattr(guild, "voice_client", None)  # Might be None if headless, which is fine
+            ctx.voice_client = vc  # Uses the PCMBroadcasterWrapper if headless, or Discord VoiceClient otherwise
             ctx.channel = guild.text_channels[0] if guild.text_channels else None
             # Cancel any inactivity timer
             if guild_id in music.inactivity_timers:

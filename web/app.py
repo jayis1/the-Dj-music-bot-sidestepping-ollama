@@ -2862,6 +2862,7 @@ def api_youtube_stream_toggle(guild_id):
                     rtmp_url=rtmp_url,
                     stream_image=stream_image,
                     stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+                    station_name=getattr(config, "STATION_NAME", "MBot Radio"),
                 )
                 music._yt_stream_guild = guild_id
                 await music._yt_streamer.start()
@@ -2910,6 +2911,7 @@ def api_youtube_stream_toggle(guild_id):
                     rtmp_url=rtmp_url,
                     stream_image=stream_image,
                     stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+                    station_name=getattr(config, "STATION_NAME", "MBot Radio"),
                 )
                 music._yt_stream_guild = guild_id
                 await music._yt_streamer.start_autonomous(

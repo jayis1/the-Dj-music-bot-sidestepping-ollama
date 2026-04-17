@@ -3388,6 +3388,7 @@ class BattleView(discord.ui.View):
             rtmp_url=rtmp_url,
             stream_image=stream_image,
             stream_gif=stream_gif,
+            station_name=getattr(config, "STATION_NAME", "MBot Radio"),
         )
         self._yt_stream_guild = ctx.guild.id
 
@@ -3525,6 +3526,7 @@ class BattleView(discord.ui.View):
             rtmp_url=rtmp_url,
             stream_image=stream_image,
             stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
+            station_name=getattr(config, "STATION_NAME", "MBot Radio"),
         )
         self._yt_stream_guild = ctx.guild.id
 

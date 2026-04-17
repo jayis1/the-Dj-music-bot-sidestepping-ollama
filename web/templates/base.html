@@ -68,6 +68,9 @@
                         style="background:none; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:4px;">✕</button>
                 </div>
                 <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+                    <button id="ext-fix-btn" class="btn" onclick="ytCookieExtensionFix()" style="background:#ff0000; color:white; border-color:#ff0000; font-weight:600; display:none;">
+                        🧩 Fix with Extension (one click)
+                    </button>
                     <button class="btn" onclick=" ytCookieQuickFix()" style="background:var(--success); color:#000; border-color:var(--success); font-weight:600;">
                         🍪 Fix Now (from this browser)
                     </button>
@@ -243,6 +246,46 @@
                         if (status) status.textContent = '❌ Network error';
                     });
                 };
+
+                // ── Browser Extension Detection & Communication ────────────
+                // The MBot Cookie Bridge extension injects a small content script
+                // into Mission Control pages that exposes window.__mbotExtension.
+                // If detected, show the one-click "Fix with Extension" button.
+
+                window.ytCookieExtensionFix = function() {
+                    // Send a message to the extension via window.postMessage
+                    // The extension's content script listens for this
+                    window.postMessage({
+                        type: 'mbot-send-cookies',
+                        botUrl: window.location.origin
+                    }, '*');
+                    showToast('🧩 Sending cookies via extension...', 'info');
+                };
+
+                // Listen for extension response
+                window.addEventListener('message', function(event) {
+                    if (event.data && event.data.type === 'mbot-cookies-sent') {
+                        if (event.data.ok) {
+                            showToast('✅ Cookies sent via extension! Playback resuming...', 'success');
+                            setTimeout(() => {
+                                const banner = document.getElementById('yt-auth-banner');
+                                if (banner) banner.style.display = 'none';
+                            }, 3000);
+                        } else {
+                            showToast('❌ Extension send failed: ' + (event.data.error || 'Unknown'), 'error');
+                        }
+                    }
+                    if (event.data && event.data.type === 'mbot-extension-present') {
+                        // Extension is installed! Show the one-click button
+                        const extBtn = document.getElementById('ext-fix-btn');
+                        if (extBtn) extBtn.style.display = 'inline-block';
+                    }
+                });
+
+                // Check for extension presence
+                setTimeout(() => {
+                    window.postMessage({ type: 'mbot-check-extension' }, '*');
+                }, 1000);
             })();
             </script>
             {% with messages = get_flashed_messages(with_categories=true) %}

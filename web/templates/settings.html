@@ -62,19 +62,19 @@
     </div>
     <div class="settings-grid">
         <div class="settings-item">
-            <span class="settings-label">Engine</span>
-            {% if tts_mode == 'kokoro' %}
-            <span class="settings-value" style="color: var(--success);">🧡 Kokoro-TTS (local Docker)</span>
+            <span class="settings-label">DJ Voice Engine</span>
+            {% if tts_mode == 'moss' %}
+            <span class="settings-value" style="color: var(--success);">🖥️ MOSS-TTS-Nano (local)</span>
             {% elif tts_mode == 'vibevoice' %}
             <span class="settings-value" style="color: var(--success);">⚡ VibeVoice-Realtime (local)</span>
             {% else %}
-            <span class="settings-value">☁️ Microsoft Edge TTS</span>
+            <span class="settings-value">☁️ Microsoft Edge TTS (cloud)</span>
             {% endif %}
         </div>
         <div class="settings-item">
-            <span class="settings-label">Server URL</span>
-            {% if tts_mode == 'kokoro' %}
-            <span class="settings-value" style="font-size: 12px;">{{ kokoro_tts_url }}</span>
+            <span class="settings-label">DJ Server URL</span>
+            {% if tts_mode == 'moss' %}
+            <span class="settings-value" style="font-size: 12px;">{{ moss_tts_url }}</span>
             {% elif tts_mode == 'vibevoice' %}
             <span class="settings-value" style="font-size: 12px;">{{ vibevoice_tts_url }}</span>
             {% else %}
@@ -82,7 +82,15 @@
             {% endif %}
         </div>
         <div class="settings-item">
-            <span class="settings-label">edge-tts (fallback)</span>
+            <span class="settings-label">AI Side Host Engine</span>
+            <span class="settings-value" style="color: var(--success);">☁️ Microsoft Edge TTS (cloud)</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">AI Side Host Voice</span>
+            <span class="settings-value">en-US-GuyNeural (male, distinct from DJ)</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">edge-tts fallback</span>
             {% if edge_tts_available %}
             <span class="settings-value" style="color: var(--success);">✅ Installed</span>
             {% else %}
@@ -90,27 +98,31 @@
             {% endif %}
         </div>
         <div class="settings-item">
-            <span class="settings-label">Latency</span>
-            {% if tts_mode == 'kokoro' %}
-            <span class="settings-value">~300ms (first audio, GPU)</span>
+            <span class="settings-label">DJ Latency</span>
+            {% if tts_mode == 'moss' %}
+            <span class="settings-value">~1-3s (local CPU/GPU)</span>
             {% elif tts_mode == 'vibevoice' %}
             <span class="settings-value">~300ms (first audio)</span>
             {% else %}
             <span class="settings-value">2-5s (cloud API)</span>
             {% endif %}
         </div>
+        <div class="settings-item">
+            <span class="settings-label">AI Side Host Latency</span>
+            <span class="settings-value">2-5s (cloud API)</span>
+        </div>
     </div>
-    {% if tts_mode == 'kokoro' %}
+    {% if tts_mode == 'moss' %}
     <div style="margin-top: 12px; padding: 12px; background: rgba(34,197,94,0.1); border: 1px solid var(--success); border-radius: var(--radius); font-size: 13px; color: var(--success);">
-        🧡 Using Kokoro-TTS — DJ voice audio is generated locally on your GPU via the Kokoro-FastAPI Docker server with minimal latency. Voice names like <code>af_heart</code>, <code>am_adam</code> are Kokoro voices. Automatic fallback to Edge TTS if the server is unreachable.
+        🖥️ Using MOSS-TTS-Nano — DJ voice is generated locally via <code>{{ moss_tts_url }}</code> with voice cloning. AI Side Host uses edge-tts (cloud) with <code>en-US-GuyNeural</code> for a distinct male voice. Automatic fallback to edge-tts if the MOSS server is unreachable. Set <code>TTS_MODE=moss</code> in your <code>.env</code> file.
     </div>
     {% elif tts_mode == 'vibevoice' %}
     <div style="margin-top: 12px; padding: 12px; background: rgba(34,197,94,0.1); border: 1px solid var(--success); border-radius: var(--radius); font-size: 13px; color: var(--success);">
-        ⚡ Using local TTS — DJ voice audio is generated on your hardware with minimal latency. Voice names like <code>en-Carter_man</code> are VibeVoice presets.
+        ⚡ Using VibeVoice-Realtime — DJ voice audio is generated on your hardware with minimal latency. Voice names like <code>en-Carter_man</code> are VibeVoice presets. AI Side Host uses edge-tts (cloud).
     </div>
     {% else %}
     <div style="margin-top: 12px; padding: 12px; background: rgba(59,130,246,0.1); border: 1px solid var(--accent); border-radius: var(--radius); font-size: 13px; color: var(--accent);">
-        ☁️ Using Microsoft Edge TTS (cloud-based) — no local server needed but has higher latency. To switch to local Kokoro-TTS for ~300ms latency, set <code>TTS_MODE=kokoro</code> in your <code>.env</code> file and start the Kokoro-FastAPI Docker container.
+        ☁️ Using Microsoft Edge TTS (cloud-based) for both DJ and AI Side Host. No local server needed but has higher latency. To switch to local MOSS-TTS-Nano for faster DJ voice, set <code>TTS_MODE=moss</code> in your <code>.env</code> file and start the MOSS server: <code>moss-tts-nano serve --port 18083</code>.
     </div>
     {% endif %}
 </div>

@@ -97,6 +97,9 @@ setup_venv() {
   "$VENV_PIP" install --upgrade pip -q
   "$VENV_PIP" install -r requirements.txt -q
   "$VENV_PIP" install --upgrade yt-dlp -q
+  # Also try nightly/pre-release — YouTube frequently breaks yt-dlp's cipher
+  # and the nightly has fixes before the stable release.
+  "$VENV_PIP" install --upgrade --pre yt-dlp -q 2>/dev/null || true
 
   # DJ Mode dependency — edge-tts (optional but recommended for radio DJ voice)
   if "$VENV_PYTHON" -c "import edge_tts" 2>/dev/null; then

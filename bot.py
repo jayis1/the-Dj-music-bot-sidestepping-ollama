@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import os
+import sys
 import threading
 import discord
 from discord.ext import commands
@@ -151,6 +152,7 @@ async def main():
     # ── yt-dlp Cipher Health Check ──────────────────────────────────────
     # Before starting the bot, verify yt-dlp can actually extract YouTube.
     # If the cipher is broken (outdated yt-dlp), auto-upgrade from PyPI.
+    # Tries: 1) stable release → 2) nightly/pre-release → 3) git master
     logging.info("  yt-dlp: Testing YouTube extraction...")
     _ytdlp_healthy = False
     try:
@@ -188,56 +190,155 @@ async def main():
             or "format is not available" in _err
             or "signature" in _err
         ):
-            logging.error(f"  yt-dlp: ❌ BROKEN — cannot extract YouTube ({_e})")
-            logging.error("  yt-dlp: Attempting auto-upgrade from PyPI...")
-            try:
-                import subprocess
+            logging.error(f"  yt-dlp: ❌ BROKEN — cannot extract YouTube")
+            logging.error(f"  yt-dlp: Error: {_e}")
 
-                _result = subprocess.run(
+            import subprocess
+
+            _upgraded = False
+
+            # Stage 1: Try stable PyPI upgrade
+            logging.info(
+                "  yt-dlp: Auto-upgrade attempt 1/3 — latest stable release..."
+            )
+            try:
+                _r = subprocess.run(
                     [
                         sys.executable,
                         "-m",
                         "pip",
                         "install",
                         "--upgrade",
-                        "yt-dlp",
+                        "--break-system-packages",
                         "--quiet",
+                        "yt-dlp",
                     ],
                     capture_output=True,
                     text=True,
                     timeout=120,
                 )
-                if _result.returncode == 0:
-                    logging.info(
-                        "  yt-dlp: ✅ Auto-upgraded successfully! Reloading module..."
-                    )
-                    # Re-import the updated module
+                if _r.returncode == 0:
+                    logging.info("  yt-dlp: Stable upgrade installed, reloading...")
                     import importlib
 
                     importlib.reload(yt_dlp)
-                    _new_ver = yt_dlp.version.__version__
-                    logging.info(f"  yt-dlp: Now running version {_new_ver}")
-                    # Re-test after upgrade
+                    logging.info(f"  yt-dlp: Now at {yt_dlp.version.__version__}")
                     try:
                         with yt_dlp.YoutubeDL(_test_opts) as _ydl:
-                            _info2 = _ydl.extract_info(_test_url, download=False)
-                        if _info2 and _info2.get("id"):
+                            _t = _ydl.extract_info(_test_url, download=False)
+                        if _t and _t.get("id"):
                             _ytdlp_healthy = True
+                            _upgraded = True
                             logging.info(
-                                "  yt-dlp: ✅ YouTube extraction works after upgrade!"
+                                "  yt-dlp: ✅ FIXED! YouTube extraction works after stable upgrade"
                             )
-                        else:
-                            logging.warning(
-                                "  yt-dlp: ⚠️ Still can't extract after upgrade"
-                            )
-                    except Exception as _e2:
-                        logging.error(f"  yt-dlp: ❌ Still broken after upgrade: {_e2}")
+                    except Exception:
+                        logging.warning("  yt-dlp: Stable upgrade didn't fix it")
                 else:
-                    logging.error(
-                        f"  yt-dlp: Auto-upgrade failed: {_result.stderr[:200]}"
+                    logging.warning(
+                        f"  yt-dlp: Stable upgrade failed: {_r.stderr[:200]}"
                     )
             except Exception as _ue:
-                logging.error(f"  yt-dlp: Auto-upgrade error: {_ue}")
+                logging.warning(f"  yt-dlp: Stable upgrade error: {_ue}")
+
+            # Stage 2: Try nightly/pre-release (has latest cipher fixes)
+            if not _upgraded:
+                logging.info(
+                    "  yt-dlp: Auto-upgrade attempt 2/3 — nightly pre-release..."
+                )
+                try:
+                    _r = subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pip",
+                            "install",
+                            "--upgrade",
+                            "--break-system-packages",
+                            "--quiet",
+                            "--pre",
+                            "yt-dlp",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=120,
+                    )
+                    if _r.returncode == 0:
+                        logging.info("  yt-dlp: Nightly installed, reloading...")
+                        import importlib
+
+                        importlib.reload(yt_dlp)
+                        logging.info(f"  yt-dlp: Now at {yt_dlp.version.__version__}")
+                        try:
+                            with yt_dlp.YoutubeDL(_test_opts) as _ydl:
+                                _t = _ydl.extract_info(_test_url, download=False)
+                            if _t and _t.get("id"):
+                                _ytdlp_healthy = True
+                                _upgraded = True
+                                logging.info(
+                                    "  yt-dlp: ✅ FIXED! YouTube extraction works after nightly upgrade"
+                                )
+                        except Exception:
+                            logging.warning("  yt-dlp: Nightly upgrade didn't fix it")
+                    else:
+                        logging.warning(
+                            f"  yt-dlp: Nightly upgrade failed: {_r.stderr[:200]}"
+                        )
+                except Exception as _ue:
+                    logging.warning(f"  yt-dlp: Nightly upgrade error: {_ue}")
+
+            # Stage 3: Try directly from git master
+            if not _upgraded:
+                logging.info(
+                    "  yt-dlp: Auto-upgrade attempt 3/3 — git master branch..."
+                )
+                try:
+                    _r = subprocess.run(
+                        [
+                            sys.executable,
+                            "-m",
+                            "pip",
+                            "install",
+                            "--upgrade",
+                            "--break-system-packages",
+                            "--quiet",
+                            "yt-dlp @ git+https://github.com/yt-dlp/yt-dlp.git@master",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=180,
+                    )
+                    if _r.returncode == 0:
+                        logging.info("  yt-dlp: Git master installed, reloading...")
+                        import importlib
+
+                        importlib.reload(yt_dlp)
+                        logging.info(f"  yt-dlp: Now at {yt_dlp.version.__version__}")
+                        try:
+                            with yt_dlp.YoutubeDL(_test_opts) as _ydl:
+                                _t = _ydl.extract_info(_test_url, download=False)
+                            if _t and _t.get("id"):
+                                _ytdlp_healthy = True
+                                _upgraded = True
+                                logging.info(
+                                    "  yt-dlp: ✅ FIXED! YouTube extraction works after git master upgrade"
+                                )
+                        except Exception:
+                            logging.warning("  yt-dlp: Git master didn't fix it either")
+                    else:
+                        logging.warning(
+                            f"  yt-dlp: Git master upgrade failed: {_r.stderr[:200]}"
+                        )
+                except Exception as _ue:
+                    logging.warning(f"  yt-dlp: Git master upgrade error: {_ue}")
+
+            if not _upgraded:
+                logging.error("  yt-dlp: ❌ All 3 auto-upgrade attempts failed.")
+                logging.error(
+                    "  yt-dlp: YouTube may have just changed their cipher and "
+                    "yt-dlp hasn't released a fix yet. Check:"
+                )
+                logging.error("    https://github.com/yt-dlp/yt-dlp/issues")
         else:
             logging.warning(f"  yt-dlp: ⚠️ Test extraction error: {_e}")
 
@@ -245,7 +346,7 @@ async def main():
         logging.error("  ──────────────────────────────────────────────────────────")
         logging.error("  ⚠️  yt-dlp CANNOT extract YouTube! The bot will start but")
         logging.error("      ALL YouTube playback will fail until yt-dlp is fixed.")
-        logging.error("      Run: pip install -U yt-dlp   then restart the bot.")
+        logging.error("      Try manually: pip install --pre -U yt-dlp")
         logging.error("  ──────────────────────────────────────────────────────────")
 
     # TTS engine

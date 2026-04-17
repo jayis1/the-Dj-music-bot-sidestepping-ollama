@@ -79,6 +79,213 @@ async def main():
     else:
         logging.info(f"yt-dlp cache directory already exists: {cache_dir}")
 
+    # ── Startup Config Summary ───────────────────────────────────────────
+    # Show all critical config values at startup so you can spot problems
+    # (missing API keys, no cookies, wrong URLs) at a glance.
+    api_key = getattr(config, "YOUTUBE_API_KEY", "")
+    cookie_browser = getattr(config, "YTDDL_COOKIES_FROM_BROWSER", "").strip()
+    cookie_file = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+    cookie_file_exists = os.path.exists(cookie_file) if cookie_file else False
+    tts_mode = getattr(config, "TTS_MODE", "edge-tts").lower()
+    moss_url = getattr(config, "MOSS_TTS_URL", "")
+    ollama_enabled = getattr(config, "OLLAMA_DJ_ENABLED", False)
+    ollama_host = getattr(config, "OLLAMA_HOST", "")
+    stream_enabled = getattr(config, "YOUTUBE_STREAM_ENABLED", False)
+
+    logging.info("─── Startup Config ───────────────────────────────────────")
+
+    # YouTube Data API v3 key (used for search, not for playback)
+    if api_key and api_key not in ("your_youtube_api_key", ""):
+        logging.info(f"  YouTube Data API key: ✅ Set ({len(api_key)} chars)")
+    else:
+        logging.warning(
+            "  YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, "
+            "?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. "
+            "(Direct URL playback still works without it.)"
+        )
+
+    # yt-dlp cookie auth (prevents "Sign in to confirm you're not a bot")
+    try:
+        import yt_dlp
+
+        ytdlp_version = yt_dlp.version.__version__
+    except Exception:
+        ytdlp_version = "unknown"
+
+    if cookie_browser:
+        logging.info(f"  yt-dlp cookies: 🌐 Browser → {cookie_browser}")
+    elif cookie_file_exists:
+        logging.info(f"  yt-dlp cookies: 📄 File → {cookie_file}")
+    else:
+        logging.warning(
+            f"  yt-dlp cookies: ⚠️ NOT CONFIGURED — {cookie_file} not found and "
+            "no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER "
+            "or export cookies from Mission Control → Settings → Cookie Auth."
+        )
+    logging.info(f"  yt-dlp version: {ytdlp_version}")
+
+    # Check if yt-dlp is very old (YouTube breaks it frequently)
+    try:
+        import datetime
+
+        version_date = ytdlp_version.replace(".", "-", 2)
+        version_dt = datetime.datetime.strptime(version_date, "%Y-%m-%d")
+        days_old = (datetime.datetime.now() - version_dt).days
+        if days_old > 30:
+            logging.error(
+                f"  yt-dlp age: ❌ {days_old} DAYS OLD — yt-dlp almost certainly CANNOT "
+                "play YouTube right now. YouTube changes their cipher frequently and "
+                "you will see 'Requested format is not available' or 'Sign in to confirm' "
+                "errors. UPGRADE NOW: pip install -U yt-dlp"
+            )
+        elif days_old > 14:
+            logging.warning(
+                f"  yt-dlp age: ⚠️ {days_old} days old — may fail on YouTube. "
+                "Upgrade with: pip install -U yt-dlp"
+            )
+        else:
+            logging.info(f"  yt-dlp age: ✅ {days_old} days old")
+    except Exception:
+        pass
+
+    # ── yt-dlp Cipher Health Check ──────────────────────────────────────
+    # Before starting the bot, verify yt-dlp can actually extract YouTube.
+    # If the cipher is broken (outdated yt-dlp), auto-upgrade from PyPI.
+    logging.info("  yt-dlp: Testing YouTube extraction...")
+    _ytdlp_healthy = False
+    try:
+        import yt_dlp
+
+        _test_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "extract_flat": True,
+            "noplaylist": True,
+        }
+        # Add cookies if available
+        if cookie_browser:
+            parts = cookie_browser.split(":", 1)
+            _test_opts["cookiesfrombrowser"] = (
+                (parts[0].strip().lower(),)
+                if len(parts) == 1
+                else (parts[0].strip().lower(), parts[1].strip())
+            )
+        elif cookie_file and cookie_file_exists:
+            _test_opts["cookiefile"] = cookie_file
+        # Quick test: extract metadata only (flat) from a well-known video
+        _test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        with yt_dlp.YoutubeDL(_test_opts) as _ydl:
+            _info = _ydl.extract_info(_test_url, download=False)
+        if _info and _info.get("id"):
+            _ytdlp_healthy = True
+            logging.info("  yt-dlp: ✅ YouTube extraction works")
+        else:
+            logging.warning("  yt-dlp: ⚠️ Test extraction returned no data")
+    except Exception as _e:
+        _err = str(_e).lower()
+        if (
+            "sign in to confirm" in _err
+            or "format is not available" in _err
+            or "signature" in _err
+        ):
+            logging.error(f"  yt-dlp: ❌ BROKEN — cannot extract YouTube ({_e})")
+            logging.error("  yt-dlp: Attempting auto-upgrade from PyPI...")
+            try:
+                import subprocess
+
+                _result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-m",
+                        "pip",
+                        "install",
+                        "--upgrade",
+                        "yt-dlp",
+                        "--quiet",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=120,
+                )
+                if _result.returncode == 0:
+                    logging.info(
+                        "  yt-dlp: ✅ Auto-upgraded successfully! Reloading module..."
+                    )
+                    # Re-import the updated module
+                    import importlib
+
+                    importlib.reload(yt_dlp)
+                    _new_ver = yt_dlp.version.__version__
+                    logging.info(f"  yt-dlp: Now running version {_new_ver}")
+                    # Re-test after upgrade
+                    try:
+                        with yt_dlp.YoutubeDL(_test_opts) as _ydl:
+                            _info2 = _ydl.extract_info(_test_url, download=False)
+                        if _info2 and _info2.get("id"):
+                            _ytdlp_healthy = True
+                            logging.info(
+                                "  yt-dlp: ✅ YouTube extraction works after upgrade!"
+                            )
+                        else:
+                            logging.warning(
+                                "  yt-dlp: ⚠️ Still can't extract after upgrade"
+                            )
+                    except Exception as _e2:
+                        logging.error(f"  yt-dlp: ❌ Still broken after upgrade: {_e2}")
+                else:
+                    logging.error(
+                        f"  yt-dlp: Auto-upgrade failed: {_result.stderr[:200]}"
+                    )
+            except Exception as _ue:
+                logging.error(f"  yt-dlp: Auto-upgrade error: {_ue}")
+        else:
+            logging.warning(f"  yt-dlp: ⚠️ Test extraction error: {_e}")
+
+    if not _ytdlp_healthy:
+        logging.error("  ──────────────────────────────────────────────────────────")
+        logging.error("  ⚠️  yt-dlp CANNOT extract YouTube! The bot will start but")
+        logging.error("      ALL YouTube playback will fail until yt-dlp is fixed.")
+        logging.error("      Run: pip install -U yt-dlp   then restart the bot.")
+        logging.error("  ──────────────────────────────────────────────────────────")
+
+    # TTS engine
+    if tts_mode == "moss":
+        logging.info(f"  TTS Engine: 🖥️ MOSS-TTS-Nano → {moss_url}")
+    elif tts_mode == "vibevoice":
+        logging.info(
+            f"  TTS Engine: ⚡ VibeVoice → {getattr(config, 'VIBEVOICE_TTS_URL', '')}"
+        )
+    else:
+        logging.info("  TTS Engine: ☁️ Edge TTS (cloud)")
+    logging.info(f"  DJ default voice: {getattr(config, 'DJ_VOICE', 'N/A')}")
+
+    # AI Side Host
+    if ollama_enabled:
+        logging.info(f"  AI Side Host: ✅ Enabled → {ollama_host}")
+        logging.info(
+            f"  AI model: {getattr(config, 'OLLAMA_CUSTOM_MODEL', 'N/A')} (base: {getattr(config, 'OLLAMA_MODEL', 'N/A')})"
+        )
+    else:
+        logging.info("  AI Side Host: ⚪ Disabled")
+
+    # YouTube Live Streaming
+    if stream_enabled:
+        stream_url = getattr(config, "YOUTUBE_STREAM_URL", "")
+        logging.info(f"  YouTube Live: ✅ Enabled → {stream_url}")
+    else:
+        logging.info("  YouTube Live: ⚪ Disabled")
+
+    # Web dashboard
+    logging.info(f"  Web Dashboard: http://{config.WEB_HOST}:{config.WEB_PORT}")
+    if getattr(config, "WEB_PASSWORD", ""):
+        logging.info("  Web Dashboard auth: 🔒 Password set")
+    else:
+        logging.warning(
+            "  Web Dashboard auth: ⚠️ No password — dashboard is open to everyone"
+        )
+
+    logging.info("─────────────────────────────────────────────────────────")
+
     # Create sounds directory and default README
     sounds_dir = "sounds"
     if not os.path.exists(sounds_dir):
@@ -107,15 +314,6 @@ async def main():
                     logging.info(f"Successfully loaded extension: {filename}")
                 except Exception as e:
                     logging.error(f"Failed to load extension {filename}: {e}")
-
-        try:
-            await bot.start(config.DISCORD_TOKEN)
-        except discord.errors.LoginFailure:
-            logging.error(
-                "Error: Invalid Discord Token. Please check your DISCORD_TOKEN in config.py."
-            )
-        except Exception as e:
-            logging.error(f"Error when starting bot: {e}")
 
         try:
             await bot.start(config.DISCORD_TOKEN)

@@ -100,6 +100,12 @@ open http://localhost:8080
 - **Auto-DJ / Radio mode** — queue auto-refills from a YouTube playlist, a preset, or recently played history
 - **Gapless crossfade** between tracks (configurable fade-in duration)
 
+### 📡 Master Broadcast Engine
+- **Universal UDP Multiplexing** — Bot completely detaches from Discord Voice Client and native outputs to an incredibly stable Master FFmpeg Node via `udp://127.0.0.1:12345`.
+- **Zero-Latency Transitions** — Dynamic `PCMBroadcaster` middleware ensures TTS, sound effects, and music seamlessly fade continuously on YouTube Live with no tearing, no dropped packets, and zero "bitrate 0" gaps.
+- **Dynamic Graphical HUDs** — Live YouTube layouts read exclusively from text-files bound to FFmpeg `reload=1`, drastically updating visual titles instantly.
+- **Symmetric Sub-Agent Mode** — The bot operates exclusively as a Radio entity first—if it happens to join a Discord channel, it flawlessly acts as a synchronized *Listener* of the master UDP audio matrix.
+
 ### 🔊 TTS Engine
 - **MOSS-TTS-Nano** (new default) — 0.1B parameter voice cloning TTS model running on FastAPI, ~2-8s latency, highly CPU-friendly
 - **Edge TTS** (fallback) — Microsoft voices, 100+ in 40+ languages, zero server setup
@@ -561,62 +567,22 @@ For full technical details — architecture, cog internals, all API endpoints, m
 MIT — see [LICENSE](LICENSE)
 
 <!--
-What was done — YouTube Live Autonomous 24/7 Streaming + Mission Control
+What was done — YouTube Radio Broadcasting Master Pipeline
 
 🧱 Core: utils/youtube_stream.py (complete rewrite)
-FFmpeg filter_complex fix (all 3 card builders):
-- Song card: Proper split=2 on [3:v] GIF input to create both the badge overlay and the bar overlay
-- Waiting card: Fixed the [gif] and [msg2] ghost pad labels that were never defined. Now uses [with_station] → split → [gif_center_in]/[gif_bar_in] → proper chain
-- TTS card: Fixed the [label] ghost pad. Now outputs to [with_label] which is a proper pad label
-- All three cards now follow strict FFmpeg filter_complex rules: every label is defined before use, split handles dual-use inputs, no conceptual names as pad labels
+- Transformed into a persistent Master Node that boots up immediately and runs a continuous FFmpeg process tied to a raw `udp://127.0.0.1:12345` local listener.
+- Decoupled from Discord completely; eliminated process teardown per song, ending "0 bitrate/Connection Lost" gap latency drops.
+- Transitioned Title and DJ text HUD updates to dynamically bind to local /tmp/ files with FFmpeg `reload=1`.
 
-Autonomous 24/7 mode (new):
-- start_autonomous(playlist_url, loop_playlist, shuffle) — starts the stream with its own playlist scheduler
-- _run_autonomous_loop() — resolves each song via yt-dlp, plays via FFmpeg → RTMP, waits for song end, advances to next track, loops when playlist exhausted
-- _load_playlist() — uses yt-dlp flat extraction (fast, no stream URLs) to populate the internal playlist
-- _resolve_audio_url() — resolves a YouTube watch URL to a direct audio stream URL using YTDLSource.resolve()
-- _wait_for_process() — blocks until FFmpeg exits (song ends naturally), then the loop advances
-- State persistence: yt_stream_state.json saves playlist position + song count, auto-resumes on restart
-- skip_song() — kills current FFmpeg process, which triggers the loop to advance
-- get_status() — returns full status dict for Mission Control (mode, playlist size, position, song count, uptime, errors)
-- Auto-start on boot: if YOUTUBE_STREAM_ENABLED=true + YOUTUBE_STREAM_KEY + YOUTUBE_STREAM_PLAYLIST (or AUTODJ_DEFAULT_SOURCE) are set in .env
-
-🌐 API: web/app.py
-Updated endpoints:
-- GET /api/<gid>/youtube_stream/status — now returns full autonomous details (mode, playlist_url, playlist_size, playlist_index, song_count, uptime_seconds, last_error, ffmpeg_pid)
-- POST /api/<gid>/youtube_stream/toggle — now accepts mode ("mirror" | "autonomous"), playlist_url, loop, shuffle
-- POST /api/<gid>/youtube_stream/skip — skip to next song in autonomous mode
-- POST /api/<gid>/youtube_stream/config — update playlist URL, loop/shuffle settings, reload playlist at runtime
-- GET /api/overlay — now includes YouTube Live autonomous info (yt_live_active, yt_live_autonomous, yt_live_title)
-
-📺 Mission Control: web/templates/radio.html
-YouTube Live control panel (redesigned):
-- Mode toggle: 🪞 Mirror / 🤖 24/7 Autonomous buttons with visual indicator
-- Autonomous config section: Playlist URL input, loop/shuffle checkboxes (hidden when mirror mode selected)
-- Live status panel: Mode badge (MIRROR/AUTONOMOUS), song title, 4-stat dashboard (songs streamed, uptime, playlist position, loop mode)
-- Action buttons: 🔴 Go Live, ⏭️ Skip (autonomous only), 🔄 Reload Playlist (autonomous only), 🔄 Refresh
-- Auto-polling: Status automatically refreshes every 5 seconds when live
-- Smart guild selection: Works without Discord voice connection for autonomous mode
+🔊 Core: utils/broadcaster.py (new)
+- Developed PCMBroadcaster, a low-level UDP PCM matrix injector.
+- Functions as the unified Audio buffer matrix mixing TTS/SFX/Song bytes smoothly without causing socket timeouts for YouTube.
+- Headless autonomous `_autonomous_clock` automatically feeds `\x00` frames to UDP when silent to keep the Master connection brilliantly stable!
 
 🎵 Discord: cogs/music.py
-- ?golive — now auto-detects: if no voice connection but AUTODJ_DEFAULT_SOURCE is set, starts autonomous; otherwise mirror mode
-- ?autolive <playlist_url> — new command: start autonomous 24/7 streaming directly
-- ?ytskip — skip to next song in autonomous stream
-- ?livestatus — enhanced with autonomous mode details (playlist, position, songs streamed, uptime)
-- ?stoplive — works for both modes
-- Inactivity timer fix: Won't disconnect from voice when YouTube Live is active
-- Auto-start on boot: on_ready listener starts autonomous stream if YOUTUBE_STREAM_ENABLED=true + playlist URL configured
-- 🛡️ Autonomous Failover: Added `_switch_to_autonomous()` to seamlessly transition active YouTube streams from Mirror Mode to 24/7 Mode without interrupting the RTMP sequence when the voice channel becomes empty (human listeners drop) or the bot is forcefully disconnected.
-- 🎛️ SFX Dashboard Interop: Mapped `play_sfx()` cleanly into `web/app.py` UI interactions, streaming standalone soundboard triggers to the active YouTube Live HUD dynamically.
-
-⚙️ Config: config.py + .env.example
-- New: YOUTUBE_STREAM_PLAYLIST — default playlist URL for autonomous mode
-- Startup config summary now shows stream mode options and playlist URL
-
-⚡ Zero-Latency Pre-Generation System (utils/pregen.py)
-- Implemented background lookahead cache that hooks into `_start_song_playback` via `_trigger_pregen()`
-- While a song plays, the bot spins up a `DjPregenerator` to asynchronously traverse the upcoming queue
-- **MOSS-TTS Isolation:** Only the deterministic main DJ intros/outros are pre-generated. The AI Side Host retains full dynamic spontaneity via live invocation.
-- **Permanent Caching:** Pre-generated TTS audio files are now written permanently to `assets/part2/` with sequential numbering to establish a solid fault-tolerant disk backlog of offline transitions.
-- When `_dj_speak` is triggered natively, it fetches the pre-rendered `discord.FFmpegPCMAudio` pointer, eliminating TTS generation latency completely.
+- Replaced `.play()` natively with `_dispatch_audio_play()` hook which natively checks if the bot is in a YouTube Broadcast state, dynamically wrapping audio data into `PCMBroadcaster`.
+- Completely abstracts `ctx.voice_client` away so the bot can stream completely independently without connecting to a Discord voice channel.
+- Discord Server Audio now functions harmoniously as a perfectly replicated "Listener" element of the Master Station.
+- Retained fully native support for Soundboards, AutoDJ, TTS pre-generation, and Ollama AI Side-Host natively within the new framework.
+- Seed startup state initialized seamlessly via a `DummyContext` mapping inside `on_ready()`.
 -->

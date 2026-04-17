@@ -271,6 +271,7 @@ def dashboard():
             queue_size = 0
 
             if music:
+                vc = music._get_audio_client(guild_id)
                 current = music.current_song.get(guild_id)
                 q = music.song_queues.get(guild_id)
                 if q:
@@ -281,15 +282,19 @@ def dashboard():
                     except Exception:
                         queue_items = []
 
+            in_discord = guild.voice_client is not None
+            in_voice = vc is not None if music else False
+
             guilds_data.append(
                 {
                     "id": guild_id,
                     "name": guild.name,
                     "member_count": guild.member_count,
-                    "in_voice": voice is not None,
-                    "voice_channel": voice.channel.name if voice else None,
-                    "playing": voice.is_playing() if voice else False,
-                    "paused": voice.is_paused() if voice else False,
+                    "in_discord": in_discord,
+                    "in_voice": in_voice,
+                    "voice_channel": guild.voice_client.channel.name if in_discord else None,
+                    "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,
+                    "paused": getattr(vc, 'is_paused', lambda: False)() if in_voice else False,
                     "current_song": current.title if current else None,
                     "current_song_url": current.webpage_url if current else None,
                     "current_thumbnail": current.thumbnail if current else None,
@@ -550,9 +555,10 @@ def api_skip(guild_id):
     if not music:
         return jsonify({"error": "Music cog not loaded"}), 503
     guild = bot.get_guild(guild_id)
-    if not guild or not guild.voice_client or not guild.voice_client.is_playing():
+    vc = music._get_audio_client(guild_id)
+    if not guild or not vc or not getattr(vc, 'is_playing', lambda: False)():
         return jsonify({"error": "Nothing playing"}), 400
-    guild.voice_client.stop()
+    vc.stop()
     return jsonify({"ok": True})
 
 
@@ -562,13 +568,14 @@ def api_pause(guild_id):
     if not music:
         return jsonify({"error": "Music cog not loaded"}), 503
     guild = bot.get_guild(guild_id)
-    if not guild or not guild.voice_client:
+    vc = music._get_audio_client(guild_id)
+    if not guild or not vc:
         return jsonify({"error": "Not in voice"}), 400
-    if guild.voice_client.is_paused():
-        guild.voice_client.resume()
+    if getattr(vc, 'is_paused', lambda: False)():
+        vc.resume()
         return jsonify({"ok": True, "state": "playing"})
-    elif guild.voice_client.is_playing():
-        guild.voice_client.pause()
+    elif getattr(vc, 'is_playing', lambda: False)():
+        vc.pause()
         return jsonify({"ok": True, "state": "paused"})
     return jsonify({"error": "Nothing playing"}), 400
 
@@ -613,8 +620,9 @@ def api_stop(guild_id):
         while not queue.empty():
             await queue.get()
         guild = bot.get_guild(guild_id)
-        if guild and guild.voice_client:
-            guild.voice_client.stop()
+        vc = music._get_audio_client(guild_id)
+        if guild and vc:
+            vc.stop()
 
     _run_async(_stop())
     return jsonify({"ok": True})
@@ -1042,23 +1050,26 @@ def api_play(guild_id):
         if not guild:
             return "Guild not found"
 
-        # Join a voice channel if not already in one
-        # Find the first human in a voice channel
-        voice_channel = None
-        for member in guild.members:
-            if not member.bot and member.voice and member.voice.channel:
-                voice_channel = member.voice.channel
-                break
+        vc = music._get_audio_client(guild_id)
+        if not vc:
+            # Join a voice channel if not already in one
+            voice_channel = None
+            for member in guild.members:
+                if not member.bot and member.voice and member.voice.channel:
+                    voice_channel = member.voice.channel
+                    break
 
-        if not voice_channel:
-            return "No one in a voice channel"
+            if not voice_channel:
+                return "No one in a voice channel"
 
-        if not guild.voice_client:
-            await voice_channel.connect(self_deaf=True)
-        elif not guild.voice_client.is_connected():
-            await guild.voice_client.disconnect(force=True)
-            await asyncio.sleep(0.5)
-            await voice_channel.connect(self_deaf=True)
+            if getattr(guild, 'voice_client', None) is None:
+                await voice_channel.connect(self_deaf=True)
+            elif not guild.voice_client.is_connected():
+                await guild.voice_client.disconnect(force=True)
+                await asyncio.sleep(0.5)
+                await voice_channel.connect(self_deaf=True)
+
+            vc = guild.voice_client
 
         queue = await music.get_queue(guild_id)
 
@@ -1085,16 +1096,16 @@ def api_play(guild_id):
             count = len(result)
 
         # Start playback if nothing is playing
-        if not guild.voice_client.is_playing() and not guild.voice_client.is_paused():
+        if getattr(vc, 'is_playing', lambda: False)() == False and getattr(vc, 'is_paused', lambda: False)() == False:
             # Build a minimal context object for play_next
             class WebCtx:
                 pass
 
             ctx = WebCtx()
             ctx.guild = guild
-            ctx.voice_client = guild.voice_client
-            ctx.channel = guild.text_channels[0] if guild.text_channels else None
             ctx.author = guild.me
+            ctx.voice_client = getattr(guild, "voice_client", None)  # Might be None if headless, which is fine
+            ctx.channel = guild.text_channels[0] if guild.text_channels else None
             # Cancel any inactivity timer
             if guild_id in music.inactivity_timers:
                 music.inactivity_timers[guild_id].cancel()
@@ -2204,7 +2215,7 @@ def api_overlay_state():
 
         # Calculate elapsed time
         elapsed = 0
-        duration = current.duration if current else None
+        duration = current.get("duration") if isinstance(current, dict) else None
         if current and gid in music.song_start_time and (is_playing or is_paused):
             elapsed = int(time.time() - music.song_start_time[gid])
 
@@ -2220,8 +2231,8 @@ def api_overlay_state():
             {
                 "playing": is_playing or is_paused,
                 "paused": is_paused,
-                "title": current.title if current else None,
-                "thumbnail": current.thumbnail if current else None,
+                "title": current.get("title") if isinstance(current, dict) else None,
+                "thumbnail": current.get("thumbnail") if isinstance(current, dict) else None,
                 "duration": duration,
                 "elapsed": elapsed,
                 "dj_speaking": dj_speaking and not ai_speaking,
@@ -2231,26 +2242,22 @@ def api_overlay_state():
                 "station_name": getattr(config, "STATION_NAME", "MBot"),
                 "source": source,
                 "yt_live_active": music._yt_stream_active,
-                "yt_live_autonomous": (
-                    music._yt_streamer.is_autonomous
-                    if music._yt_stream_active and music._yt_streamer
-                    else False
-                ),
+                "yt_live_autonomous": music._yt_stream_active,
                 "yt_live_title": (
-                    music._yt_streamer.current_title
-                    if music._yt_stream_active and music._yt_streamer
+                    music.current_song.get(gid).get("title")
+                    if music._yt_stream_active and music.current_song.get(gid)
                     else None
                 ),
             }
         )
 
-    # No Discord voice client — check if YouTube Live autonomous is running
-    if music and music._yt_stream_active and music._yt_streamer:
+        current_s = music.current_song.get(music._yt_stream_guild) if music._yt_stream_guild else None
+        title = current_s.get("title") if isinstance(current_s, dict) else "YouTube Live Stream"
         return jsonify(
             {
                 "playing": True,
                 "paused": False,
-                "title": music._yt_streamer.current_title or "YouTube Live Stream",
+                "title": title,
                 "thumbnail": None,
                 "duration": None,
                 "elapsed": 0,
@@ -2259,12 +2266,10 @@ def api_overlay_state():
                 "dj_enabled": False,
                 "ai_enabled": False,
                 "station_name": getattr(config, "STATION_NAME", "MBot"),
-                "source": "YouTube Live (autonomous)"
-                if music._yt_streamer.is_autonomous
-                else "YouTube Live (mirror)",
+                "source": "YouTube Live (autonomous)",
                 "yt_live_active": True,
-                "yt_live_autonomous": music._yt_streamer.is_autonomous,
-                "yt_live_title": music._yt_streamer.current_title,
+                "yt_live_autonomous": True,
+                "yt_live_title": title,
             }
         )
 
@@ -2764,11 +2769,12 @@ def api_youtube_stream_status(guild_id):
     active = music._yt_stream_active
     streamer = music._yt_streamer
 
+    current_s = music.current_song.get(guild_id) if active else None
     result = {
         "active": active,
         "running": streamer.is_running if active and streamer else False,
-        "current_url": streamer.current_url if active and streamer else None,
-        "current_title": streamer.current_title if active and streamer else None,
+        "current_url": current_s.get("webpage_url") if isinstance(current_s, dict) else None,
+        "current_title": current_s.get("title") if isinstance(current_s, dict) else None,
         "stream_guild": music._yt_stream_guild,
         "stream_key_set": bool(
             getattr(config, "YOUTUBE_STREAM_KEY", "")
@@ -2782,12 +2788,7 @@ def api_youtube_stream_status(guild_id):
     else:
         result["autonomous"] = False
 
-    # Include Discord song info if available (mirror mode)
-    if (
-        active
-        and not (streamer and streamer.is_autonomous)
-        and guild_id in music.current_song
-    ):
+    if active and guild_id in music.current_song:
         song = music.current_song[guild_id]
         result["song_title"] = song.title if song else None
 
@@ -2974,36 +2975,9 @@ def api_youtube_stream_skip(guild_id):
     if not music or not music._yt_stream_active or not music._yt_streamer:
         return jsonify({"ok": False, "error": "No active stream"}), 400
 
-    if not music._yt_streamer.is_autonomous:
-        return jsonify(
-            {"ok": False, "error": "Skip only works in autonomous mode"}
-        ), 400
-
-    async def _skip():
-        await music._yt_streamer.skip_song()
-
-    asyncio.ensure_future(_skip(), loop=bot.loop)
-    return jsonify({"ok": True, "message": "⏭️ Skipping to next song"})
-
-
-@app.route("/api/<int:guild_id>/youtube_stream/config", methods=["POST"])
-def api_youtube_stream_config(guild_id):
-    """Update autonomous stream configuration at runtime.
-
-    Request body (JSON):
-        playlist_url: New playlist URL (reloads the playlist)
-        loop: true/false
-        shuffle: true/false
-        reload: true (reload the current playlist to pick up additions)
-    """
-    music = _get_music_cog()
-    if not music or not music._yt_stream_active or not music._yt_streamer:
-        return jsonify({"ok": False, "error": "No active stream"}), 400
-
-    if not music._yt_streamer.is_autonomous:
-        return jsonify(
-            {"ok": False, "error": "Config only works in autonomous mode"}
-        ), 400
+    # Skipping and Config are effectively irrelevant to the master streamer directly now,
+    # as the Bot's main Music Queue automatically triggers play_next in headless mode!
+    # We will just route the skip command to the native api_skip.
 
     data = request.json or {}
     streamer = music._yt_streamer

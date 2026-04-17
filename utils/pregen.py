@@ -1,21 +1,22 @@
 """
-utils/pregen.py — Pre-Generate DJ Lines & TTS Cache
+utils/pregen.py — Pre-Generate DJ Lines & TTS for Queue
 
-While a long song plays, this module pre-generates DJ intro/outro lines
-and TTS audio files for upcoming songs in the queue. When the current song
-ends, the DJ line is already ready — zero latency between-song transitions.
+While a long song plays, this module pre-generates the main DJ intro/outro
+TTS audio files for upcoming songs in the queue. Files are saved to
+assets/part2/ with numbered filenames and are NEVER deleted — they persist
+across restarts so the DJ always has lines ready.
 
-Cache files are stored in assets/part2/:
-  - DJ intros:   {guild_id}_{song_title_hash}_dj.wav
-  - AI host:     {guild_id}_{song_title_hash}_ai.wav
-  - SFX markers: {guild_id}_{song_title_hash}_sfx.json
+Only the main DJ (MOSS-TTS) lines are pre-generated.
+The AI side host TTS is NOT pre-generated — it stays live/on-demand.
 
-Each cache entry has a TTL (default 30 min) so stale lines get refreshed.
+File naming convention:
+    dj_{guild_id}_{index}_{title_hash}.wav
+
+Index numbers correspond to queue position (0 = next song, 1 = after that, etc.)
 """
 
 import asyncio
 import hashlib
-import json
 import logging
 import os
 import time
@@ -24,10 +25,11 @@ from typing import Optional
 
 import config
 
-# ── Directory for pre-generated assets ──────────────────────────────────
+# ── Directory for pre-generated DJ assets ───────────────────────────────
 PREGEN_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "part2")
 
-# Cache TTL — how long a pre-generated line is considered fresh (seconds)
+# How long a pre-generated entry is considered fresh (seconds).
+# After this, the DJ line text is regenerated (TTS file stays on disk).
 DEFAULT_TTL = 1800  # 30 minutes
 
 # Maximum number of songs to pre-generate per guild
@@ -36,15 +38,17 @@ MAX_PREGEN_AHEAD = 5
 
 @dataclass
 class PregenEntry:
-    """A pre-generated DJ line with its TTS audio file and metadata."""
+    """A pre-generated DJ line with its TTS audio file and metadata.
+
+    Stored permanently in assets/part2/.
+    """
 
     dj_text: str = ""  # The DJ line text (clean, no {sound:} tags)
-    dj_tts_path: str = ""  # Path to the TTS audio file
+    dj_tts_path: str = ""  # Path to the TTS audio file (permanent)
     dj_sound_ids: list = field(default_factory=list)  # {sound:name} tags extracted
-    ai_text: str = ""  # AI side host line text
-    ai_tts_path: str = ""  # Path to AI TTS audio file
     title: str = ""  # Song title this entry is for
     prev_title: str = ""  # Previous song title (for transitions)
+    queue_index: int = 0  # Position in queue (0 = next song)
     created_at: float = 0.0  # Timestamp when this was generated
     guild_id: int = 0  # Guild this was generated for
 
@@ -55,9 +59,19 @@ def _title_hash(title: str, prev_title: str = "") -> str:
     return hashlib.sha256(combo.encode("utf-8")).hexdigest()[:12]
 
 
-def _pregen_path(guild_id: int, title_hash: str, suffix: str) -> str:
-    """Build a file path in the pregen directory."""
-    return os.path.join(PREGEN_DIR, f"{guild_id}_{title_hash}{suffix}")
+def _pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
+    """Build a numbered pregen filename: dj_{guild}_{index}_{hash}.wav"""
+    return f"dj_{guild_id}_{index}_{title_hash}.wav"
+
+
+def _pregen_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to a pregen file in assets/part2/."""
+    return os.path.join(PREGEN_DIR, _pregen_filename(guild_id, index, title_hash))
+
+
+def _pregen_meta_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to a pregen metadata JSON file."""
+    return os.path.join(PREGEN_DIR, f"dj_{guild_id}_{index}_{title_hash}.json")
 
 
 def ensure_pregen_dir() -> None:
@@ -69,10 +83,7 @@ def is_entry_fresh(entry: PregenEntry, ttl: float = DEFAULT_TTL) -> bool:
     """Check if a pre-generated entry is still within its TTL."""
     if not entry.created_at:
         return False
-    # Also check that the TTS files still exist on disk
     if entry.dj_tts_path and not os.path.isfile(entry.dj_tts_path):
-        return False
-    if entry.ai_tts_path and not os.path.isfile(entry.ai_tts_path):
         return False
     return (time.time() - entry.created_at) < ttl
 
@@ -80,30 +91,100 @@ def is_entry_fresh(entry: PregenEntry, ttl: float = DEFAULT_TTL) -> bool:
 class DjPregenerator:
     """Pre-generates DJ lines and TTS audio for upcoming songs.
 
+    Unlike a cache that gets consumed and deleted, pregen files live
+    permanently in assets/part2/ so they persist across bot restarts.
+
     Usage:
         pregen = DjPregenerator(bot)
-        # Start pregenerating when a long song is playing
-        await pregen.pregenerate_upcoming(guild_id, queue, current_song_title)
-        # When the song ends, get the cached entry instantly
-        entry = pregen.get(guild_id, song_title, prev_title)
+
+        # While a long song plays, kick off pregen for the queue:
+        await pregen.pregenerate_upcoming(guild_id, queue, current_title)
+
+        # When a song ends and DJ needs to speak, look up the ready file:
+        entry = pregen.lookup(guild_id, song_title, prev_title)
         if entry and entry.dj_tts_path:
-            # Use the pre-generated TTS — no TTS latency!
-            play_tts(entry.dj_tts_path, entry.dj_text)
+            play_tts(entry.dj_tts_path, entry.dj_text)  # Zero latency!
     """
 
     def __init__(self, bot):
         self.bot = bot
-        # guild_id -> {title_hash: PregenEntry}
+        # guild_id -> {title_hash: PregenEntry} — in-memory cache
         self._cache: dict[int, dict[str, PregenEntry]] = {}
         # guild_id -> currently running pregeneration task
         self._tasks: dict[int, asyncio.Task] = {}
         ensure_pregen_dir()
+        # Load any existing pregen files from disk on startup
+        self._load_from_disk()
 
     def _music_cog(self):
         """Get the Music cog instance."""
         return self.bot.get_cog("Music")
 
-    def get(
+    def _load_from_disk(self):
+        """Load pregen metadata JSON files from assets/part2/ on startup."""
+        if not os.path.isdir(PREGEN_DIR):
+            return
+        count = 0
+        for fname in os.listdir(PREGEN_DIR):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(PREGEN_DIR, fname)
+            try:
+                import json
+
+                with open(fpath, "r") as f:
+                    data = json.load(f)
+                entry = PregenEntry(
+                    dj_text=data.get("dj_text", ""),
+                    dj_tts_path=data.get("dj_tts_path", ""),
+                    dj_sound_ids=data.get("dj_sound_ids", []),
+                    title=data.get("title", ""),
+                    prev_title=data.get("prev_title", ""),
+                    queue_index=data.get("queue_index", 0),
+                    created_at=data.get("created_at", 0),
+                    guild_id=data.get("guild_id", 0),
+                )
+                # Only load if the TTS file still exists on disk
+                if entry.dj_tts_path and os.path.isfile(entry.dj_tts_path):
+                    title_hash = _title_hash(entry.title, entry.prev_title)
+                    gid = entry.guild_id
+                    if gid not in self._cache:
+                        self._cache[gid] = {}
+                    self._cache[gid][title_hash] = entry
+                    count += 1
+            except Exception:
+                pass
+        if count:
+            logging.info(f"Pregen: Loaded {count} pre-generated DJ lines from disk")
+
+    def _save_entry_to_disk(self, entry: PregenEntry):
+        """Save a pregen entry's metadata as a JSON file next to the WAV."""
+        if not entry.dj_tts_path or not entry.guild_id:
+            return
+        title_hash = _title_hash(entry.title, entry.prev_title)
+        meta_path = _pregen_meta_path(entry.guild_id, entry.queue_index, title_hash)
+        try:
+            import json
+
+            with open(meta_path, "w") as f:
+                json.dump(
+                    {
+                        "dj_text": entry.dj_text,
+                        "dj_tts_path": entry.dj_tts_path,
+                        "dj_sound_ids": entry.dj_sound_ids,
+                        "title": entry.title,
+                        "prev_title": entry.prev_title,
+                        "queue_index": entry.queue_index,
+                        "created_at": entry.created_at,
+                        "guild_id": entry.guild_id,
+                    },
+                    f,
+                    indent=2,
+                )
+        except Exception as e:
+            logging.warning(f"Pregen: Failed to save metadata: {e}")
+
+    def lookup(
         self,
         guild_id: int,
         title: str,
@@ -112,6 +193,7 @@ class DjPregenerator:
         """Look up a pre-generated entry for a song transition.
 
         Returns the cached entry if found and fresh, otherwise None.
+        Does NOT remove the entry — files stay on disk permanently.
         """
         title_hash = _title_hash(title, prev_title)
         guild_cache = self._cache.get(guild_id, {})
@@ -120,42 +202,12 @@ class DjPregenerator:
             return entry
         return None
 
-    def consume(
-        self,
-        guild_id: int,
-        title: str,
-        prev_title: str = "",
-    ) -> Optional[PregenEntry]:
-        """Look up and REMOVE a pre-generated entry (one-time use).
-
-        Returns the cached entry if found and fresh, otherwise None.
-        The entry is removed from the cache so TTS files can be cleaned up
-        after playback.
-        """
-        entry = self.get(guild_id, title, prev_title)
-        if entry:
-            title_hash = _title_hash(title, prev_title)
-            guild_cache = self._cache.get(guild_id, {})
-            guild_cache.pop(title_hash, None)
-        return entry
-
     def purge_guild(self, guild_id: int) -> int:
-        """Remove all cached entries for a guild. Returns count purged."""
-        guild_cache = self._cache.pop(guild_id, {})
+        """Remove in-memory cache for a guild. Files stay on disk."""
         count = 0
-        for entry in guild_cache.values():
-            if entry.dj_tts_path and os.path.isfile(entry.dj_tts_path):
-                try:
-                    os.remove(entry.dj_tts_path)
-                except OSError:
-                    pass
-                count += 1
-            if entry.ai_tts_path and os.path.isfile(entry.ai_tts_path):
-                try:
-                    os.remove(entry.ai_tts_path)
-                except OSError:
-                    pass
-        # Also cancel any running task
+        guild_cache = self._cache.pop(guild_id, {})
+        count = len(guild_cache)
+        # Cancel any running task
         task = self._tasks.pop(guild_id, None)
         if task and not task.done():
             task.cancel()
@@ -170,13 +222,10 @@ class DjPregenerator:
     ) -> None:
         """Pre-generate DJ lines + TTS for the next songs in the queue.
 
-        Runs as a background task. Each song gets:
-          1. A DJ intro/outro line generated from templates
-          2. The TTS audio file pre-rendered
-          3. An AI side host line (if enabled and Ollama available)
-
-        Pre-generated entries are stored in self._cache for instant
-        retrieval when play_next() needs them.
+        ONLY generates main DJ (MOSS-TTS) lines — the AI side host
+        stays live/on-demand. Files are saved permanently to assets/part2/.
+        Each file is numbered by queue position so the DJ always has
+        the right line ready for the right song.
         """
         # Cancel any existing pregeneration task for this guild
         existing = self._tasks.get(guild_id)
@@ -192,7 +241,6 @@ class DjPregenerator:
                 # Get the next N songs from the queue without consuming them
                 upcoming = []
                 if queue and hasattr(queue, "_queue"):
-                    # Peek at the queue without removing items
                     upcoming = list(queue._queue)[:max_ahead]
 
                 if not upcoming:
@@ -202,9 +250,19 @@ class DjPregenerator:
                     return
 
                 dj_enabled = music.dj_enabled.get(guild_id, False)
-                ai_enabled = music.ai_dj_enabled.get(guild_id, False)
-
                 if not dj_enabled:
+                    return
+
+                from utils.dj import (
+                    generate_outro,
+                    generate_song_intro,
+                    generate_intro,
+                    generate_tts,
+                    extract_sound_tags,
+                    TTS_AVAILABLE,
+                )
+
+                if not TTS_AVAILABLE:
                     return
 
                 voice = music.dj_voice.get(guild_id, config.DJ_VOICE)
@@ -224,30 +282,22 @@ class DjPregenerator:
                     )
                     title_hash = _title_hash(title, prev_title)
 
-                    # Check if we already have a fresh entry
+                    # Check if we already have a fresh entry on disk
                     existing_entry = self._cache.get(guild_id, {}).get(title_hash)
                     if existing_entry and is_entry_fresh(existing_entry):
                         logging.debug(
-                            f"Pregen: Cached entry still fresh for "
-                            f"'{title}' in guild {guild_id}, skipping"
+                            f"Pregen: #{i} '{title}' already cached for guild {guild_id}"
                         )
                         continue
 
-                    # ── Generate DJ intro line ──
-                    try:
-                        from utils.dj import (
-                            generate_outro,
-                            generate_song_intro,
-                            generate_intro,
-                            generate_tts,
-                            extract_sound_tags,
-                            TTS_AVAILABLE,
+                    # Check if a pregen file already exists on disk
+                    pregen_path = _pregen_path(guild_id, i, title_hash)
+                    if os.path.isfile(pregen_path):
+                        # File exists! Just load it — no TTS generation needed
+                        logging.info(
+                            f"Pregen: #{i} '{title}' found on disk for guild {guild_id}"
                         )
-
-                        if not TTS_AVAILABLE:
-                            continue
-
-                        # Generate the text line
+                        # Generate the text line (fast, no TTS needed)
                         if prev_title:
                             dj_text = generate_outro(
                                 prev_title,
@@ -263,81 +313,107 @@ class DjPregenerator:
 
                         clean_text, sound_ids = extract_sound_tags(dj_text)
 
-                        # Generate TTS audio
-                        dj_tts_path = await generate_tts(
-                            clean_text, voice=voice, source="Pregen-DJ"
-                        )
-
                         entry = PregenEntry(
                             dj_text=clean_text,
-                            dj_tts_path=dj_tts_path or "",
+                            dj_tts_path=pregen_path,
                             dj_sound_ids=sound_ids,
                             title=title,
                             prev_title=prev_title,
+                            queue_index=i,
                             created_at=time.time(),
                             guild_id=guild_id,
                         )
 
-                        # ── AI Side Host line (if enabled) ──
-                        if ai_enabled:
+                        if guild_id not in self._cache:
+                            self._cache[guild_id] = {}
+                        self._cache[guild_id][title_hash] = entry
+                        # Save metadata to disk
+                        self._save_entry_to_disk(entry)
+                        logging.info(
+                            f"Pregen: #{i} '{title}' loaded from disk "
+                            f"for guild {guild_id}"
+                        )
+                        continue
+
+                    # ── Generate DJ intro line + TTS audio ──
+                    try:
+                        if prev_title:
+                            dj_text = generate_outro(
+                                prev_title,
+                                has_next=True,
+                                next_title=title,
+                                queue_size=max(0, len(upcoming) - i),
+                            )
+                        else:
+                            dj_text = generate_intro(
+                                title,
+                                queue_size=max(0, len(upcoming) - i),
+                            )
+
+                        clean_text, sound_ids = extract_sound_tags(dj_text)
+
+                        # Generate TTS using MOSS (main DJ voice)
+                        tts_path = await generate_tts(
+                            clean_text, voice=voice, source="Pregen-DJ"
+                        )
+
+                        if not tts_path:
+                            logging.warning(
+                                f"Pregen: TTS generation failed for #{i} '{title}'"
+                            )
+                            continue
+
+                        # Move the TTS file from /tmp to assets/part2/ permanently
+                        # so it persists across restarts
+                        permanent_path = pregen_path
+                        if tts_path != permanent_path:
                             try:
-                                from utils.llm_dj import (
-                                    generate_side_host_line,
-                                    should_side_host_speak,
-                                    OLLAMA_DJ_AVAILABLE,
-                                )
+                                import shutil
 
-                                if OLLAMA_DJ_AVAILABLE and should_side_host_speak():
-                                    ai_line = await generate_side_host_line(
-                                        title=title,
-                                        prev_title=prev_title,
-                                        next_title=(
-                                            getattr(upcoming[i + 1], "title", "")
-                                            if i + 1 < len(upcoming)
-                                            else ""
-                                        ),
-                                        queue_size=max(0, len(upcoming) - i),
-                                        listener_count=0,
-                                        station_name=(
-                                            self.bot.user.name
-                                            if self.bot.user
-                                            else config.STATION_NAME
-                                        ),
-                                        dj_line=clean_text,
-                                    )
-                                    if ai_line:
-                                        # Use edge-tts for the AI host
-                                        # (distinct voice from the main DJ)
-                                        AI_EDGE_VOICE = "en-US-GuyNeural"
-                                        ai_text, ai_sfx = extract_sound_tags(ai_line)
-                                        ai_tts_path = await generate_tts(
-                                            ai_text[:200],
-                                            voice=AI_EDGE_VOICE,
-                                            source="Pregen-AI",
-                                            engine="edge-tts",
-                                        )
-                                        entry.ai_text = ai_text
-                                        entry.ai_tts_path = ai_tts_path or ""
+                                shutil.copy2(tts_path, permanent_path)
+                                logging.info(f"Pregen: Copied TTS to {permanent_path}")
+                                # Clean up the /tmp original
+                                from utils.dj import cleanup_tts_file
 
+                                cleanup_tts_file(tts_path)
                             except Exception as e:
                                 logging.warning(
-                                    f"Pregen: AI side host failed for '{title}': {e}"
+                                    f"Pregen: Could not copy to permanent path: {e}. "
+                                    f"Using temp file {tts_path}"
                                 )
+                                permanent_path = tts_path
+                        else:
+                            permanent_path = tts_path
 
-                        # Store in cache
+                        entry = PregenEntry(
+                            dj_text=clean_text,
+                            dj_tts_path=permanent_path,
+                            dj_sound_ids=sound_ids,
+                            title=title,
+                            prev_title=prev_title,
+                            queue_index=i,
+                            created_at=time.time(),
+                            guild_id=guild_id,
+                        )
+
+                        # Store in memory cache
                         if guild_id not in self._cache:
                             self._cache[guild_id] = {}
                         self._cache[guild_id][title_hash] = entry
 
+                        # Save metadata to disk
+                        self._save_entry_to_disk(entry)
+
                         logging.info(
-                            f"Pregen: Cached DJ line for '{title}' "
+                            f"Pregen: #{i} Cached DJ line for '{title}' "
                             f"in guild {guild_id} "
-                            f"(AI: {'yes' if entry.ai_tts_path else 'no'})"
+                            f"(sounds: {sound_ids})"
                         )
 
                     except Exception as e:
                         logging.warning(
-                            f"Pregen: Failed for '{title}' in guild {guild_id}: {e}"
+                            f"Pregen: Failed for #{i} '{title}' "
+                            f"in guild {guild_id}: {e}"
                         )
                         continue
 

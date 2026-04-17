@@ -1339,7 +1339,7 @@ class Music(commands.Cog):
             if current_song_data:
                 await queue.put(current_song_data)
                 logging.info(
-                    f"Looping enabled. Re-added {current_song_data.title} to queue."
+                    f"Looping enabled. Re-added {current_song_data.get('title', 'Unknown')} to queue."
                 )
 
         # Play the next song in the queue
@@ -1803,7 +1803,7 @@ class Music(commands.Cog):
                 player_options["options"] += f' -filter:a "{"+".join(atempo_filters)}"'
 
             # Create and play the new player with the updated speed
-            source = discord.FFmpegPCMAudio(current_song_data.url, **player_options)
+            source = discord.FFmpegPCMAudio(current_song_data.get("url"), **player_options)
             player = discord.PCMVolumeTransformer(source)
             player.volume = self.current_volume.get(guild_id, 1.0)
             self._dispatch_audio_play(
@@ -3156,8 +3156,6 @@ class Music(commands.Cog):
         """
         if not self._yt_stream_active or not self._yt_streamer:
             return
-        if self._yt_streamer.is_autonomous:
-            return
 
         playlist_url = getattr(config, "YOUTUBE_STREAM_PLAYLIST", "") or getattr(
             config, "AUTODJ_DEFAULT_SOURCE", ""
@@ -3239,8 +3237,6 @@ class Music(commands.Cog):
         Also handles the bot being forcefully disconnected from voice.
         """
         if not self._yt_stream_active or not self._yt_streamer:
-            return
-        if self._yt_streamer.is_autonomous:
             return
 
         if not before or not before.channel:
@@ -3803,10 +3799,10 @@ class BattleView(discord.ui.View):
 
             # If a song is currently playing, start streaming it immediately
             current = self.current_song.get(ctx.guild.id)
-            if current and current.url:
-                thumb = getattr(current, "thumbnail", None)
+            if current and isinstance(current, dict) and current.get("url"):
+                thumb = current.get("thumbnail")
                 await self._yt_streamer.play_song(
-                    current.url, current.title or "Unknown", thumbnail=thumb
+                    current.get("url"), current.get("title", "Unknown"), thumbnail=thumb
                 )
 
             key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
@@ -3977,7 +3973,8 @@ class BattleView(discord.ui.View):
                 else:
                     lines.append(f"Uptime: {uptime / 3600:.1f}h")
             else:
-                current = self._yt_streamer.current_url
+                current = self.current_song.get(ctx.guild.id)
+                if current and isinstance(current, dict): current = current.get("webpage_url")
                 if current:
                     song = self.current_song.get(ctx.guild.id)
                     lines.append(

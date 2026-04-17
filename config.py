@@ -115,7 +115,7 @@ MAX_SOUND_SECONDS = 8
 # Requires Ollama running locally with a pulled model (e.g., `ollama pull gemma4:latest`).
 
 # Enable the AI side host. Set to "true" in .env to activate.
-OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "false").lower() == "true"
+OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "true").lower() == "true"
 
 # Ollama server URL (default: http://localhost:11434)
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")

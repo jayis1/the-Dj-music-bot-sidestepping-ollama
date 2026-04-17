@@ -265,6 +265,12 @@ class Music(commands.Cog):
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
             )
             self._yt_stream_guild = guild.id
+            
+            # EAGER INITIALIZATION: Start PCMBroadcaster immediately so it feeds silence to UDP
+            from utils.broadcaster import PCMBroadcaster
+            if guild.id not in getattr(self, "_broadcasters", {}):
+                self._broadcasters[guild.id] = PCMBroadcaster(port=12345)
+                
             await self._yt_streamer.start()
             
             # Start Headless AutoDJ Master Loop natively!
@@ -281,6 +287,8 @@ class Music(commands.Cog):
             
             ctx = DummyContext(self.bot, guild)
             self.autodj_enabled[guild.id] = True
+            self.dj_enabled[guild.id] = True
+            self.ai_dj_enabled[guild.id] = True
             self.autodj_source[guild.id] = playlist_url
             
             # Use Auto-DJ system natively to seed queue

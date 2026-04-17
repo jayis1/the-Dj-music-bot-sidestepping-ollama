@@ -93,8 +93,25 @@ class YouTubeLiveStreamer:
         log.info("YouTube Live: Master Engine halted.")
 
     async def play_song(self, audio_url: str, title: str = "", thumbnail: str | None = None):
-        """Deprecated hook: The Broadcaster handles PCM streaming directly. Just update the HUD."""
+        """Hook to update HUD text and dynamically download the track thumbnail."""
         self.update_hud(title=title)
+        
+        if thumbnail:
+            async def _download_thumb():
+                try:
+                    import aiohttp
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(thumbnail) as resp:
+                            if resp.status == 200:
+                                data = await resp.read()
+                                temp_path = "/tmp/radio_thumbnail_temp.jpg"
+                                with open(temp_path, "wb") as f:
+                                    f.write(data)
+                                os.rename(temp_path, "/tmp/radio_thumbnail.jpg")
+                except Exception as e:
+                    log.debug(f"YouTube Live: Failed to fetch thumbnail: {e}")
+                    
+            asyncio.create_task(_download_thumb())
 
     async def play_tts(self, tts_path: str, text: str = ""):
         """Deprecated hook: The Broadcaster handles PCM streaming directly. Just update the HUD."""
@@ -201,7 +218,22 @@ class YouTubeLiveStreamer:
             "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000"
         ])
 
-        # Input 2: Animated GIF overlay wrapper
+        # Input 2: Dynamic Thumbnail loop
+        thumb_path = "/tmp/radio_thumbnail.jpg"
+        if not os.path.exists(thumb_path):
+            try:
+                import base64
+                blank_jpg = base64.b64decode("/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=")
+                with open(thumb_path, "wb") as f:
+                    f.write(blank_jpg)
+            except:
+                pass
+                
+        cmd.extend([
+            "-f", "image2", "-loop", "1", "-framerate", "1", "-thread_queue_size", "256", "-i", thumb_path
+        ])
+
+        # Input 3: Animated GIF overlay wrapper
         gif_path = self._resolve_gif()
         has_gif = gif_path and os.path.isfile(gif_path)
         if has_gif:
@@ -219,25 +251,29 @@ class YouTubeLiveStreamer:
         # Dynamically build a modern audio spectrum effect using the UDP audio input [1:a]
         vf += f"[1:a]showwaves=s={W}x240:mode=cline:colors=0x00FFFF|0xFF00FF:rate={fps}[viz];"
 
-        # Integrate GIF if available
+        # Prepare Thumbnail scaling [2:v]
+        vf += f"[2:v]scale=120:120:force_original_aspect_ratio=decrease,format=yuva420p[thumb_scaled];"
+
+        # Base layering sequence
         if has_gif:
-            vf += f"[2:v]split=2[gif_big_in][gif_small_in];"
+            vf += f"[3:v]split=2[gif_big_in][gif_small_in];"
             vf += f"[gif_big_in]scale=120:120:force_original_aspect_ratio=decrease,format=yuva420p[gif_big];"
             vf += f"[gif_small_in]scale=40:40:force_original_aspect_ratio=decrease,format=yuva420p[gif_small];"
             vf += f"[bg][viz]overlay=0:{H-280}:format=auto[bg_viz];"
-            vf += f"[bg_viz][gif_big]overlay=W-w-30:30:format=auto[with_gif_1];"
+            vf += f"[bg_viz][thumb_scaled]overlay=(W-w)/2:330:format=auto[with_thumb];"
+            vf += f"[with_thumb][gif_big]overlay=W-w-30:30:format=auto[with_gif_1];"
             vf += f"[with_gif_1][gif_small]overlay=260:145:format=auto[vbase];"
         else:
-            # Without GIF, just overlay the audio wave visualizers onto the background
-            vf += f"[bg][viz]overlay=0:{H-280}:format=auto[vbase];"
+            vf += f"[bg][viz]overlay=0:{H-280}:format=auto[bg_viz];"
+            vf += f"[bg_viz][thumb_scaled]overlay=(W-w)/2:330:format=auto[vbase];"
 
         # Apply Dynamic Text reload hooks directly to the pipeline
         filter_chain = "[vbase]"
         
-        # 1. Station text (static)
+        # 1. Station text (static watermark moved to top-left out of the way)
         filter_chain += (
             f"drawtext={font_opt_bold}text='{safe_station}':"
-            f"fontcolor=white:fontsize=42:x=(w-text_w)/2:y=150:shadowcolor=black:shadowx=2:shadowy=2,"
+            f"fontcolor=white:fontsize=28:x=30:y=30:shadowcolor=black:shadowx=2:shadowy=2,"
         )
         # 2. Main Title HUD (dynamic txt reload)
         filter_chain += (

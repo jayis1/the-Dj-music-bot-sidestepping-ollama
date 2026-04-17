@@ -90,7 +90,7 @@ def _make_base_opts():
         },
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "web", "mweb"]
+                "player_client": ["ios", "tv", "web"]
             }
         },
         "extract_flat": "discard_in_playlist",

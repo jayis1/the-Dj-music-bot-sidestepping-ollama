@@ -40,15 +40,31 @@ class PCMBroadcaster(discord.AudioSource):
     def set_source(self, source, guild_id=None, bot=None, after=None):
         """Binds a new FFmpegPCMAudio stream (Song, TTS, SFX) into the broadcast matrix."""
         with self._source_lock:
-            if self._source and hasattr(self._source, 'cleanup'):
-                try:
-                    self._source.cleanup()
-                except Exception:
-                    pass
+            if self._source:
+                # If we are abruptly swapping sources, trigger the previous callback first
+                self._trigger_after()
+                if hasattr(self._source, 'cleanup'):
+                    try:
+                        self._source.cleanup()
+                    except Exception:
+                        pass
+                        
             self._source = source
             self._guild_id = guild_id
             self._bot = bot
             self._after_callback = after
+            
+    def stop_source(self):
+        """Stops the current track gracefully and evokes the callback (used for skipping)."""
+        with self._source_lock:
+            if self._source:
+                self._trigger_after()
+                if hasattr(self._source, 'cleanup'):
+                    try:
+                        self._source.cleanup()
+                    except Exception:
+                        pass
+                self._source = None
             
     def _trigger_after(self, error=None):
         """Fires the after-play callback back onto the main asyncio loop."""

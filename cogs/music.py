@@ -78,7 +78,7 @@ class PCMBroadcasterWrapper:
     
     def stop(self):
         if self.source:
-            self.broadcaster.set_source(None)
+            self.broadcaster.stop_source()
             self.source = None
             
     def pause(self):

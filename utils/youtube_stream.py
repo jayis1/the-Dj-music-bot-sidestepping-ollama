@@ -255,7 +255,6 @@ class YouTubeLiveStreamer:
         # 3. Launch FFmpeg x11grab + audio capture
         cmd = [
             "ffmpeg",
-            "-use_wallclock_as_timestamps", "1",
             "-thread_queue_size", "4096",
             "-f", "x11grab", "-video_size", f"{self.WIDTH}x{self.HEIGHT}",
             "-framerate", str(self.fps),

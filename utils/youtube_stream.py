@@ -213,7 +213,13 @@ class YouTubeLiveStreamer:
             
         try: os.remove("/tmp/.X99-lock")
         except: pass
+        try: os.remove("/tmp/.X11-unix/X99")
+        except: pass
         
+        # Kill stray Xvfb processes occupying :99
+        try:
+            os.system("pkill -f 'Xvfb :99'")
+        except: pass
         log.info(f"YouTube Live: Spawning Headless ({xvfb_path}) overlay capture...")
         
         # 1. Spawn Xvfb virtual frame buffer

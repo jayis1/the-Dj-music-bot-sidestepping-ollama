@@ -263,8 +263,10 @@ class YouTubeLiveStreamer:
             "-thread_queue_size", "4096",
             "-f", "s16le", "-ar", "48000", "-ac", "2",
             "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000",
-            # Map explicitly
+            # Normalize ALL timestamps perfectly to 0.0s to align audio with screen 
             "-map", "0:v", "-map", "1:a",
+            "-vf", "setpts=PTS-STARTPTS",
+            "-af", "asetpts=PTS-STARTPTS",
             # Streaming Codecs
             "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
             "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k", "-minrate", f"{self.bitrate_video}k", 

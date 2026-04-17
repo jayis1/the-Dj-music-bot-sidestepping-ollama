@@ -198,6 +198,20 @@ class YouTubeLiveStreamer:
 
         primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
         
+        # Cleanup previously running headless processes upon restarts
+        if self._chromium:
+            try: self._chromium.kill()
+            except: pass
+        if self._xvfb:
+            try: self._xvfb.kill()
+            except: pass
+        if self._process:
+            try: self._process.kill()
+            except: pass
+            
+        try: os.remove("/tmp/.X99-lock")
+        except: pass
+        
         log.info(f"YouTube Live: Spawning Headless ({xvfb_path}) overlay capture...")
         
         # 1. Spawn Xvfb virtual frame buffer

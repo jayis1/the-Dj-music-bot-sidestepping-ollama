@@ -183,18 +183,27 @@ class YouTubeLiveStreamer:
 
     async def _start_master_ffmpeg(self):
         """Construct the FFmpeg process with Xvfb and Chromium headless screen capture!"""
+        import shutil
+        xvfb_path = shutil.which("Xvfb")
+        chromium_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+        
+        if not xvfb_path or not chromium_path:
+            log.error(f"YouTube Live: FATAL - Missing dependencies! Xvfb: {xvfb_path}, Chromium: {chromium_path}")
+            log.error("Please install them natively: 'sudo apt install xvfb chromium-browser' !!")
+            return
+
         if not self.stream_key and not self.rtmp_url:
             log.error("YouTube Live: Cannot start Master Engine (No Configs)")
             return
 
         primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
         
-        log.info("YouTube Live: Spawning Headless Xvfb overlay capture...")
+        log.info(f"YouTube Live: Spawning Headless ({xvfb_path}) overlay capture...")
         
         # 1. Spawn Xvfb virtual frame buffer
         try:
             self._xvfb = await asyncio.create_subprocess_exec(
-                "/usr/bin/Xvfb", ":99", "-screen", "0", f"{self.WIDTH}x{self.HEIGHT}x24",
+                xvfb_path, ":99", "-screen", "0", f"{self.WIDTH}x{self.HEIGHT}x24",
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.DEVNULL
             )
@@ -208,7 +217,7 @@ class YouTubeLiveStreamer:
         env["DISPLAY"] = ":99"
         try:
             self._chromium = await asyncio.create_subprocess_exec(
-                "/usr/bin/chromium", 
+                chromium_path, 
                 "--kiosk", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
                 "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
                 f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",

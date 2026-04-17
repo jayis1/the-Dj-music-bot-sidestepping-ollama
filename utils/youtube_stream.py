@@ -249,7 +249,8 @@ class YouTubeLiveStreamer:
             vf += f"[0:v]format=yuva420p[bg];"
 
         # Dynamically build a modern audio spectrum effect using the UDP audio input [1:a]
-        vf += f"[1:a]asplit=2[a_viz][outa];"
+        vf += f"[1:a]asplit=2[a_viz][outa_pre];"
+        vf += f"[outa_pre]afifo[outa];"
         vf += f"[a_viz]showwaves=s={W}x240:mode=cline:colors=0x00FFFF|0xFF00FF:rate={fps}[viz];"
 
         # Prepare Thumbnail scaling [2:v]

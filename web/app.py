@@ -1970,20 +1970,6 @@ def api_battle_create(guild_id):
         battle_data["message_id"] = msg.id
         battle_data["channel_id"] = channel.id
 
-        # DJ announcement
-        if music.dj_enabled.get(guild_id, False):
-            try:
-                from utils.dj import TTS_AVAILABLE
-
-                if TTS_AVAILABLE:
-                    announce_text = (
-                        f"Battle of the Beats! {title_a} versus {title_b}. Vote now!"
-                    )
-                    await music._dj_speak(guild.voice_client, announce_text, guild_id)
-                    battle_data["dj_announced"] = True
-            except Exception:
-                pass
-
         # Start the countdown
         await music._battle_countdown(guild_id, channel, msg)
 

@@ -2833,14 +2833,6 @@ class Music(commands.Cog):
         # Store the message ID for live updates
         battle_data["message_id"] = msg.id
 
-        # DJ announcement
-        if self.dj_enabled.get(guild_id, False) and TTS_AVAILABLE:
-            battle_announce = f"{config.STATION_NAME} Battle of the Beats! {title_a} versus {title_b}. Vote now!"
-            spoke = await self._dj_speak(ctx.voice_client, battle_announce, guild_id)
-            if not spoke:
-                logging.info(f"Battle: DJ announcement skipped for guild {guild_id}")
-            battle_data["dj_announced"] = True
-
         # Start the countdown timer
         battle_data["timer_task"] = self.bot.loop.create_task(
             self._battle_countdown(guild_id, ctx.channel, msg)
@@ -2988,14 +2980,9 @@ class Music(commands.Cog):
         # Send a separate results message
         await channel.send(embed=embed)
 
-        # DJ announcement of the winner
-        if self.dj_enabled.get(guild_id, False) and TTS_AVAILABLE:
-            announce_text = (
-                f"Battle of the Beats is over! {winner_title} wins! Let's hear it."
-            )
-            await self._dj_speak(channel.guild.voice_client, announce_text, guild_id)
-
-        # Queue the winning song
+        # Queue the winning song — insert at the FRONT of the queue
+        # so it plays as the very next song after whatever is currently playing,
+        # without stopping or interrupting the current song.
         try:
             from cogs.youtube import PlaceholderTrack
 
@@ -3015,19 +3002,25 @@ class Music(commands.Cog):
             winner_track = PlaceholderTrack(winner_data)
             if guild_id not in self.song_queues:
                 self.song_queues[guild_id] = asyncio.Queue()
-            await self.song_queues[guild_id].put(winner_track)
-            await channel.send(
-                f"🎵 Winner **{winner_title}** has been added to the queue!"
-            )
+            # Insert at position 0 (front of queue) so it's the next song to play
+            self.song_queues[guild_id]._queue.appendleft(winner_track)
 
-            # If nothing is playing, start playback
+            queue_pos = len(self.song_queues[guild_id]._queue)
+            if queue_pos == 1:
+                await channel.send(f"🎵 Winner **{winner_title}** is up next!")
+            else:
+                await channel.send(
+                    f"🎵 Winner **{winner_title}** added as #1 in the queue ({queue_pos} songs total)!"
+                )
+
+            # If nothing is playing at all, start playback
             voice_client = channel.guild.voice_client
             if (
                 voice_client
                 and not voice_client.is_playing()
                 and not voice_client.is_paused()
             ):
-                # Create a minimal ctx-like object for play_next
+
                 class _FakeCtx:
                     pass
 

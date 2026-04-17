@@ -244,8 +244,9 @@ class YouTubeLiveStreamer:
             "-map", "0:v", "-map", "1:a",
             # Streaming Codecs
             "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-            "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k", 
+            "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k", "-minrate", f"{self.bitrate_video}k", 
             "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p", "-g", str(self.fps * 2),
+            "-nal-hrd", "cbr",
             "-c:a", "aac", "-b:a", f"{self.bitrate_audio}k", "-ar", "48000",
             "-f", "flv", "-flvflags", "no_duration_filesize",
             "-rtmp_live", "live", "-rtmp_buffer", "2000"

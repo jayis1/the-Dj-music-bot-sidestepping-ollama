@@ -39,7 +39,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Create persistent data directories (these should be mounted as volumes)
-RUN mkdir -p sounds presets yt_dlp_cache
+RUN mkdir -p sounds presets yt_dlp_cache && \
+    cp -r sounds default_sounds 2>/dev/null || true && \
+    cp -r presets default_presets 2>/dev/null || true
 
 # Web dashboard port
 EXPOSE 8080

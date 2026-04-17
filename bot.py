@@ -70,6 +70,8 @@ async def on_ready():
 
 
 async def main():
+    ensure_default_assets()
+
     # The yt_dlp_cache directory is no longer strictly necessary for streaming,
     # but can be kept if yt-dlp still uses it for other metadata caching.
     # For now, we'll keep it as it doesn't harm anything.
@@ -430,6 +432,27 @@ async def main():
             )
         except Exception as e:
             logging.error(f"Error when starting bot: {e}")
+
+
+def ensure_default_assets():
+    import shutil
+
+    for asset_type in ["sounds", "presets"]:
+        default_dir = f"default_{asset_type}"
+        target_dir = asset_type
+        if os.path.isdir(default_dir):
+            os.makedirs(target_dir, exist_ok=True)
+            for item in os.listdir(default_dir):
+                src = os.path.join(default_dir, item)
+                dst = os.path.join(target_dir, item)
+                if not os.path.exists(dst):
+                    try:
+                        if os.path.isfile(src):
+                            shutil.copy2(src, dst)
+                        elif os.path.isdir(src):
+                            shutil.copytree(src, dst)
+                    except Exception as e:
+                        logging.warning(f"Failed to copy default asset {item}: {e}")
 
 
 def run_web_server():

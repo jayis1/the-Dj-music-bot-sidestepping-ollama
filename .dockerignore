@@ -22,8 +22,6 @@ bot_activity.log
 
 # Runtime data (mounted as volumes)
 yt_dlp_cache/
-sounds/
-presets/
 
 # Dev tools
 .ruff_cache

@@ -245,12 +245,6 @@ class Music(commands.Cog):
         playlist_url = getattr(config, "YOUTUBE_STREAM_PLAYLIST", "") or getattr(
             config, "AUTODJ_DEFAULT_SOURCE", ""
         )
-        if not playlist_url:
-            logging.info(
-                "YouTube Live: YOUTUBE_STREAM_ENABLED is true but no playlist URL set. "
-                "Use ?golive or Mission Control to start manually."
-            )
-            return
 
         # Wait a moment for the bot to fully connect
         await asyncio.sleep(3)
@@ -303,16 +297,18 @@ class Music(commands.Cog):
             
             wrapper = PCMBroadcasterWrapper(self.bot, guild.id, self._broadcasters[guild.id])
             ctx = DummyContext(self.bot, guild, wrapper)
-            self.autodj_enabled[guild.id] = True
+            self.autodj_enabled[guild.id] = False
             self.dj_enabled[guild.id] = True
             self.ai_dj_enabled[guild.id] = True
-            self.autodj_source[guild.id] = playlist_url
+            if playlist_url:
+                self.autodj_source[guild.id] = playlist_url
             
             # Use Auto-DJ system natively to seed queue
             # And then explicitly start playback since we're the first track
             async def _fill_and_play():
                 self.is_booting = True
-                await self._autodj_fill(ctx)
+                if playlist_url:
+                    await self._autodj_fill(ctx)
                 
                 # Eagerly start pregeneration of DJ assets immediately to cover 
                 # MOSS-TTS server cold-start timeouts and have lines ready early.
@@ -339,7 +335,10 @@ class Music(commands.Cog):
                     logging.debug(f"Pregen: Failed eager startup pregen: {e}")
                     
                 self.is_booting = False
-                asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop)
+                
+                queue = self.song_queues.get(guild.id)
+                if queue and not queue.empty():
+                    asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop)
                 
             self.bot.loop.create_task(_fill_and_play())
             

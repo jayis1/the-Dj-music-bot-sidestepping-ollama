@@ -186,3 +186,19 @@ TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))
 # If blank or 0, the bot sends the message in the same channel as the command.
 # Set this to a channel ID like 1234567890123456789 to bind it.
 NOWPLAYING_CHANNEL_ID = int(os.environ.get("NOWPLAYING_CHANNEL_ID", 0) or 0)
+
+# ── YouTube Live Streaming ──────────────────────────────────────────────
+# Stream the bot's audio to a YouTube Live event via RTMP.
+# Get your stream key from YouTube Studio → Go Live → Stream Key.
+# The bot streams audio + a static image card with song titles.
+
+YOUTUBE_STREAM_ENABLED = (
+    os.environ.get("YOUTUBE_STREAM_ENABLED", "false").lower() == "true"
+)
+YOUTUBE_STREAM_KEY = os.environ.get("YOUTUBE_STREAM_KEY", "")
+YOUTUBE_STREAM_URL = os.environ.get(
+    "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+)
+YOUTUBE_STREAM_IMAGE = os.environ.get(
+    "YOUTUBE_STREAM_IMAGE", ""
+)  # Path to stream card image

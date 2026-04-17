@@ -35,6 +35,18 @@ from utils.llm_dj import (
     check_ollama_available,
 )
 
+# ── YouTube Live streaming ──
+YOUTUBE_STREAM_AVAILABLE = False
+try:
+    from utils.youtube_stream import YouTubeLiveStreamer
+
+    if getattr(config, "YOUTUBE_STREAM_ENABLED", False) and getattr(
+        config, "YOUTUBE_STREAM_KEY", ""
+    ):
+        YOUTUBE_STREAM_AVAILABLE = True
+except ImportError:
+    pass
+
 
 class Music(commands.Cog):
     def __init__(self, bot):

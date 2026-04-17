@@ -333,6 +333,9 @@
                 <button onclick="toggleStreamKeyVisibility()" style="background: none; border: 1px solid var(--border); cursor: pointer;
                     font-size: 14px; border-radius: 6px; padding: 4px 8px; color: var(--text-muted);"
                     title="Show/hide key">👁️</button>
+                <button onclick="saveStreamKey()" style="background: none; border: 1px solid var(--border); cursor: pointer;
+                    font-size: 14px; border-radius: 6px; padding: 4px 8px; color: var(--text-muted);"
+                    title="Save to .env">💾</button>
             </div>
         </div>
         <div style="background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px;">
@@ -947,6 +950,39 @@ function setStreamMode(mode) {
 function toggleStreamKeyVisibility() {
     const input = document.getElementById('yt-stream-key');
     if (input) input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function saveStreamKey() {
+    const input = document.getElementById('yt-stream-key');
+    if (!input || !input.value.trim()) {
+        showToast('Enter a stream key to save', 'error');
+        return;
+    }
+    
+    // Animate button momentarily
+    const btn = event.currentTarget;
+    const oldText = btn.textContent;
+    btn.textContent = '⏳';
+    
+    try {
+        const res = await fetch('/api/save_stream_key', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({stream_key: input.value.trim()})
+        });
+        const data = await res.json();
+        
+        if (data.ok) {
+            showToast('💾 Stream key permanently saved to .env!', 'success');
+            input.placeholder = '✅ Key securely saved';
+        } else {
+            showToast('❌ Failed to save: ' + (data.error || 'Unknown error'), 'error');
+        }
+    } catch (e) {
+        showToast('❌ Network error saving key', 'error');
+    }
+    
+    btn.textContent = oldText;
 }
 
 function _getYtGuildId() {

@@ -2792,6 +2792,37 @@ def api_youtube_stream_status(guild_id):
     return jsonify(result)
 
 
+@app.route("/api/save_stream_key", methods=["POST"])
+def api_save_stream_key():
+    """Permanently save the YouTube stream key to the .env file."""
+    data = request.json or {}
+    stream_key = data.get("stream_key", "").strip()
+    if not stream_key:
+        return jsonify({"error": "Stream key required"}), 400
+
+    env_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if not os.path.isfile(env_file):
+        return jsonify({"error": ".env file not found"}), 500
+
+    lines = []
+    found = False
+    with open(env_file, "r") as f:
+        for line in f:
+            if line.strip().startswith("YOUTUBE_STREAM_KEY=") and not line.strip().startswith("#"):
+                lines.append(f"YOUTUBE_STREAM_KEY={stream_key}\n")
+                found = True
+            else:
+                lines.append(line)
+    if not found:
+        lines.append(f"\nYOUTUBE_STREAM_KEY={stream_key}\n")
+
+    with open(env_file, "w") as f:
+        f.writelines(lines)
+
+    config.YOUTUBE_STREAM_KEY = stream_key
+    return jsonify({"ok": True})
+
+
 @app.route("/api/<int:guild_id>/youtube_stream/toggle", methods=["POST"])
 def api_youtube_stream_toggle(guild_id):
     """Start or stop the YouTube Live stream from Mission Control.

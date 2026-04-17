@@ -730,14 +730,19 @@ class Music(commands.Cog):
                     self._yt_auth_blocked = True
                     self._yt_auth_blocked_at = time.time()
                     channel = self.bot.get_channel(ctx.channel.id)
+                    # Build a more helpful error message
+                    error_hint = (
+                        "YouTube playback failed. This is usually caused by one of:\n"
+                        "• **Outdated yt-dlp** — Run `pip install -U yt-dlp` and restart the bot\n"
+                        "• **Missing cookies** — Open **Mission Control** → **Settings** → **Cookie Auth**\n"
+                        "• **No YouTube API key** — Set `YOUTUBE_API_KEY` in `.env` for search\n\n"
+                        "Fastest fix: `pip install -U yt-dlp` then restart the bot."
+                    )
                     if channel:
                         await channel.send(
                             embed=self.create_embed(
                                 "Playback Error",
-                                f"{config.ERROR_EMOJI} Multiple songs failed to resolve. "
-                                "YouTube may be blocking requests. "
-                                "Open **Mission Control** → **Settings** → **Cookie Auth** "
-                                "to fix this with one click, or try `?ytcookies browser:firefox`.",
+                                f"{config.ERROR_EMOJI} {error_hint}",
                                 discord.Color.red(),
                             )
                         )
@@ -780,13 +785,25 @@ class Music(commands.Cog):
                     logging.error(
                         f"play_next: Failed to resolve PlaceholderTrack '{data.title}': {e}"
                     )
-                    # Detect YouTube auth errors early (don't wait for 5 failures)
-                    if "sign in to confirm" in error_str or "bot" in error_str:
+                    # Detect YouTube errors early (don't wait for 5 failures)
+                    if "sign in to confirm" in error_str or (
+                        "bot" in error_str and "resolve" in error_str
+                    ):
                         self._yt_auth_blocked = True
                         self._yt_auth_blocked_at = time.time()
                         logging.warning(
                             "play_next: YouTube auth block detected — "
                             "cookies required. Mission Control can fix this."
+                        )
+                    elif "format is not available" in error_str:
+                        # This usually means yt-dlp's cipher/signature solver is outdated.
+                        # Cookies alone won't fix this — need to upgrade yt-dlp.
+                        self._yt_auth_blocked = True
+                        self._yt_auth_blocked_at = time.time()
+                        logging.error(
+                            "play_next: YouTube 'format not available' — "
+                            "yt-dlp likely OUTDATED and can't solve YouTube's cipher. "
+                            "UPGRADE: pip install -U yt-dlp  (cookies alone won't fix this)"
                         )
                     await asyncio.sleep(2)
                     await self.play_next(ctx, _skip_count=_skip_count + 1)

@@ -2360,13 +2360,17 @@ def api_ytcookies_inject():
     cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
 
     # Auto-detect format: Netscape vs raw Cookie header
+    has_youtube_domain = False
     if "\t" in cookie_text and ("TRUE" in cookie_text or "FALSE" in cookie_text):
         # Already Netscape format — write directly
         lines = cookie_text.splitlines()
+        has_youtube_domain = any("youtube" in line.lower() for line in lines)
         if not lines[0].startswith("#"):
             cookie_text = "# Netscape HTTP Cookie File\n" + cookie_text
     elif "=" in cookie_text and "\t" not in cookie_text:
         # Raw Cookie header (name=value; name2=value2) — convert to Netscape
+        # These should come from a YouTube tab (e.g. via console snippet or paste)
+        # We use .youtube.com as the default domain
         lines = ["# Netscape HTTP Cookie File"]
         for pair in cookie_text.split(";"):
             pair = pair.strip()
@@ -2377,6 +2381,7 @@ def api_ytcookies_inject():
                 # Use .youtube.com as default domain, permanent session cookie
                 lines.append(f".youtube.com\tTRUE\t/\tTRUE\t0\t{name}\t{value}")
         cookie_text = "\n".join(lines) + "\n"
+        has_youtube_domain = True  # We set the domain ourselves
     else:
         return jsonify(
             {
@@ -2384,6 +2389,37 @@ def api_ytcookies_inject():
                 "error": "Unrecognized cookie format. Provide either Netscape format (tab-separated) or raw Cookie header (name=value; name2=value2)",
             }
         ), 400
+
+    # Validate that cookies contain essential YouTube auth cookies
+    cookie_lower = cookie_text.lower()
+    essential_cookies = [
+        "login_info",
+        "sid",
+        "ssid",
+        "sapisid",
+        "apisid",
+        "hsid",
+        "sidcc",
+    ]
+    found_essential = [c for c in essential_cookies if c in cookie_lower]
+    if not found_essential:
+        logging.warning(
+            f"Cookie injection: No YouTube auth cookies found. "
+            f"Got: {cookie_text[:200]}. "
+            "These cookies may not actually authenticate with YouTube."
+        )
+        # Don't reject — sometimes only SID/SAPISID are enough, and
+        # the user might be using a different cookie format.
+        # But add a warning to the response.
+        warning_msg = (
+            "⚠️ These cookies don't appear to contain YouTube auth tokens "
+            "(no login_info, sid, sapisid, etc.). Make sure you're copying cookies "
+            "from a YouTube tab where you're logged in, not from this Mission Control page. "
+            "Use the console snippet method (Option 1) on a YouTube tab for best results."
+        )
+    else:
+        warning_msg = None
+        logging.info(f"Cookie injection: Found YouTube auth cookies: {found_essential}")
 
     try:
         with open(cookiefile, "w") as f:
@@ -2416,13 +2452,14 @@ def api_ytcookies_inject():
                         loop=bot.loop,
                     )
 
-    return jsonify(
-        {
-            "ok": True,
-            "message": "✅ Cookies injected! YouTube playback should resume automatically.",
-            "was_blocked": was_blocked if music else False,
-        }
-    )
+    result = {
+        "ok": True,
+        "message": "✅ Cookies injected! YouTube playback should resume automatically.",
+        "was_blocked": was_blocked if music else False,
+    }
+    if warning_msg:
+        result["warning"] = warning_msg
+    return jsonify(result)
 
 
 @app.route("/api/ytcookies/upload", methods=["POST"])

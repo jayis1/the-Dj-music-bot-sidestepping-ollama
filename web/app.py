@@ -2230,6 +2230,7 @@ def api_overlay_state():
                 "elapsed": elapsed,
                 "dj_speaking": dj_speaking and not ai_speaking,
                 "ai_speaking": ai_speaking,
+                "sfx_active": music._sfx_active.get(gid, False),
                 "dj_enabled": music.dj_enabled.get(gid, False),
                 "ai_enabled": music.ai_dj_enabled.get(gid, False),
                 "station_name": getattr(config, "STATION_NAME", "MBot"),

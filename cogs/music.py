@@ -2555,13 +2555,14 @@ class Music(commands.Cog):
                 def _after(e):
                     if e:
                         logging.error(f"DJ: Sound '{sound_id}' error: {e}")
+                    self._sfx_active[guild_id] = False
                     self.bot.loop.call_soon_threadsafe(finished.set)
 
+                self._sfx_active[guild_id] = True
                 self._dispatch_audio_play(guild_id, player, after=_after)
                 logging.info(
                     f"DJ: Playing sound effect '{sound_id}' in guild {guild_id}"
                 )
-
                 # ── YouTube Live: Stream sound effect ──
                 if (
                     self._yt_stream_active

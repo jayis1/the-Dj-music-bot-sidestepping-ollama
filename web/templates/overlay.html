@@ -57,6 +57,23 @@ body {
     opacity: 1;
 }
 
+/* ── SFX Overlay Animation ── */
+.sfx-anim {
+    position: absolute;
+    right: 50px;
+    top: 50px;
+    width: 250px;
+    height: auto;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    pointer-events: none;
+}
+.sfx-anim.visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
 /* ── Bottom Ticker Mapping ── */
 .hud-ticker-bg {
     position: absolute;
@@ -113,6 +130,9 @@ body {
     
     <div class="hud-dj" id="speakingLabel">🎙️ DJ SPEAKING...</div>
 
+    <!-- Sound Effect Animation -->
+    <img id="sfxAnim" class="sfx-anim" src="/assets/giphy.gif" alt="SFX Playing!">
+
     <!-- Ticker Box -->
     <div class="hud-ticker-bg">
         <div class="hud-ticker-text" id="tickerText">Initializing Stream Protocol...</div>
@@ -138,6 +158,7 @@ let pollInterval = 1000;
 const station = document.getElementById('station');
 const title = document.getElementById('title');
 const speakingLabel = document.getElementById('speakingLabel');
+const sfxAnim = document.getElementById('sfxAnim');
 const tickerText = document.getElementById('tickerText');
 const art = document.getElementById('art');
 const artPlaceholder = document.getElementById('artPlaceholder');
@@ -208,6 +229,13 @@ function updateOverlay(data) {
         }
     } else {
         speakingLabel.classList.remove('visible');
+    }
+
+    // SFX Animation Hook
+    if (data.sfx_active) {
+        sfxAnim.classList.add('visible');
+    } else {
+        sfxAnim.classList.remove('visible');
     }
 
     // Album Art Bridge

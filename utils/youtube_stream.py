@@ -216,15 +216,20 @@ class YouTubeLiveStreamer:
         else:
             vf += f"[0:v]format=yuva420p[bg];"
 
+        # Dynamically build a modern audio spectrum effect using the UDP audio input [1:a]
+        vf += f"[1:a]showwaves=s={W}x240:mode=cline:colors=0x00FFFF|0xFF00FF:rate={fps}[viz];"
+
         # Integrate GIF if available
         if has_gif:
             vf += f"[2:v]split=2[gif_big_in][gif_small_in];"
             vf += f"[gif_big_in]scale=120:120:force_original_aspect_ratio=decrease,format=yuva420p[gif_big];"
             vf += f"[gif_small_in]scale=40:40:force_original_aspect_ratio=decrease,format=yuva420p[gif_small];"
-            vf += f"[bg][gif_big]overlay=W-w-30:30:format=auto[with_gif_1];"
+            vf += f"[bg][viz]overlay=0:{H-280}:format=auto[bg_viz];"
+            vf += f"[bg_viz][gif_big]overlay=W-w-30:30:format=auto[with_gif_1];"
             vf += f"[with_gif_1][gif_small]overlay=260:145:format=auto[vbase];"
         else:
-            vf += f"[bg]copy[vbase];"
+            # Without GIF, just overlay the audio wave visualizers onto the background
+            vf += f"[bg][viz]overlay=0:{H-280}:format=auto[vbase];"
 
         # Apply Dynamic Text reload hooks directly to the pipeline
         filter_chain = "[vbase]"
@@ -232,17 +237,17 @@ class YouTubeLiveStreamer:
         # 1. Station text (static)
         filter_chain += (
             f"drawtext={font_opt_bold}text='{safe_station}':"
-            f"fontcolor=white:fontsize=42:x=450:y=150:shadowcolor=black:shadowx=2:shadowy=2,"
+            f"fontcolor=white:fontsize=42:x=(w-text_w)/2:y=150:shadowcolor=black:shadowx=2:shadowy=2,"
         )
         # 2. Main Title HUD (dynamic txt reload)
         filter_chain += (
             f"drawtext={font_opt_bold}textfile='{TXT_TITLE}':reload=1:"
-            f"fontcolor=gold:fontsize=56:x=450:y=210:shadowcolor=black:shadowx=2:shadowy=2,"
+            f"fontcolor=gold:fontsize=56:x=(w-text_w)/2:y=210:shadowcolor=black:shadowx=2:shadowy=2,"
         )
         # 3. DJ Hook HUD (dynamic txt reload)
         filter_chain += (
             f"drawtext={font_opt_reg}textfile='{TXT_DJ}':reload=1:"
-            f"fontcolor=0x00FFCC:fontsize=36:x=450:y=280:shadowcolor=black:shadowx=1:shadowy=1,"
+            f"fontcolor=0x00FFCC:fontsize=36:x=(w-text_w)/2:y=280:shadowcolor=black:shadowx=1:shadowy=1,"
         )
         # 4. Waiting / Bottom Ticker Strip HUD (dynamic txt reload)
         filter_chain += (

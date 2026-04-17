@@ -185,6 +185,15 @@ class Music(commands.Cog):
             
         return None
 
+    def _is_headless_override(self, guild_id: int):
+        """Allows bypassing user-voice dependency for purely headless bot instances."""
+        import config
+        return (
+            getattr(config, "YOUTUBE_STREAM_ENABLED", False)
+            and getattr(self, "_yt_stream_active", False)
+            and getattr(self, "_yt_stream_guild", None) == guild_id
+        )
+
     def _dispatch_audio_play(self, guild_id: int, source, after=None):
         """Monolithic audio injection point. Replaces vc.play() to support multiplex UDP routing."""
         vc = self._get_audio_client(guild_id)
@@ -622,7 +631,8 @@ class Music(commands.Cog):
     @commands.command(name="play")
     async def play(self, ctx, *, query):
         logging.info(f"Play command received with query: {query}")
-        if not ctx.author.voice:
+        is_headless = self._is_headless_override(ctx.guild.id)
+        if not getattr(ctx.author, "voice", None) and not is_headless:
             logging.warning("User not in a voice channel.")
             return await ctx.send(
                 embed=self.create_embed(
@@ -712,18 +722,25 @@ class Music(commands.Cog):
                 )
 
             # Join voice AFTER extraction succeeds so the connection doesn't sit idle
-            if not ctx.voice_client:
-                logging.info("Bot not in a voice channel, joining.")
-                await ctx.author.voice.channel.connect(self_deaf=True)
-            elif not ctx.voice_client.is_connected():
-                logging.info(
-                    "Voice client exists but is not connected — force-reconnecting."
-                )
-                await ctx.voice_client.disconnect(force=True)
-                await asyncio.sleep(0.5)
-                await ctx.author.voice.channel.connect(self_deaf=True)
+            vc = self._get_audio_client(ctx.guild.id)
+            if not is_headless:
+                if not vc:
+                    logging.info("Bot not in a voice channel, joining.")
+                    await ctx.author.voice.channel.connect(self_deaf=True)
+                    vc = self._get_audio_client(ctx.guild.id)
+                elif getattr(vc, "is_connected", lambda: True)() is False:
+                    logging.info(
+                        "Voice client exists but is not connected — force-reconnecting."
+                    )
+                    await ctx.voice_client.disconnect(force=True)
+                    await asyncio.sleep(0.5)
+                    await ctx.author.voice.channel.connect(self_deaf=True)
+                    vc = self._get_audio_client(ctx.guild.id)
 
-            if not ctx.voice_client.is_playing():
+            if not vc:
+                return
+
+            if not getattr(vc, "is_playing", lambda: True)():
                 logging.info("Voice client not playing, starting playback.")
                 if ctx.guild.id in self.inactivity_timers:
                     self.inactivity_timers[ctx.guild.id].cancel()
@@ -740,7 +757,8 @@ class Music(commands.Cog):
     @commands.command(name="playlist")
     async def playlist(self, ctx, *, url):
         logging.info(f"Playlist command received with URL: {url}")
-        if not ctx.author.voice:
+        is_headless = self._is_headless_override(ctx.guild.id)
+        if not getattr(ctx.author, "voice", None) and not is_headless:
             logging.warning("User not in a voice channel.")
             return await ctx.send(
                 embed=self.create_embed(
@@ -750,9 +768,11 @@ class Music(commands.Cog):
                 )
             )
 
-        if not ctx.voice_client:
+        vc = self._get_audio_client(ctx.guild.id)
+        if not is_headless and not vc:
             logging.info("Bot not in a voice channel, joining.")
             await ctx.author.voice.channel.connect(self_deaf=True)
+            vc = self._get_audio_client(ctx.guild.id)
 
         queue = await self.get_queue(ctx.guild.id)
         try:
@@ -801,7 +821,7 @@ class Music(commands.Cog):
             except discord.DiscordServerError:
                 logging.warning("Discord typing failed in playlist. Proceeding.")
 
-            if not ctx.voice_client.is_playing():
+            if vc and not getattr(vc, "is_playing", lambda: True)():
                 logging.info("Voice client not playing, starting playback.")
                 if ctx.guild.id in self.inactivity_timers:
                     self.inactivity_timers[ctx.guild.id].cancel()
@@ -818,7 +838,8 @@ class Music(commands.Cog):
     @commands.command(name="radio")
     async def radio(self, ctx, *, url):
         logging.info(f"Radio command received with URL: {url}")
-        if not ctx.author.voice:
+        is_headless = self._is_headless_override(ctx.guild.id)
+        if not getattr(ctx.author, "voice", None) and not is_headless:
             logging.warning("User not in a voice channel.")
             return await ctx.send(
                 embed=self.create_embed(
@@ -828,9 +849,11 @@ class Music(commands.Cog):
                 )
             )
 
-        if not ctx.voice_client:
+        vc = self._get_audio_client(ctx.guild.id)
+        if not is_headless and not vc:
             logging.info("Bot not in a voice channel, joining.")
             await ctx.author.voice.channel.connect(self_deaf=True)
+            vc = self._get_audio_client(ctx.guild.id)
 
         queue = await self.get_queue(ctx.guild.id)
         loading_msg = await ctx.send(
@@ -886,7 +909,7 @@ class Music(commands.Cog):
             except discord.DiscordServerError:
                 logging.warning("Discord typing failed in radio. Proceeding.")
 
-            if not ctx.voice_client.is_playing():
+            if vc and not getattr(vc, "is_playing", lambda: True)():
                 logging.info("Voice client not playing, starting playback.")
                 if ctx.guild.id in self.inactivity_timers:
                     self.inactivity_timers[ctx.guild.id].cancel()
@@ -1552,22 +1575,23 @@ class Music(commands.Cog):
     async def skip(self, ctx):
         logging.info(f"Skip command invoked by {ctx.author} in {ctx.guild.name}")
         guild_id = ctx.guild.id
+        vc = self._get_audio_client(guild_id)
 
         # If DJ is currently speaking, cancel the TTS and pending song
         if self.dj_playing_tts.get(guild_id, False):
             logging.info(f"DJ: Skipping TTS intro in {ctx.guild.name}")
             self.dj_playing_tts[guild_id] = False
             pending = getattr(self, "_dj_pending", {}).pop(guild_id, None)
-            if ctx.voice_client and ctx.voice_client.is_playing():
-                ctx.voice_client.stop()
+            if vc and vc.is_playing():
+                vc.stop()
             # Clean up TTS temp file
             tts_path = self._current_tts_path.get(guild_id)
             if tts_path:
                 cleanup_tts_file(tts_path)
                 self._current_tts_path[guild_id] = None
 
-        if ctx.voice_client and ctx.voice_client.is_playing():
-            ctx.voice_client.stop()
+        if vc and vc.is_playing():
+            vc.stop()
             logging.info(f"Song skipped in {ctx.guild.name}")
             await ctx.send(
                 embed=self.create_embed(
@@ -1591,6 +1615,7 @@ class Music(commands.Cog):
     async def stop(self, ctx):
         logging.info(f"Stop command invoked by {ctx.author} in {ctx.guild.name}")
         guild_id = ctx.guild.id
+        vc = self._get_audio_client(guild_id)
 
         # Cancel any DJ TTS playback
         self.dj_playing_tts[guild_id] = False
@@ -1605,8 +1630,8 @@ class Music(commands.Cog):
             while not queue.empty():
                 await queue.get()
             logging.info(f"Queue cleared in {ctx.guild.name}")
-        if ctx.voice_client:
-            ctx.voice_client.stop()
+        if vc:
+            vc.stop()
             logging.info(f"Voice client stopped in {ctx.guild.name}")
 
         # Cancel nowplaying update task
@@ -1629,8 +1654,9 @@ class Music(commands.Cog):
     @commands.command(name="pause")
     async def pause(self, ctx):
         logging.info(f"Pause command invoked by {ctx.author} in {ctx.guild.name}")
-        if ctx.voice_client and ctx.voice_client.is_playing():
-            ctx.voice_client.pause()
+        vc = self._get_audio_client(ctx.guild.id)
+        if vc and vc.is_playing():
+            vc.pause()
             logging.info(f"Music paused in {ctx.guild.name}")
             await ctx.send(
                 embed=self.create_embed(
@@ -1653,9 +1679,10 @@ class Music(commands.Cog):
     @commands.command(name="resume")
     async def resume(self, ctx):
         logging.info(f"Resume command invoked by {ctx.author} in {ctx.guild.name}")
-        if ctx.voice_client:
-            if ctx.voice_client.is_paused():
-                ctx.voice_client.resume()
+        vc = self._get_audio_client(ctx.guild.id)
+        if vc:
+            if vc.is_paused():
+                vc.resume()
                 logging.info(f"Music resumed in {ctx.guild.name}")
                 await ctx.send(
                     embed=self.create_embed(
@@ -1663,9 +1690,9 @@ class Music(commands.Cog):
                         f"{config.PLAY_EMOJI} The music has been resumed.",
                     )
                 )
-            elif not ctx.voice_client.is_playing() and ctx.voice_client.source:
+            elif not vc.is_playing() and vc.source:
                 # Fallback if state is inconsistent but source exists
-                ctx.voice_client.resume()
+                vc.resume()
                 logging.info(f"Music resumed (fallback) in {ctx.guild.name}")
                 await ctx.send(
                     embed=self.create_embed(

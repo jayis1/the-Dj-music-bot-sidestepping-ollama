@@ -2200,7 +2200,7 @@ def api_overlay_state():
 
         # Calculate elapsed time
         elapsed = 0
-        duration = current.get("duration") if isinstance(current, dict) else None
+        duration = getattr(current, "duration", None) if current else None
         if current and gid in music.song_start_time and (is_playing or is_paused):
             elapsed = int(time.time() - music.song_start_time[gid])
 
@@ -2216,8 +2216,8 @@ def api_overlay_state():
             {
                 "playing": is_playing or is_paused,
                 "paused": is_paused,
-                "title": current.get("title") if isinstance(current, dict) else None,
-                "thumbnail": current.get("thumbnail") if isinstance(current, dict) else None,
+                "title": getattr(current, "title", None) if current else None,
+                "thumbnail": getattr(current, "thumbnail", None) if current else None,
                 "duration": duration,
                 "elapsed": elapsed,
                 "dj_speaking": dj_speaking and not ai_speaking,
@@ -2228,11 +2228,7 @@ def api_overlay_state():
                 "source": source,
                 "yt_live_active": music._yt_stream_active,
                 "yt_live_autonomous": music._yt_stream_active,
-                "yt_live_title": (
-                    music.current_song.get(gid).get("title")
-                    if music._yt_stream_active and music.current_song.get(gid)
-                    else None
-                ),
+                "yt_live_title": getattr(music.current_song.get(gid), "title", None) if (music._yt_stream_active and music.current_song.get(gid)) else None,
             }
         )
 

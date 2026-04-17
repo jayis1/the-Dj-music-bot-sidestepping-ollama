@@ -27,16 +27,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     git \
     curl \
+    nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 # Install Python dependencies first (layer caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --upgrade --pre yt-dlp 2>/dev/null || true
 
 # Copy source code
 COPY . .
+
+# Ensure MOSS voice prompt files exist (Docker COPY may miss empty dirs)
+RUN mkdir -p /app/assets/moss_voices && \
+    if [ -d /app/default_assets/moss_voices ]; then \
+      cp -n /app/default_assets/moss_voices/*.wav /app/assets/moss_voices/ 2>/dev/null || true; \
+    fi && \
+    echo "MOSS voices: $(ls /app/assets/moss_voices/ 2>/dev/null | wc -l) files" && \
+    if [ -f /app/assets/moss_voices/en_warm_female.wav ]; then \
+      echo "MOSS default voice: OK"; \
+    else \
+      echo "WARNING: MOSS voice files missing — DJ will use demo fallback"; \
+    fi
 
 # Create persistent data directories (these should be mounted as volumes)
 RUN mkdir -p sounds presets yt_dlp_cache && \

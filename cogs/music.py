@@ -62,34 +62,8 @@ except ImportError:
     YOUTUBE_STREAMER_CLASS = None
 
 
-class PCMBroadcasterWrapper:
-    """Mock VoiceClient to transparently handle autonomous radio broadcasting without Discord VC."""
-    def __init__(self, bot, guild_id, broadcaster):
-        self.bot = bot
-        self.guild_id = guild_id
-        self.broadcaster = broadcaster
-        self.source = None
+from utils.broadcaster import PCMBroadcaster, PCMBroadcasterWrapper
 
-    def is_playing(self):
-        return self.source is not None
-
-    def is_connected(self):
-        return True
-    
-    def stop(self):
-        if self.source:
-            self.broadcaster.stop_source()
-            self.source = None
-            
-    def pause(self):
-        pass
-        
-    def resume(self):
-        pass
-
-    def play(self, source, after=None):
-        self.source = source
-        self.broadcaster.set_source(source, guild_id=self.guild_id, bot=self.bot, after=after)
 
 class Music(commands.Cog):
     def __init__(self, bot):
@@ -169,20 +143,26 @@ class Music(commands.Cog):
         if guild and guild.voice_client:
             # If the user connected the bot to a real Discord voice channel,
             # sync it to the broadcaster matrix natively if YouTube is live
-            if getattr(self, "_yt_stream_active", False) and getattr(self, "_yt_stream_guild", None) == guild_id:
+            if (
+                getattr(self, "_yt_stream_active", False)
+                and getattr(self, "_yt_stream_guild", None) == guild_id
+            ):
                 if guild_id not in self._broadcasters:
                     from utils.broadcaster import PCMBroadcaster
+
                     self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
             return guild.voice_client
-            
+
         # Headless 24/7 Mode Fallback
         # Even if YouTube stream is not active yet, we keep the audio engine alive
         # so users can queue songs and use the dashboard without a Discord connection.
         if guild_id not in self._broadcasters:
             from utils.broadcaster import PCMBroadcaster
+
             self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
         if guild_id not in self._headless_clients:
             from utils.broadcaster import PCMBroadcasterWrapper
+
             self._headless_clients[guild_id] = PCMBroadcasterWrapper(
                 self.bot, guild_id, self._broadcasters[guild_id]
             )
@@ -191,6 +171,7 @@ class Music(commands.Cog):
     def _is_headless_override(self, guild_id: int):
         """Allows bypassing user-voice dependency for purely headless bot instances."""
         import config
+
         return (
             getattr(config, "YOUTUBE_STREAM_ENABLED", False)
             and getattr(self, "_yt_stream_active", False)
@@ -206,13 +187,16 @@ class Music(commands.Cog):
         if self._yt_stream_active and self._yt_stream_guild == guild_id:
             if guild_id not in self._broadcasters:
                 from utils.broadcaster import PCMBroadcaster
+
                 self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
-                
+
             broadcaster = self._broadcasters[guild_id]
-            
+
             if isinstance(vc, discord.VoiceClient):
                 # Multiplex to both Discord and autonomous RTMP stream
-                broadcaster.set_source(source, guild_id=guild_id, bot=self.bot, after=after)
+                broadcaster.set_source(
+                    source, guild_id=guild_id, bot=self.bot, after=after
+                )
                 vc.play(broadcaster, after=None)
             else:
                 # Pure Headless Wrapper handles set_source inherently
@@ -264,7 +248,9 @@ class Music(commands.Cog):
             self.start_headless_stream(guild, key, rtmp_url, stream_image, playlist_url)
         )
 
-    async def start_headless_stream(self, guild, key, rtmp_url, stream_image, playlist_url=None):
+    async def start_headless_stream(
+        self, guild, key, rtmp_url, stream_image, playlist_url=None
+    ):
         """Starts the autonomous PCMBroadcaster-based stream. Can be called on boot or from UI."""
         if self._yt_stream_active:
             return
@@ -284,14 +270,15 @@ class Music(commands.Cog):
                 bitrate_video=int(getattr(config, "YOUTUBE_VIDEO_BITRATE", 3000)),
             )
             self._yt_stream_guild = guild.id
-            
+
             # EAGER INITIALIZATION: Start PCMBroadcaster immediately so it feeds silence to UDP
             from utils.broadcaster import PCMBroadcaster
+
             if guild.id not in getattr(self, "_broadcasters", {}):
                 self._broadcasters[guild.id] = PCMBroadcaster(port=12345)
-                
+
             await self._yt_streamer.start()
-            
+
             # Start Headless AutoDJ Master Loop natively!
             class DummyContext:
                 def __init__(self, bot, guild, wrapper):
@@ -299,27 +286,39 @@ class Music(commands.Cog):
                     self.guild = guild
                     self.author = guild.me
                     self.voice_client = wrapper
-                    self.channel = guild.text_channels[0] if guild.text_channels else None
+                    self.channel = (
+                        guild.text_channels[0] if guild.text_channels else None
+                    )
                     self.message = type("Mock", (), {"author": self.author})()
+
                 async def send(self, *args, **kwargs):
                     pass
-            
-            wrapper = PCMBroadcasterWrapper(self.bot, guild.id, self._broadcasters[guild.id])
+
+            wrapper = PCMBroadcasterWrapper(
+                self.bot, guild.id, self._broadcasters[guild.id]
+            )
             ctx = DummyContext(self.bot, guild, wrapper)
             self.autodj_enabled[guild.id] = False
             self.dj_enabled[guild.id] = True
             self.ai_dj_enabled[guild.id] = True
+            # Seed default voices from config so DJ doesn't log "<unset>"
+            if guild.id not in self.dj_voice:
+                self.dj_voice[guild.id] = config.DJ_VOICE
+            if guild.id not in self.ai_dj_voice:
+                self.ai_dj_voice[guild.id] = getattr(
+                    config, "OLLAMA_DJ_VOICE", config.DJ_VOICE
+                )
             if playlist_url:
                 self.autodj_source[guild.id] = playlist_url
-            
+
             # Use Auto-DJ system natively to seed queue
             # And then explicitly start playback since we're the first track
             async def _fill_and_play():
                 self.is_booting = True
                 if playlist_url:
                     await self._autodj_fill(ctx)
-                
-                # Eagerly start pregeneration of DJ assets immediately to cover 
+
+                # Eagerly start pregeneration of DJ assets immediately to cover
                 # MOSS-TTS server cold-start timeouts and have lines ready early.
                 try:
                     queue = self.song_queues.get(guild.id)
@@ -328,9 +327,9 @@ class Music(commands.Cog):
                         # Pass empty current_title since this is the very start of the queue
                         asyncio.ensure_future(
                             pregen.pregenerate_upcoming(guild.id, queue, ""),
-                            loop=self.bot.loop
+                            loop=self.bot.loop,
                         )
-                        
+
                         # Wait for either 25 tracks to generate, or 120 seconds max timeout
                         max_wait = 120
                         queued_target = min(25, queue.qsize())
@@ -339,18 +338,18 @@ class Music(commands.Cog):
                                 if len(pregen.pregen_queue) >= queued_target:
                                     break
                                 await asyncio.sleep(1)
-                                
+
                 except Exception as e:
                     logging.debug(f"Pregen: Failed eager startup pregen: {e}")
-                    
+
                 self.is_booting = False
-                
+
                 queue = self.song_queues.get(guild.id)
                 if queue and not queue.empty():
                     asyncio.run_coroutine_threadsafe(self.play_next(ctx), self.bot.loop)
-                
+
             self.bot.loop.create_task(_fill_and_play())
-            
+
             self._yt_stream_active = True
             logging.info(
                 f"YouTube Live: ✅ Auto-started autonomous 24/7 stream "
@@ -1884,9 +1883,11 @@ class Music(commands.Cog):
             if new_speed != 1.0:
                 atempo_filters = self._build_atempo_chain(new_speed)
                 player_options["options"] += f' -filter:a "{",".join(atempo_filters)}"'
-    
+
             # Create and play the new player with the updated speed
-            source = discord.FFmpegPCMAudio(current_song_data.get("url"), **player_options)
+            source = discord.FFmpegPCMAudio(
+                current_song_data.get("url"), **player_options
+            )
             player = discord.PCMVolumeTransformer(source)
             player.volume = self.current_volume.get(guild_id, 1.0)
             self._dispatch_audio_play(
@@ -2028,6 +2029,10 @@ class Music(commands.Cog):
 
         guild_id = ctx.guild.id
         self.dj_enabled[guild_id] = not self.dj_enabled.get(guild_id, False)
+        # Seed the default voice from config if not already set for this guild.
+        # This prevents the "<unset>" log message on first enable.
+        if self.dj_enabled[guild_id] and guild_id not in self.dj_voice:
+            self.dj_voice[guild_id] = config.DJ_VOICE
         self._save_voice_settings()
         status = "ON" if self.dj_enabled[guild_id] else "OFF"
         voice_name = self.dj_voice.get(guild_id, config.DJ_VOICE)
@@ -2728,9 +2733,7 @@ class Music(commands.Cog):
             return
 
         voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
-        spoke = await self._dj_speak(
-            vc, ai_line, guild_id, voice=voice, is_ai=True
-        )
+        spoke = await self._dj_speak(vc, ai_line, guild_id, voice=voice, is_ai=True)
 
         if spoke:
             logging.info(
@@ -3131,7 +3134,7 @@ class Music(commands.Cog):
         and will be stopped by _stop_bed_music() when the actual song starts.
         """
         import os
-        
+
         vc = self._get_audio_client(guild_id)
         if not vc:
             return False
@@ -3190,7 +3193,10 @@ class Music(commands.Cog):
         if not vc:
             self._bed_playing[guild_id] = False
             return
-        if self._bed_playing.get(guild_id, False) and getattr(vc, 'is_playing', lambda: False)():
+        if (
+            self._bed_playing.get(guild_id, False)
+            and getattr(vc, "is_playing", lambda: False)()
+        ):
             vc.stop()
             self._bed_playing[guild_id] = False
             logging.info(f"DJ Bed: Stopped for guild {guild_id}")
@@ -4022,7 +4028,8 @@ class BattleView(discord.ui.View):
                     lines.append(f"Uptime: {uptime / 3600:.1f}h")
             else:
                 current = self.current_song.get(ctx.guild.id)
-                if current and isinstance(current, dict): current = current.get("webpage_url")
+                if current and isinstance(current, dict):
+                    current = current.get("webpage_url")
                 if current:
                     song = self.current_song.get(ctx.guild.id)
                     lines.append(

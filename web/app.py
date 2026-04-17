@@ -123,11 +123,11 @@ def require_login():
 
     # Allow these endpoints without authentication
     allowed_endpoints = {
-        "login", 
-        "static", 
-        "serve_assets", 
-        "overlay_page", 
-        "api_overlay_state"
+        "login",
+        "static",
+        "serve_assets",
+        "overlay_page",
+        "api_overlay_state",
     }
     if request.endpoint in allowed_endpoints:
         return
@@ -234,7 +234,7 @@ def _get_music_cog():
     return bot.get_cog("Music")
 
 
-def _run_async(coro):
+def _run_async(coro, timeout=30):
     """Submit an async coroutine to the bot's event loop and wait for it.
 
     This is the bridge between Flask (sync threads) and discord.py (async).
@@ -244,7 +244,7 @@ def _run_async(coro):
         return None
     future = asyncio.run_coroutine_threadsafe(coro, bot.loop)
     try:
-        return future.result(timeout=10)
+        return future.result(timeout=timeout)
     except Exception as e:
         logging.error(f"Dashboard: async call failed: {e}")
         return None
@@ -254,6 +254,7 @@ def _get_mock_guild(guild_id=0):
     class MockChannel:
         id = 0
         name = "Virtual Channel"
+
         async def send(self, *args, **kwargs):
             pass
 
@@ -327,41 +328,97 @@ def _get_guilds_data(music):
                     "member_count": guild.member_count,
                     "in_discord": in_discord,
                     "in_voice": in_voice,
-                    "voice_channel": voice.channel.name if in_discord else ("YouTube Live Stream" if in_voice else None),
-                    "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,
-                    "paused": getattr(vc, 'is_paused', lambda: False)() if in_voice else False,
-                    "current_song": current.get("title") if isinstance(current, dict) else getattr(current, "title", None) if current else None,
-                    "current_song_url": current.get("webpage_url") if isinstance(current, dict) else getattr(current, "webpage_url", None) if current else None,
-                    "current_thumbnail": current.get("thumbnail") if isinstance(current, dict) else getattr(current, "thumbnail", None) if current else None,
-                    "current_duration": current.get("duration") if isinstance(current, dict) else getattr(current, "duration", None) if current else None,
+                    "voice_channel": voice.channel.name
+                    if in_discord
+                    else ("YouTube Live Stream" if in_voice else None),
+                    "playing": getattr(vc, "is_playing", lambda: False)()
+                    if in_voice
+                    else False,
+                    "paused": getattr(vc, "is_paused", lambda: False)()
+                    if in_voice
+                    else False,
+                    "current_song": current.get("title")
+                    if isinstance(current, dict)
+                    else getattr(current, "title", None)
+                    if current
+                    else None,
+                    "current_song_url": current.get("webpage_url")
+                    if isinstance(current, dict)
+                    else getattr(current, "webpage_url", None)
+                    if current
+                    else None,
+                    "current_thumbnail": current.get("thumbnail")
+                    if isinstance(current, dict)
+                    else getattr(current, "thumbnail", None)
+                    if current
+                    else None,
+                    "current_duration": current.get("duration")
+                    if isinstance(current, dict)
+                    else getattr(current, "duration", None)
+                    if current
+                    else None,
                     "current_elapsed": (
                         int(time.time() - music.song_start_time[guild_id])
-                        if music and guild_id in music.song_start_time and (voice and (voice.is_playing() or voice.is_paused()))
+                        if music
+                        and guild_id in music.song_start_time
+                        and (voice and (voice.is_playing() or voice.is_paused()))
                         else 0
                     ),
                     "queue_size": queue_size,
                     "queue_duration": sum(
-                        (item.get("duration", 0) if isinstance(item, dict) else getattr(item, "duration", 0)) or 0 for item in queue_items
+                        (
+                            item.get("duration", 0)
+                            if isinstance(item, dict)
+                            else getattr(item, "duration", 0)
+                        )
+                        or 0
+                        for item in queue_items
                     ),
                     "queue_items": [
                         {
-                            "title": item.get("title") if isinstance(item, dict) else getattr(item, "title", None),
-                            "url": item.get("webpage_url") if isinstance(item, dict) else getattr(item, "webpage_url", None),
-                            "thumbnail": item.get("thumbnail") if isinstance(item, dict) else getattr(item, "thumbnail", None),
-                            "duration": item.get("duration") if isinstance(item, dict) else getattr(item, "duration", None),
+                            "title": item.get("title")
+                            if isinstance(item, dict)
+                            else getattr(item, "title", None),
+                            "url": item.get("webpage_url")
+                            if isinstance(item, dict)
+                            else getattr(item, "webpage_url", None),
+                            "thumbnail": item.get("thumbnail")
+                            if isinstance(item, dict)
+                            else getattr(item, "thumbnail", None),
+                            "duration": item.get("duration")
+                            if isinstance(item, dict)
+                            else getattr(item, "duration", None),
                         }
                         for item in queue_items
                     ],
-                    "dj_enabled": music.dj_enabled.get(guild_id, False) if music else False,
-                    "dj_voice": music.dj_voice.get(guild_id, "") or getattr(config, "DJ_VOICE", "en_warm_female") if music else getattr(config, "DJ_VOICE", "en_warm_female"),
-                    "volume": int(music.current_volume.get(guild_id, 1.0) * 100) if music else 100,
+                    "dj_enabled": music.dj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "dj_voice": music.dj_voice.get(guild_id, "")
+                    or getattr(config, "DJ_VOICE", "en_warm_female")
+                    if music
+                    else getattr(config, "DJ_VOICE", "en_warm_female"),
+                    "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
+                    if music
+                    else 100,
                     "looping": music.looping.get(guild_id, False) if music else False,
                     "speed": music.playback_speed.get(guild_id, 1.0) if music else 1.0,
-                    "autodj_enabled": music.autodj_enabled.get(guild_id, False) if music else False,
-                    "autodj_source": music.autodj_source.get(guild_id, "") if music else "",
-                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False) if music else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male") if music else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
-                    "recently_played": music.recently_played.get(guild_id, [])[:30] if music else [],
+                    "autodj_enabled": music.autodj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "autodj_source": music.autodj_source.get(guild_id, "")
+                    if music
+                    else "",
+                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
+                    if music
+                    else False,
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
+                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
+                    if music
+                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
+                    "recently_played": music.recently_played.get(guild_id, [])[:30]
+                    if music
+                    else [],
                     "listeners": [
                         {
                             "id": m.id,
@@ -395,14 +452,30 @@ def _get_guilds_data(music):
                 "name": getattr(config, "STATION_NAME", "Headless Radio Station"),
                 "member_count": "∞",
                 "in_discord": False,
-                "in_voice": True, # Always true so UI unlocks
+                "in_voice": True,  # Always true so UI unlocks
                 "voice_channel": "Autonomous Broadcast",
                 "playing": (current is not None),
                 "paused": False,
-                "current_song": current.get("title") if isinstance(current, dict) else getattr(current, "title", None) if current else None,
-                "current_song_url": current.get("webpage_url") if isinstance(current, dict) else getattr(current, "webpage_url", None) if current else None,
-                "current_thumbnail": current.get("thumbnail") if isinstance(current, dict) else getattr(current, "thumbnail", None) if current else None,
-                "current_duration": current.get("duration") if isinstance(current, dict) else getattr(current, "duration", None) if current else None,
+                "current_song": current.get("title")
+                if isinstance(current, dict)
+                else getattr(current, "title", None)
+                if current
+                else None,
+                "current_song_url": current.get("webpage_url")
+                if isinstance(current, dict)
+                else getattr(current, "webpage_url", None)
+                if current
+                else None,
+                "current_thumbnail": current.get("thumbnail")
+                if isinstance(current, dict)
+                else getattr(current, "thumbnail", None)
+                if current
+                else None,
+                "current_duration": current.get("duration")
+                if isinstance(current, dict)
+                else getattr(current, "duration", None)
+                if current
+                else None,
                 "current_elapsed": (
                     int(time.time() - music.song_start_time[guild_id])
                     if music and guild_id in music.song_start_time and current
@@ -410,27 +483,55 @@ def _get_guilds_data(music):
                 ),
                 "queue_size": queue_size,
                 "queue_duration": sum(
-                    (item.get("duration", 0) if isinstance(item, dict) else getattr(item, "duration", 0)) or 0 for item in queue_items
+                    (
+                        item.get("duration", 0)
+                        if isinstance(item, dict)
+                        else getattr(item, "duration", 0)
+                    )
+                    or 0
+                    for item in queue_items
                 ),
                 "queue_items": [
                     {
-                        "title": item.get("title") if isinstance(item, dict) else getattr(item, "title", None),
-                        "url": item.get("webpage_url") if isinstance(item, dict) else getattr(item, "webpage_url", None),
-                        "thumbnail": item.get("thumbnail") if isinstance(item, dict) else getattr(item, "thumbnail", None),
-                        "duration": item.get("duration") if isinstance(item, dict) else getattr(item, "duration", None),
+                        "title": item.get("title")
+                        if isinstance(item, dict)
+                        else getattr(item, "title", None),
+                        "url": item.get("webpage_url")
+                        if isinstance(item, dict)
+                        else getattr(item, "webpage_url", None),
+                        "thumbnail": item.get("thumbnail")
+                        if isinstance(item, dict)
+                        else getattr(item, "thumbnail", None),
+                        "duration": item.get("duration")
+                        if isinstance(item, dict)
+                        else getattr(item, "duration", None),
                     }
                     for item in queue_items
                 ],
                 "dj_enabled": music.dj_enabled.get(guild_id, False) if music else False,
-                "dj_voice": music.dj_voice.get(guild_id, "") or getattr(config, "DJ_VOICE", "en_warm_female") if music else getattr(config, "DJ_VOICE", "en_warm_female"),
-                "volume": int(music.current_volume.get(guild_id, 1.0) * 100) if music else 100,
+                "dj_voice": music.dj_voice.get(guild_id, "")
+                or getattr(config, "DJ_VOICE", "en_warm_female")
+                if music
+                else getattr(config, "DJ_VOICE", "en_warm_female"),
+                "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
+                if music
+                else 100,
                 "looping": music.looping.get(guild_id, False) if music else False,
                 "speed": music.playback_speed.get(guild_id, 1.0) if music else 1.0,
-                "autodj_enabled": music.autodj_enabled.get(guild_id, False) if music else False,
+                "autodj_enabled": music.autodj_enabled.get(guild_id, False)
+                if music
+                else False,
                 "autodj_source": music.autodj_source.get(guild_id, "") if music else "",
-                "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False) if music else False,
-                "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male") if music else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
-                "recently_played": music.recently_played.get(guild_id, [])[:30] if music else [],
+                "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
+                if music
+                else False,
+                "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
+                or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
+                if music
+                else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
+                "recently_played": music.recently_played.get(guild_id, [])[:30]
+                if music
+                else [],
                 "listeners": [],
             }
         )
@@ -505,7 +606,7 @@ def api_skip(guild_id):
     if not music:
         return jsonify({"error": "Music cog not loaded"}), 503
     vc = music._get_audio_client(guild_id)
-    if not vc or not getattr(vc, 'is_playing', lambda: False)():
+    if not vc or not getattr(vc, "is_playing", lambda: False)():
         return jsonify({"error": "Nothing playing"}), 400
     vc.stop()
     return jsonify({"ok": True})
@@ -519,10 +620,10 @@ def api_pause(guild_id):
     vc = music._get_audio_client(guild_id)
     if not vc:
         return jsonify({"error": "Not in voice"}), 400
-    if getattr(vc, 'is_paused', lambda: False)():
+    if getattr(vc, "is_paused", lambda: False)():
         vc.resume()
         return jsonify({"ok": True, "state": "playing"})
-    elif getattr(vc, 'is_playing', lambda: False)():
+    elif getattr(vc, "is_playing", lambda: False)():
         vc.pause()
         return jsonify({"ok": True, "state": "paused"})
     return jsonify({"error": "Nothing playing"}), 400
@@ -646,7 +747,7 @@ def api_volume(guild_id):
     music.current_volume[guild_id] = vol / 100.0
     # Apply to currently playing source
     vc = music._get_audio_client(guild_id)
-    if vc and getattr(vc, 'source', None):
+    if vc and getattr(vc, "source", None):
         vc.source.volume = vol / 100.0
     return jsonify({"ok": True, "volume": vol})
 
@@ -1004,12 +1105,16 @@ def api_play(guild_id):
         if not vc and guild:
             voice_channel = None
             for member in guild.members:
-                if not member.bot and getattr(member, 'voice', None) and getattr(member.voice, 'channel', None):
+                if (
+                    not member.bot
+                    and getattr(member, "voice", None)
+                    and getattr(member.voice, "channel", None)
+                ):
                     voice_channel = member.voice.channel
                     break
 
             if voice_channel:
-                if getattr(guild, 'voice_client', None) is None:
+                if getattr(guild, "voice_client", None) is None:
                     await voice_channel.connect(self_deaf=True)
                 elif not guild.voice_client.is_connected():
                     await guild.voice_client.disconnect(force=True)
@@ -1046,7 +1151,11 @@ def api_play(guild_id):
             count = len(result)
 
         # Start playback if nothing is playing AND we have a voice client
-        if vc and getattr(vc, 'is_playing', lambda: False)() == False and getattr(vc, 'is_paused', lambda: False)() == False:
+        if (
+            vc
+            and getattr(vc, "is_playing", lambda: False)() == False
+            and getattr(vc, "is_paused", lambda: False)() == False
+        ):
             # Build a minimal context object for play_next
             class WebCtx:
                 pass
@@ -1055,7 +1164,9 @@ def api_play(guild_id):
             ctx.guild = safe_guild
             ctx.author = safe_guild.me
             ctx.voice_client = vc  # Uses the PCMBroadcasterWrapper if headless, or Discord VoiceClient otherwise
-            ctx.channel = safe_guild.text_channels[0] if safe_guild.text_channels else None
+            ctx.channel = (
+                safe_guild.text_channels[0] if safe_guild.text_channels else None
+            )
             # Cancel any inactivity timer
             if guild_id in music.inactivity_timers:
                 music.inactivity_timers[guild_id].cancel()
@@ -1064,7 +1175,7 @@ def api_play(guild_id):
 
         return f"Added {count} track{'s' if count != 1 else ''}"
 
-    result = _run_async(_play())
+    result = _run_async(_play(), timeout=60)
     if result is None:
         return jsonify({"error": "Request timed out"}), 504
     if "not found" in str(result).lower() or "no one" in str(result).lower():
@@ -1480,7 +1591,7 @@ def api_soundboard(guild_id):
                 before_options="-nostdin",
                 options=f"-vn -t {getattr(config, 'MAX_SOUND_SECONDS', 8)}",  # Soft cap
             )
-            
+
             # Universally route the UDP audio to Discord + YouTube Master Engine
             if music_cog:
                 music_cog._dispatch_audio_play(guild_id, source, after=None)
@@ -2110,99 +2221,104 @@ def overlay_page():
 def api_overlay_state():
     """Real-time JSON state for the OBS overlay.
 
-    Returns the first active guild's now-playing data. If the bot is in
-    multiple guilds with active playback, returns the first one found.
+    Works in THREE modes:
+    1. Discord mode (bot in Discord guilds with voice) — returns first guild data
+    2. YouTube Live autonomous mode (headless stream) — returns stream guild data
+    3. Pure headless radio mode (no Discord, no stream) — returns virtual guild 0 data
 
-    Response:
-    {
-      "playing": true,
-      "title": "Song Title",
-      "thumbnail": "https://...",
-      "duration": 240,
-      "elapsed": 45,
-      "dj_speaking": false,
-      "dj_enabled": true,
-      "ai_speaking": false,
-      "ai_enabled": true,
-      "station_name": "MBot",
-      "source": "DJ" | "AI Side Host" | null
-    }
+    The overlay page (captured by Chromium for YouTube Live RTMP) polls this
+    endpoint every second to update the HUD with song titles, DJ status, etc.
     """
     music = _get_music_cog()
-    if not music or not bot or not bot.guilds:
-        return jsonify({"playing": False, "title": None})
-
-    # Find the first guild with active playback
-    for guild in bot.guilds:
-        gid = guild.id
-        voice = guild.voice_client or music._get_audio_client(gid)
-        if not voice:
-            continue
-
-        current = music.current_song.get(gid)
-        is_playing = voice.is_playing() if voice else False
-        is_paused = voice.is_paused() if hasattr(voice, "is_paused") else False
-        dj_speaking = music.dj_playing_tts.get(gid, False)
-
-        # Calculate elapsed time
-        elapsed = 0
-        duration = getattr(current, "duration", None) if current else None
-        if current and gid in music.song_start_time and (is_playing or is_paused):
-            elapsed = int(time.time() - music.song_start_time[gid])
-
-        # Determine who's speaking
-        source = None
-        if dj_speaking:
-            source = "AI Side Host" if music._ai_dj_pending_line.get(gid) else "DJ"
-
-        # Get AI side host speaking state
-        ai_speaking = bool(music._ai_dj_pending_line.get(gid)) and dj_speaking
-
+    if not music:
         return jsonify(
             {
-                "playing": is_playing or is_paused,
-                "paused": is_paused,
-                "title": getattr(current, "title", None) if current else None,
-                "thumbnail": getattr(current, "thumbnail", None) if current else None,
-                "duration": duration,
-                "elapsed": elapsed,
-                "dj_speaking": dj_speaking and not ai_speaking,
-                "ai_speaking": ai_speaking,
-                "sfx_active": music._sfx_active.get(gid, False),
-                "dj_enabled": music.dj_enabled.get(gid, False),
-                "ai_enabled": music.ai_dj_enabled.get(gid, False),
+                "playing": False,
+                "title": None,
                 "station_name": getattr(config, "STATION_NAME", "MBot"),
-                "source": source,
-                "booting": getattr(music, "is_booting", False),
-                "yt_live_active": music._yt_stream_active,
-                "yt_live_autonomous": music._yt_stream_active,
-                "yt_live_title": getattr(music.current_song.get(gid), "title", None) if (music._yt_stream_active and music.current_song.get(gid)) else None,
             }
         )
 
-        current_s = music.current_song.get(music._yt_stream_guild) if music._yt_stream_guild else None
-        title = current_s.get("title") if isinstance(current_s, dict) else "YouTube Live Stream"
-        return jsonify(
-            {
-                "playing": True,
-                "paused": False,
-                "title": title,
-                "thumbnail": None,
-                "duration": None,
-                "elapsed": 0,
-                "dj_speaking": False,
-                "ai_speaking": False,
-                "dj_enabled": False,
-                "ai_enabled": False,
-                "station_name": getattr(config, "STATION_NAME", "MBot"),
-                "source": "YouTube Live (autonomous)",
-                "yt_live_active": True,
-                "yt_live_autonomous": True,
-                "yt_live_title": title,
-            }
-        )
+    # ── Strategy: find the "active" guild ────────────────────────────────
+    # Priority:
+    #   1. YouTube Live stream guild (if streaming)
+    #   2. First Discord guild with active playback
+    #   3. Headless virtual guild (guild_id=0)
+    active_guild_id = None
 
-    return jsonify({"playing": False, "title": None})
+    # If YouTube Live is streaming, use the stream guild
+    if music._yt_stream_active and music._yt_stream_guild:
+        active_guild_id = music._yt_stream_guild
+    # Otherwise, find a Discord guild with playback
+    elif bot and bot.guilds:
+        for guild in bot.guilds:
+            gid = guild.id
+            voice = guild.voice_client or music._get_audio_client(gid)
+            if voice:
+                active_guild_id = gid
+                break
+
+    # Fallback: headless virtual guild (guild_id=0)
+    if active_guild_id is None:
+        # Check if there's any playback happening in the virtual headless guild
+        active_guild_id = 0
+
+    gid = active_guild_id
+
+    # Get the audio client (works for Discord VC, PCMBroadcasterWrapper, or None)
+    voice = None
+    if bot:
+        guild_obj = bot.get_guild(gid)
+        if guild_obj:
+            voice = guild_obj.voice_client
+    if not voice:
+        voice = music._get_audio_client(gid)
+
+    current = music.current_song.get(gid)
+    is_playing = getattr(voice, "is_playing", lambda: False)() if voice else False
+    is_paused = getattr(voice, "is_paused", lambda: False)() if voice else False
+    dj_speaking = music.dj_playing_tts.get(gid, False)
+
+    # Calculate elapsed time
+    elapsed = 0
+    duration = getattr(current, "duration", None) if current else None
+    if current and gid in music.song_start_time and (is_playing or is_paused):
+        elapsed = int(time.time() - music.song_start_time[gid])
+
+    # Determine who's speaking
+    source = None
+    if dj_speaking:
+        source = "AI Side Host" if music._ai_dj_pending_line.get(gid) else "DJ"
+
+    # Get AI side host speaking state
+    ai_speaking = bool(music._ai_dj_pending_line.get(gid)) and dj_speaking
+
+    # Build thumbnail path — download to /tmp for the overlay
+    thumbnail = getattr(current, "thumbnail", None) if current else None
+
+    return jsonify(
+        {
+            "playing": is_playing or is_paused,
+            "paused": is_paused,
+            "title": getattr(current, "title", None) if current else None,
+            "thumbnail": thumbnail,
+            "duration": duration,
+            "elapsed": elapsed,
+            "dj_speaking": dj_speaking and not ai_speaking,
+            "ai_speaking": ai_speaking,
+            "sfx_active": music._sfx_active.get(gid, False),
+            "dj_enabled": music.dj_enabled.get(gid, False),
+            "ai_enabled": music.ai_dj_enabled.get(gid, False),
+            "station_name": getattr(config, "STATION_NAME", "MBot"),
+            "source": source,
+            "booting": getattr(music, "is_booting", False),
+            "yt_live_active": music._yt_stream_active,
+            "yt_live_autonomous": music._yt_stream_active,
+            "yt_live_title": getattr(current, "title", None)
+            if (music._yt_stream_active and current)
+            else None,
+        }
+    )
 
 
 # ── yt-dlp Cookie Auth API ──────────────────────────────────────────────
@@ -2702,8 +2818,12 @@ def api_youtube_stream_status(guild_id):
     result = {
         "active": active,
         "running": streamer.is_running if active and streamer else False,
-        "current_url": current_s.get("webpage_url") if isinstance(current_s, dict) else None,
-        "current_title": current_s.get("title") if isinstance(current_s, dict) else None,
+        "current_url": current_s.get("webpage_url")
+        if isinstance(current_s, dict)
+        else None,
+        "current_title": current_s.get("title")
+        if isinstance(current_s, dict)
+        else None,
         "stream_guild": music._yt_stream_guild,
         "stream_key_set": bool(
             getattr(config, "YOUTUBE_STREAM_KEY", "")
@@ -2740,7 +2860,9 @@ def api_save_stream_key():
     found = False
     with open(env_file, "r") as f:
         for line in f:
-            if line.strip().startswith("YOUTUBE_STREAM_KEY=") and not line.strip().startswith("#"):
+            if line.strip().startswith(
+                "YOUTUBE_STREAM_KEY="
+            ) and not line.strip().startswith("#"):
                 lines.append(f"YOUTUBE_STREAM_KEY={stream_key}\n")
                 found = True
             else:
@@ -2878,7 +3000,7 @@ def api_youtube_stream_toggle(guild_id):
         # ── Autonomous mode: no Discord required ──
         elif mode == "autonomous":
             playlist_url = getattr(config, "AUTODJ_DEFAULT_SOURCE", "") or ""
-            
+
             async def _start_autonomous():
                 target_guild = bot.get_guild(guild_id) or _get_mock_guild(guild_id)
                 await music.start_headless_stream(

@@ -2798,6 +2798,7 @@ def api_youtube_stream_toggle(guild_id):
                 stream_key=key,
                 rtmp_url=rtmp_url,
                 stream_image=stream_image,
+                stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
             )
             music._yt_stream_guild = guild_id
             await music._yt_streamer.start()
@@ -2806,8 +2807,9 @@ def api_youtube_stream_toggle(guild_id):
             # If a song is currently playing, start streaming it
             current = music.current_song.get(guild_id)
             if current and current.url:
+                thumb = getattr(current, "thumbnail", None)
                 await music._yt_streamer.play_song(
-                    current.url, current.title or "Unknown"
+                    current.url, current.title or "Unknown", thumbnail=thumb
                 )
             logging.info(
                 f"YouTube Live: Stream started via Mission Control for guild {guild_id}"

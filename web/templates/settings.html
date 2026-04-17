@@ -188,6 +188,69 @@
         </div>
     </div>
 
+    <!-- ── YouTube Live Stream Visuals ──────────────────────────────── -->
+    <div class="card" style="margin-bottom: 24px;">
+        <div class="card-header">
+            <h2><span class="icon">📺</span> YouTube Live Stream Visuals</h2>
+        </div>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Configure the video card shown during the YouTube Live stream.
+            The card displays song thumbnails, titles, animated overlays, and a
+            "▶ LIVE" indicator. These settings apply when streaming via
+            <code>?golive</code> or Mission Control → Radio → YouTube Live.
+        </p>
+        <div class="settings-grid">
+            <div class="settings-item">
+                <span class="settings-label">Station Name</span>
+                <span class="settings-value" style="font-size: 14px;">{{ config.STATION_NAME }}</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Video Resolution</span>
+                <span class="settings-value">1280 × 720 (HD)</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Frame Rate</span>
+                <span class="settings-value">30 fps</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Video Bitrate</span>
+                <span class="settings-value">2500 kbps</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Audio Bitrate</span>
+                <span class="settings-value">128 kbps (AAC)</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Keyframe Interval</span>
+                <span class="settings-value">2 seconds (YouTube compliant)</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Custom Card Image</span>
+                <span class="settings-value" style="font-size: 12px;">{{ config.YOUTUBE_STREAM_IMAGE or 'Auto (uses logo or dark background)' }}</span>
+            </div>
+            <div class="settings-item">
+                <span class="settings-label">Animated GIF Overlay</span>
+                <span class="settings-value" style="font-size: 12px;">{{ config.YOUTUBE_STREAM_GIF or 'Auto (uses assets/giphy.gif)' }}</span>
+            </div>
+        </div>
+        <div style="margin-top: 12px; padding: 12px; background: var(--bg-primary); border: 1px solid var(--border); border-radius: var(--radius); font-size: 12px; color: var(--text-muted);">
+            <strong>Stream Card Layout:</strong><br>
+            <code style="background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px; font-size: 11px;">
+            ┌──────────────────────────────────────────────┐<br>
+            │&nbsp;┌──────────┐&nbsp;&nbsp;📻 Station Name&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+            │&nbsp;│ Thumbnail │&nbsp;&nbsp;Song Title&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+            │&nbsp;│&nbsp;&nbsp;🎬GIF🎬&nbsp;&nbsp;│&nbsp;&nbsp;♪ Now Playing&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+            │&nbsp;└──────────┘&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+            │&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▶ LIVE • Station Name&nbsp;&nbsp;🎬GIF🎬│<br>
+            └──────────────────────────────────────────────┘</code>
+            <br><br>
+            <strong>Card modes:</strong><br>
+            🎵 <strong>Song card:</strong> Thumbnail + song title + animated GIF badge + "♪ Now Playing"<br>
+            ⏳ <strong>Waiting card:</strong> Station logo + animated GIF + "Waiting for next track..." + "▶ STANDBY"<br>
+            🎙️ <strong>DJ card:</strong> Station logo + "🎙️ DJ Speaking" + animated GIF + "🎙️ LIVE"
+        </div>
+    </div>
+
     <!-- Nginx config snippet (collapsible) -->
     <details style="margin-top: 16px;">
         <summary style="cursor: pointer; font-size: 13px; font-weight: 600; color: var(--accent); padding: 8px 0;">

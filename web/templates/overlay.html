@@ -117,8 +117,41 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 120px;
     background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(59,130,246,0.3));
+}
+
+/* ── EQ Visualizer ── */
+.visualizer {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 60px;
+    width: 600px;
+    height: 70px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 6px;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    z-index: 10;
+}
+.visualizer.active {
+    opacity: 0.85; /* Slight transparency to blend with background */
+}
+
+.visualizer-bar {
+    width: 8px;
+    background: linear-gradient(to top, #00FFCC, #a855f7);
+    border-radius: 4px 4px 0 0;
+    animation: eq-wave 1s infinite alternate;
+    height: 5px; /* baseline */
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
+}
+
+@keyframes eq-wave {
+    0% { height: 5px; }
+    100% { height: 100%; }
 }
 
 </style>
@@ -133,6 +166,9 @@ body {
 
     <!-- Sound Effect Animation -->
     <img id="sfxAnim" class="sfx-anim" src="/assets/giphy.gif" alt="SFX Playing!">
+
+    <!-- Dynamic Audio Waveform Visualizer -->
+    <div class="visualizer" id="visualizer"></div>
 
     <!-- Ticker Box -->
     <div class="hud-ticker-bg">
@@ -160,10 +196,25 @@ const station = document.getElementById('station');
 const title = document.getElementById('title');
 const speakingLabel = document.getElementById('speakingLabel');
 const sfxAnim = document.getElementById('sfxAnim');
+const visualizer = document.getElementById('visualizer');
 const tickerText = document.getElementById('tickerText');
 const art = document.getElementById('art');
 const artPlaceholder = document.getElementById('artPlaceholder');
 const introVideo = document.getElementById('introVideo');
+
+// ── Initialize EQ Visualizer ──
+for(let i = 0; i < 45; i++) {
+    let bar = document.createElement('div');
+    bar.className = 'visualizer-bar';
+    let dur = 0.4 + Math.random() * 0.4; // 0.4s to 0.8s bounce
+    let del = Math.random() * -1.0; // Negative delay so it starts mid-animation
+    bar.style.animationDuration = `${dur}s`;
+    bar.style.animationDelay = `${del}s`;
+    // Slight height bias mapping for center bars to be taller visually
+    let centerDist = Math.abs((i - 22.5) / 22.5); 
+    bar.style.maxHeight = `${100 - (centerDist * 40)}%`; 
+    visualizer.appendChild(bar);
+}
 
 // ── Format time ──
 function fmt(sec) {
@@ -192,6 +243,13 @@ function updateOverlay(data) {
 
     if (data.paused) {
         title.innerHTML = `${data.title || 'Waiting'} <span style="font-size: 32px; color: #ff5555; vertical-align: middle;">[PAUSED]</span>`;
+    }
+    
+    // Waveform State
+    if (data.playing && !data.paused) {
+        visualizer.classList.add('active');
+    } else {
+        visualizer.classList.remove('active');
     }
     
     // Boot Sequence Logic

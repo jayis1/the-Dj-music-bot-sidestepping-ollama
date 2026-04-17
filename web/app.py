@@ -250,6 +250,29 @@ def _run_async(coro):
         return None
 
 
+def _get_mock_guild(guild_id=0):
+    class MockChannel:
+        id = 0
+        name = "Virtual Channel"
+        async def send(self, *args, **kwargs):
+            pass
+
+    class MockAuthor:
+        id = 0
+        name = "System"
+        display_name = "System"
+        bot = True
+
+    class MockGuild:
+        id = guild_id
+        name = getattr(config, "STATION_NAME", "Virtual Station")
+        text_channels = [MockChannel()]
+        me = MockAuthor()
+        members = [MockAuthor()]
+
+    return MockGuild()
+
+
 def _build_atempo_chain(speed):
     """Build an FFmpeg atempo filter chain for any speed value.
 
@@ -974,12 +997,14 @@ def api_play(guild_id):
         if not guild and guild_id != 0:
             return "Guild not found"
 
-        vc = music._get_audio_client(guild_id)
+        safe_guild = guild or _get_mock_guild(guild_id)
+
+        # Try to join voice ONLY IF the user has a valid discord guild
+        vc = guild.voice_client if guild else None
         if not vc and guild:
-            # Join a voice channel if not already in one
             voice_channel = None
             for member in guild.members:
-                if not member.bot and member.voice and member.voice.channel:
+                if not member.bot and getattr(member, 'voice', None) and getattr(member.voice, 'channel', None):
                     voice_channel = member.voice.channel
                     break
 
@@ -991,6 +1016,10 @@ def api_play(guild_id):
                     await asyncio.sleep(0.5)
                     await voice_channel.connect(self_deaf=True)
                 vc = guild.voice_client
+
+        # Fallback to headless client
+        if not vc:
+            vc = music._get_audio_client(guild_id)
 
         queue = await music.get_queue(guild_id)
 
@@ -1023,10 +1052,10 @@ def api_play(guild_id):
                 pass
 
             ctx = WebCtx()
-            ctx.guild = guild
-            ctx.author = guild.me
+            ctx.guild = safe_guild
+            ctx.author = safe_guild.me
             ctx.voice_client = vc  # Uses the PCMBroadcasterWrapper if headless, or Discord VoiceClient otherwise
-            ctx.channel = guild.text_channels[0] if guild.text_channels else None
+            ctx.channel = safe_guild.text_channels[0] if safe_guild.text_channels else None
             # Cancel any inactivity timer
             if guild_id in music.inactivity_timers:
                 music.inactivity_timers[guild_id].cancel()
@@ -2851,9 +2880,9 @@ def api_youtube_stream_toggle(guild_id):
             playlist_url = getattr(config, "AUTODJ_DEFAULT_SOURCE", "") or ""
             
             async def _start_autonomous():
-                guild = bot.guilds[0]
+                target_guild = bot.get_guild(guild_id) or _get_mock_guild(guild_id)
                 await music.start_headless_stream(
-                    guild=guild,
+                    guild=target_guild,
                     key=key,
                     rtmp_url=rtmp_url,
                     stream_image=stream_image,

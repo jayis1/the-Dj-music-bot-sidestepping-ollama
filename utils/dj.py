@@ -1960,10 +1960,9 @@ async def _generate_tts_moss(
             "using demo-1 built-in voice as fallback"
         )
 
-    # Aggressive timeout — we don't want the DJ sitting in silence.
-    # MOSS-TTS-Nano on CPU takes ~2-8 seconds for short DJ clips.
-    # On GPU it's much faster. 30s total gives enough headroom.
-    timeout = aiohttp.ClientTimeout(total=30, connect=5)
+    # Aggressive timeout — we don't want the DJ sitting in silence, but on CPU it can take a while.
+    # We increase this to 120s because pregeneration handles it in the background anyway.
+    timeout = aiohttp.ClientTimeout(total=120, connect=10)
 
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -1986,7 +1985,7 @@ async def _generate_tts_moss(
         return None
     except asyncio.TimeoutError:
         logging.error(
-            f"{source}: MOSS TTS timed out (30s). "
+            f"{source}: MOSS TTS timed out (120s). "
             "The server may be overloaded or still warming up. Falling back."
         )
         return None

@@ -2512,9 +2512,8 @@ class Music(commands.Cog):
         import os as _os
         import discord
 
-        guild = self.bot.get_guild(guild_id)
         vc = self._get_audio_client(guild_id)
-        if not guild or not vc:
+        if not vc:
             # Voice gone — skip sounds, go straight to song
             await self._play_song_after_dj(guild_id)
             return
@@ -2595,9 +2594,8 @@ class Music(commands.Cog):
                 called after the AI side host's own TTS finishes, to
                 prevent the AI from speaking again and blocking the song).
         """
-        guild = self.bot.get_guild(guild_id)
         vc = self._get_audio_client(guild_id)
-        if not guild or not vc:
+        if not vc:
             logging.warning(f"DJ: Bot not in voice for guild {guild_id} after TTS")
             return
 
@@ -2723,9 +2721,8 @@ class Music(commands.Cog):
         but no pending sound effects. It speaks the AI line with the side
         host's voice, then plays the song.
         """
-        guild = self.bot.get_guild(guild_id)
         vc = self._get_audio_client(guild_id)
-        if not guild or not vc:
+        if not vc:
             logging.warning(f"AI Side Host: Bot not in voice for guild {guild_id}")
             await self._play_song_after_dj(guild_id)
             return
@@ -3189,12 +3186,12 @@ class Music(commands.Cog):
 
     async def _stop_bed_music(self, guild_id):
         """Stop bed music if it's playing."""
-        guild = self.bot.get_guild(guild_id)
-        if not guild or not guild.voice_client:
+        vc = self._get_audio_client(guild_id)
+        if not vc:
             self._bed_playing[guild_id] = False
             return
-        if self._bed_playing.get(guild_id, False) and guild.voice_client.is_playing():
-            guild.voice_client.stop()
+        if self._bed_playing.get(guild_id, False) and getattr(vc, 'is_playing', lambda: False)():
+            vc.stop()
             self._bed_playing[guild_id] = False
             logging.info(f"DJ Bed: Stopped for guild {guild_id}")
 

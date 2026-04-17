@@ -176,8 +176,8 @@ async def main():
             )
         elif cookie_file and cookie_file_exists:
             _test_opts["cookiefile"] = cookie_file
-        # Quick test: extract metadata only (flat) from a well-known video
-        _test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        # Quick test: search for a generic term to verify API connectivity
+        _test_url = "ytsearch1:test"
         with yt_dlp.YoutubeDL(_test_opts) as _ydl:
             _info = _ydl.extract_info(_test_url, download=False)
         if _info and _info.get("id"):
@@ -425,11 +425,15 @@ async def main():
                     logging.error(f"Failed to load extension {filename}: {e}")
 
         try:
+            if not config.DISCORD_TOKEN or config.DISCORD_TOKEN == "your_discord_bot_token":
+                raise discord.errors.LoginFailure("Invalid or default Discord token")
             await bot.start(config.DISCORD_TOKEN)
         except discord.errors.LoginFailure:
-            logging.error(
-                "Error: Invalid Discord Token. Please check your DISCORD_TOKEN in config.py."
-            )
+            logging.warning("⚠️ Invalid or missing Discord Token.")
+            logging.warning("📻 Running in Pure Headless Radio Mode (No Discord connection).")
+            # Keep event loop alive so the Web Dashboard and Headless Radio can function
+            while True:
+                await asyncio.sleep(3600)
         except Exception as e:
             logging.error(f"Error when starting bot: {e}")
 

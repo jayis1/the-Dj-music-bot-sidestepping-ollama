@@ -269,12 +269,8 @@ def _build_atempo_chain(speed):
     return filters
 
 
-# ── Dashboard ────────────────────────────────────────────────────
-
-
-@app.route("/")
-def dashboard():
-    music = _get_music_cog()
+def _get_guilds_data(music):
+    """Helper to generate UI state for all guilds. If no guilds exist, returns a Virtual Station."""
     guilds_data = []
 
     if bot and bot.guilds:
@@ -291,11 +287,12 @@ def dashboard():
                 q = music.song_queues.get(guild_id)
                 if q:
                     queue_size = q.qsize()
-                    # Show only 5 items in the compact queue view
                     try:
-                        queue_items = list(q._queue)[:5]
+                        queue_items = list(q._queue)
                     except Exception:
                         queue_items = []
+            else:
+                vc = voice
 
             in_discord = guild.voice_client is not None
             in_voice = vc is not None if music else False
@@ -307,7 +304,7 @@ def dashboard():
                     "member_count": guild.member_count,
                     "in_discord": in_discord,
                     "in_voice": in_voice,
-                    "voice_channel": guild.voice_client.channel.name if in_discord else None,
+                    "voice_channel": voice.channel.name if in_discord else ("YouTube Live Stream" if in_voice else None),
                     "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,
                     "paused": getattr(vc, 'is_paused', lambda: False)() if in_voice else False,
                     "current_song": current.get("title") if isinstance(current, dict) else getattr(current, "title", None) if current else None,
@@ -316,9 +313,7 @@ def dashboard():
                     "current_duration": current.get("duration") if isinstance(current, dict) else getattr(current, "duration", None) if current else None,
                     "current_elapsed": (
                         int(time.time() - music.song_start_time[guild_id])
-                        if music
-                        and guild_id in music.song_start_time
-                        and (voice and (voice.is_playing() or voice.is_paused()))
+                        if music and guild_id in music.song_start_time and (voice and (voice.is_playing() or voice.is_paused()))
                         else 0
                     ),
                     "queue_size": queue_size,
@@ -334,34 +329,16 @@ def dashboard():
                         }
                         for item in queue_items
                     ],
-                    "dj_enabled": music.dj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "dj_voice": music.dj_voice.get(guild_id, "")
-                    or getattr(config, "DJ_VOICE", "en_warm_female")
-                    if music
-                    else getattr(config, "DJ_VOICE", "en_warm_female"),
-                    "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
-                    if music
-                    else 100,
+                    "dj_enabled": music.dj_enabled.get(guild_id, False) if music else False,
+                    "dj_voice": music.dj_voice.get(guild_id, "") or getattr(config, "DJ_VOICE", "en_warm_female") if music else getattr(config, "DJ_VOICE", "en_warm_female"),
+                    "volume": int(music.current_volume.get(guild_id, 1.0) * 100) if music else 100,
                     "looping": music.looping.get(guild_id, False) if music else False,
                     "speed": music.playback_speed.get(guild_id, 1.0) if music else 1.0,
-                    "autodj_enabled": music.autodj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "autodj_source": music.autodj_source.get(guild_id, "")
-                    if music
-                    else "",
-                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
-                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
-                    if music
-                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
-                    "recently_played": music.recently_played.get(guild_id, [])[:15]
-                    if music
-                    else [],
+                    "autodj_enabled": music.autodj_enabled.get(guild_id, False) if music else False,
+                    "autodj_source": music.autodj_source.get(guild_id, "") if music else "",
+                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False) if music else False,
+                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male") if music else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
+                    "recently_played": music.recently_played.get(guild_id, [])[:30] if music else [],
                     "listeners": [
                         {
                             "id": m.id,
@@ -373,6 +350,75 @@ def dashboard():
                     ],
                 }
             )
+    else:
+        # PURE HEADLESS RADIO MODE: Generate Virtual Station
+        guild_id = 0
+        current = None
+        queue_items = []
+        queue_size = 0
+        if music:
+            current = music.current_song.get(guild_id)
+            q = music.song_queues.get(guild_id)
+            if q:
+                queue_size = q.qsize()
+                try:
+                    queue_items = list(q._queue)
+                except Exception:
+                    queue_items = []
+
+        guilds_data.append(
+            {
+                "id": guild_id,
+                "name": getattr(config, "STATION_NAME", "Headless Radio Station"),
+                "member_count": "∞",
+                "in_discord": False,
+                "in_voice": True, # Always true so UI unlocks
+                "voice_channel": "Autonomous Broadcast",
+                "playing": (current is not None),
+                "paused": False,
+                "current_song": current.get("title") if isinstance(current, dict) else getattr(current, "title", None) if current else None,
+                "current_song_url": current.get("webpage_url") if isinstance(current, dict) else getattr(current, "webpage_url", None) if current else None,
+                "current_thumbnail": current.get("thumbnail") if isinstance(current, dict) else getattr(current, "thumbnail", None) if current else None,
+                "current_duration": current.get("duration") if isinstance(current, dict) else getattr(current, "duration", None) if current else None,
+                "current_elapsed": (
+                    int(time.time() - music.song_start_time[guild_id])
+                    if music and guild_id in music.song_start_time and current
+                    else 0
+                ),
+                "queue_size": queue_size,
+                "queue_duration": sum(
+                    (item.get("duration", 0) if isinstance(item, dict) else getattr(item, "duration", 0)) or 0 for item in queue_items
+                ),
+                "queue_items": [
+                    {
+                        "title": item.get("title") if isinstance(item, dict) else getattr(item, "title", None),
+                        "url": item.get("webpage_url") if isinstance(item, dict) else getattr(item, "webpage_url", None),
+                        "thumbnail": item.get("thumbnail") if isinstance(item, dict) else getattr(item, "thumbnail", None),
+                        "duration": item.get("duration") if isinstance(item, dict) else getattr(item, "duration", None),
+                    }
+                    for item in queue_items
+                ],
+                "dj_enabled": music.dj_enabled.get(guild_id, False) if music else False,
+                "dj_voice": music.dj_voice.get(guild_id, "") or getattr(config, "DJ_VOICE", "en_warm_female") if music else getattr(config, "DJ_VOICE", "en_warm_female"),
+                "volume": int(music.current_volume.get(guild_id, 1.0) * 100) if music else 100,
+                "looping": music.looping.get(guild_id, False) if music else False,
+                "speed": music.playback_speed.get(guild_id, 1.0) if music else 1.0,
+                "autodj_enabled": music.autodj_enabled.get(guild_id, False) if music else False,
+                "autodj_source": music.autodj_source.get(guild_id, "") if music else "",
+                "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False) if music else False,
+                "ai_dj_voice": music.ai_dj_voice.get(guild_id, "") or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male") if music else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
+                "recently_played": music.recently_played.get(guild_id, [])[:30] if music else [],
+                "listeners": [],
+            }
+        )
+
+    return guilds_data
+
+
+@app.route("/")
+def dashboard():
+    music = _get_music_cog()
+    guilds_data = _get_guilds_data(music)
 
     from utils.presets import list_presets as list_presets_fn
 
@@ -394,77 +440,7 @@ def dashboard():
 def radio():
     """Radio / Auto-DJ control page with recently played history."""
     music = _get_music_cog()
-    guilds_data = []
-
-    if bot and bot.guilds:
-        for guild in bot.guilds:
-            guild_id = guild.id
-            voice = guild.voice_client
-            current = None
-
-            if music:
-                current = music.current_song.get(guild_id)
-                vc = music._get_audio_client(guild_id)
-
-            in_discord = guild.voice_client is not None
-            in_voice = vc is not None if music else False
-
-            guilds_data.append(
-                {
-                    "id": guild_id,
-                    "name": guild.name,
-                    "member_count": guild.member_count,
-                    "in_discord": in_discord,
-                    "in_voice": in_voice,
-                    "voice_channel": guild.voice_client.channel.name if in_discord else ("Headless YouTube Stream" if in_voice else None),
-                    "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,
-                    "paused": getattr(vc, 'is_paused', lambda: False)() if in_voice else False,
-                    "current_song": current.title if current else None,
-                    "current_song_url": current.webpage_url if current else None,
-                    "current_thumbnail": current.thumbnail if current else None,
-                    "current_duration": current.duration if current else None,
-                    "current_elapsed": (
-                        int(time.time() - music.song_start_time[guild_id])
-                        if music
-                        and guild_id in music.song_start_time
-                        and (voice and (voice.is_playing() or voice.is_paused()))
-                        else 0
-                    ),
-                    "queue_size": music.song_queues.get(
-                        guild_id, asyncio.Queue()
-                    ).qsize()
-                    if music
-                    else 0,
-                    "dj_enabled": music.dj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "autodj_enabled": music.autodj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "autodj_source": music.autodj_source.get(guild_id, "")
-                    if music
-                    else "",
-                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
-                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
-                    if music
-                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
-                    "recently_played": music.recently_played.get(guild_id, [])[:30]
-                    if music
-                    else [],
-                    "listeners": [
-                        {
-                            "id": m.id,
-                            "name": m.display_name,
-                            "avatar": m.display_avatar.url if m.avatar else None,
-                        }
-                        for m in (voice.channel.members if voice else [])
-                        if not m.bot
-                    ],
-                }
-            )
+    guilds_data = _get_guilds_data(music)
 
     return render_template(
         "radio.html",
@@ -483,76 +459,7 @@ def radio():
 def queue_manager():
     """Queue manager page — add songs/playlists, view and manage the queue."""
     music = _get_music_cog()
-    guilds_data = []
-
-    if bot and bot.guilds:
-        for guild in bot.guilds:
-            guild_id = guild.id
-            voice = guild.voice_client
-            current = None
-            queue_items = []
-            queue_size = 0
-
-            if music:
-                current = music.current_song.get(guild_id)
-                q = music.song_queues.get(guild_id)
-                if q:
-                    queue_size = q.qsize()
-                    try:
-                        queue_items = list(q._queue)  # Show all items
-                    except Exception:
-                        queue_items = []
-
-            guilds_data.append(
-                {
-                    "id": guild_id,
-                    "name": guild.name,
-                    "member_count": guild.member_count,
-                    "in_voice": (voice is not None) or (music and getattr(music, "_yt_stream_active", False) and getattr(music, "_yt_stream_guild", None) == guild_id),
-                    "voice_channel": voice.channel.name if voice else ("Headless YouTube Stream" if (music and getattr(music, "_yt_stream_active", False)) else None),
-                    "playing": (voice.is_playing() if voice else False) or (current is not None),
-                    "paused": voice.is_paused() if voice else False,
-                    "current_song": current.title if current else None,
-                    "current_song_url": current.webpage_url if current else None,
-                    "current_thumbnail": current.thumbnail if current else None,
-                    "current_duration": current.duration if current else None,
-                    "queue_size": queue_size,
-                    "queue_items": [
-                        {
-                            "title": item.title,
-                            "url": getattr(item, "webpage_url", None),
-                            "thumbnail": getattr(item, "thumbnail", None),
-                            "duration": getattr(item, "duration", None),
-                        }
-                        for item in queue_items
-                    ],
-                    "dj_enabled": music.dj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "dj_voice": music.dj_voice.get(guild_id, "")
-                    or getattr(config, "DJ_VOICE", "en_warm_female")
-                    if music
-                    else getattr(config, "DJ_VOICE", "en_warm_female"),
-                    "volume": int(music.current_volume.get(guild_id, 1.0) * 100)
-                    if music
-                    else 100,
-                    "looping": music.looping.get(guild_id, False) if music else False,
-                    "speed": music.playback_speed.get(guild_id, 1.0) if music else 1.0,
-                    "autodj_enabled": music.autodj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "autodj_source": music.autodj_source.get(guild_id, "")
-                    if music
-                    else "",
-                    "ai_dj_enabled": music.ai_dj_enabled.get(guild_id, False)
-                    if music
-                    else False,
-                    "ai_dj_voice": music.ai_dj_voice.get(guild_id, "")
-                    or getattr(config, "OLLAMA_DJ_VOICE", "en_news_male")
-                    if music
-                    else getattr(config, "OLLAMA_DJ_VOICE", "en_news_male"),
-                }
-            )
+    guilds_data = _get_guilds_data(music)
 
     from utils.presets import list_presets as list_presets_fn
 
@@ -574,9 +481,8 @@ def api_skip(guild_id):
     music = _get_music_cog()
     if not music:
         return jsonify({"error": "Music cog not loaded"}), 503
-    guild = bot.get_guild(guild_id)
     vc = music._get_audio_client(guild_id)
-    if not guild or not vc or not getattr(vc, 'is_playing', lambda: False)():
+    if not vc or not getattr(vc, 'is_playing', lambda: False)():
         return jsonify({"error": "Nothing playing"}), 400
     vc.stop()
     return jsonify({"ok": True})
@@ -587,9 +493,8 @@ def api_pause(guild_id):
     music = _get_music_cog()
     if not music:
         return jsonify({"error": "Music cog not loaded"}), 503
-    guild = bot.get_guild(guild_id)
     vc = music._get_audio_client(guild_id)
-    if not guild or not vc:
+    if not vc:
         return jsonify({"error": "Not in voice"}), 400
     if getattr(vc, 'is_paused', lambda: False)():
         vc.resume()

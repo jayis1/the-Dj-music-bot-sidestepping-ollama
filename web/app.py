@@ -122,7 +122,13 @@ def require_login():
         return  # No password configured — open access
 
     # Allow these endpoints without authentication
-    allowed_endpoints = {"login", "static"}
+    allowed_endpoints = {
+        "login", 
+        "static", 
+        "serve_assets", 
+        "overlay_page", 
+        "api_overlay_state"
+    }
     if request.endpoint in allowed_endpoints:
         return
 

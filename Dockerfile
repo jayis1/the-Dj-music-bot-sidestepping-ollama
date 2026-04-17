@@ -18,6 +18,8 @@ LABEL org.opencontainers.image.licenses="MIT"
 # System dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    xvfb \
+    chromium \
     libopus-dev \
     libffi-dev \
     libsodium-dev \

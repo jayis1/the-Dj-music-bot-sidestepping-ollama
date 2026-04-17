@@ -202,3 +202,27 @@ YOUTUBE_STREAM_URL = os.environ.get(
 YOUTUBE_STREAM_IMAGE = os.environ.get(
     "YOUTUBE_STREAM_IMAGE", ""
 )  # Path to stream card image
+
+# ── yt-dlp Cookie Authentication ──────────────────────────────────────────
+# YouTube increasingly requires authentication to avoid "Sign in to confirm
+# you're not a bot" errors. There are two ways to provide cookies:
+#
+# 1. cookies_from_browser: yt-dlp can extract cookies directly from an
+#    installed browser (Chrome, Firefox, Brave, Edge, Opera, Vivaldi, etc).
+#    Set this to the browser name, e.g. "chrome", "firefox", "brave".
+#    The browser must be installed on the same machine as the bot.
+#    You must have logged into YouTube at least once in that browser.
+#    NOTE: On Linux, Chrome may require "keyring" or "secretstorage" packages
+#    for cookie decryption. Firefox is usually easier on headless servers.
+#    Format:Just the browser name, e.g. "chrome" or "firefox"
+#    Can also specify profile: "chrome:Profile 1" or "firefox:default"
+#
+# 2. cookiefile: A Netscape-format cookies.txt file exported from your browser.
+#    Use a browser extension like "Get cookies.txt LOCALLY" (Chrome/Firefox)
+#    to export YouTube cookies. Place the file as "youtube_cookie.txt" in the
+#    bot's root directory. This works on headless servers without a browser.
+#
+# Priority: cookies_from_browser > cookiefile > none
+# If neither is set, yt-dlp runs without cookies (may get blocked by YouTube).
+YTDDL_COOKIES_FROM_BROWSER = os.environ.get("YTDDL_COOKIES_FROM_BROWSER", "")
+YTDDL_COOKIEFILE = os.environ.get("YTDDL_COOKIEFILE", "youtube_cookie.txt")

@@ -1901,7 +1901,13 @@ def api_battle_create(guild_id):
 
     # Create battle state directly
     import yt_dlp
-    from cogs.youtube import get_ytdl_format_options
+
+    try:
+        from cogs.youtube import get_ytdl_format_options
+    except ImportError:
+        from cogs.youtube import YTDL_FORMAT_OPTIONS
+
+        get_ytdl_format_options = YTDL_FORMAT_OPTIONS.copy
 
     title_a = song_a
     title_b = song_b

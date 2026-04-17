@@ -2,13 +2,63 @@ import asyncio
 import yt_dlp
 import discord
 import logging
+import os
+import config
 
 FFMPEG_OPTIONS = {
     "before_options": '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36" -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     "options": "-vn",
 }
 
-# --- YTDL Options ---
+# ── Cookie / Auth helpers ─────────────────────────────────────────────────
+
+
+def _build_cookie_opts():
+    """
+    Build cookie-related yt-dlp options from config.
+    Priority: cookies_from_browser > cookiefile > none
+    Returns a dict of cookie options to merge into yt-dlp opts.
+    """
+    opts = {}
+    browser = config.YTDDL_COOKIES_FROM_BROWSER.strip()
+    cookiefile = config.YTDDL_COOKIEFILE.strip()
+
+    if browser:
+        # cookies_from_browser can be "browser" or "browser:profile"
+        # e.g. "chrome", "firefox", "chrome:Profile 1", "firefox:default"
+        parts = browser.split(":", 1)
+        browser_name = parts[0].strip().lower()
+        profile = parts[1].strip() if len(parts) > 1 else None
+        try:
+            if profile:
+                opts["cookiesfrombrowser"] = (browser_name, profile)
+            else:
+                opts["cookiesfrombrowser"] = (browser_name,)
+            logging.info(
+                f"yt-dlp: Using cookies from browser '{browser_name}'"
+                + (f" profile '{profile}'" if profile else "")
+            )
+        except Exception as e:
+            logging.error(f"yt-dlp: Failed to set cookies_from_browser: {e}")
+            opts.pop("cookiesfrombrowser", None)
+
+    elif cookiefile and os.path.exists(cookiefile):
+        opts["cookiefile"] = cookiefile
+        logging.info(f"yt-dlp: Using cookie file '{cookiefile}'")
+    else:
+        if cookiefile:
+            logging.warning(
+                f"yt-dlp: Cookie file '{cookiefile}' not found. "
+                "Running without cookies — YouTube may block requests."
+            )
+
+    return opts
+
+
+# ── Shared cookie options (computed once at import) ────────────────────────
+_COOKIE_OPTS = _build_cookie_opts()
+
+# ── YTDL Options ──────────────────────────────────────────────────────────
 YTDL_FORMAT_OPTIONS = {
     "format": "bestaudio*/best",
     "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
@@ -21,21 +71,33 @@ YTDL_FORMAT_OPTIONS = {
     "no_warnings": True,
     "default_search": "ytsearch",
     "source_address": "0.0.0.0",
-    "cookiefile": "youtube_cookie.txt"
-    if __import__("os").path.exists("youtube_cookie.txt")
-    else None,
     "http_headers": {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36"
     },
     "extract_flat": "discard_in_playlist",
 }
+# Merge cookie options into the standard format options
+YTDL_FORMAT_OPTIONS.update(_COOKIE_OPTS)
 
-# --- Playlist Options (fast flat extraction — no stream URLs) ---
+
+def get_ytdl_format_options():
+    """
+    Return a fresh copy of YTDL_FORMAT_OPTIONS with current cookie settings.
+    Use this when you need to customize options — always returns a copy
+    so mutations don't affect the global state.
+    """
+    return YTDL_FORMAT_OPTIONS.copy()
+
+
+# ── Playlist Options (fast flat extraction — no stream URLs) ──────────────
+# Playlist extraction also needs cookies — YouTube blocks unauthenticated
+# metadata requests too when bot detection is active.
 YTDL_PLAYLIST_FLAT_OPTIONS = {
     "extract_flat": True,  # Only get metadata (title, id), no stream URLs
     "quiet": True,
     "no_warnings": True,
 }
+YTDL_PLAYLIST_FLAT_OPTIONS.update(_COOKIE_OPTS)
 
 
 class YTDLSource:
@@ -54,7 +116,7 @@ class YTDLSource:
         """Extract a single video or search result with full stream URL resolution."""
         loop = loop or asyncio.get_event_loop()
 
-        options = ytdl_opts if ytdl_opts is not None else YTDL_FORMAT_OPTIONS.copy()
+        options = ytdl_opts if ytdl_opts is not None else get_ytdl_format_options()
 
         data = await loop.run_in_executor(
             None, lambda: yt_dlp.YoutubeDL(options).extract_info(url, download=False)
@@ -83,7 +145,7 @@ class YTDLSource:
         Raises Exception if extraction fails.
         """
         loop = loop or asyncio.get_event_loop()
-        options = ytdl_opts if ytdl_opts is not None else YTDL_FORMAT_OPTIONS.copy()
+        options = ytdl_opts if ytdl_opts is not None else get_ytdl_format_options()
 
         data = await loop.run_in_executor(
             None, lambda: yt_dlp.YoutubeDL(options).extract_info(url, download=False)
@@ -149,12 +211,8 @@ class PlaceholderTrack:
         """
         loop = loop or asyncio.get_event_loop()
 
-        opts = {
-            "extract_flat": True,
-            "quiet": True,
-            "no_warnings": True,
-            "extractor_retries": 2,
-        }
+        # Use the shared playlist flat options (includes cookies)
+        opts = YTDL_PLAYLIST_FLAT_OPTIONS.copy()
         if playlist_items:
             opts["playlist_items"] = playlist_items
 

@@ -62,6 +62,35 @@ except ImportError:
     YOUTUBE_STREAMER_CLASS = None
 
 
+class PCMBroadcasterWrapper:
+    """Mock VoiceClient to transparently handle autonomous radio broadcasting without Discord VC."""
+    def __init__(self, bot, guild_id, broadcaster):
+        self.bot = bot
+        self.guild_id = guild_id
+        self.broadcaster = broadcaster
+        self.source = None
+
+    def is_playing(self):
+        return self.source is not None
+
+    def is_connected(self):
+        return True
+    
+    def stop(self):
+        if self.source:
+            self.broadcaster.set_source(None)
+            self.source = None
+            
+    def pause(self):
+        pass
+        
+    def resume(self):
+        pass
+
+    def play(self, source, after=None):
+        self.source = source
+        self.broadcaster.set_source(source, guild_id=self.guild_id, bot=self.bot, after=after)
+
 class Music(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -117,6 +146,8 @@ class Music(commands.Cog):
         self._yt_streamer = None  # YouTubeLiveStreamer instance (created on ?golive)
         self._yt_stream_active = False  # True while stream is running
         self._yt_stream_guild = None  # Guild ID of the streaming guild
+        self._broadcasters = {}  # guild_id -> PCMBroadcaster
+        self._headless_clients = {}  # guild_id -> PCMBroadcasterWrapper
 
         # ── DJ/TTS Pre-generation (assets/part2/) ──
         # While a song plays, the pregenerator creates TTS audio and DJ/AI
@@ -128,6 +159,53 @@ class Music(commands.Cog):
             os.path.dirname(os.path.dirname(__file__)), "voice_settings.json"
         )
         self._load_voice_settings()
+
+    def _get_audio_client(self, guild_id: int):
+        """Returns the real VoiceClient, OR the Headless PCMBroadcasterWrapper if streaming autonomously."""
+        guild = self.bot.get_guild(guild_id)
+        if guild and guild.voice_client:
+            # If the user connected the bot to a real Discord voice channel,
+            # sync it to the broadcaster matrix natively if YouTube is live
+            if self._yt_stream_active and self._yt_stream_guild == guild_id:
+                if guild_id not in self._broadcasters:
+                    from utils.broadcaster import PCMBroadcaster
+                    self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+            return guild.voice_client
+            
+        if self._yt_stream_active and self._yt_stream_guild == guild_id:
+            # Headless 24/7 Mode: The user wants it to stream autonomously
+            if guild_id not in self._broadcasters:
+                from utils.broadcaster import PCMBroadcaster
+                self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+            if guild_id not in self._headless_clients:
+                self._headless_clients[guild_id] = PCMBroadcasterWrapper(
+                    self.bot, guild_id, self._broadcasters[guild_id]
+                )
+            return self._headless_clients[guild_id]
+            
+        return None
+
+    def _dispatch_audio_play(self, guild_id: int, source, after=None):
+        """Monolithic audio injection point. Replaces vc.play() to support multiplex UDP routing."""
+        vc = self._get_audio_client(guild_id)
+        if not vc:
+            return False
+
+        if self._yt_stream_active and self._yt_stream_guild == guild_id:
+            if guild_id not in self._broadcasters:
+                from utils.broadcaster import PCMBroadcaster
+                self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+                
+            broadcaster = self._broadcasters[guild_id]
+            broadcaster.set_source(source, guild_id=guild_id, bot=self.bot, after=after)
+            
+            if isinstance(vc, discord.VoiceClient):
+                vc.play(broadcaster, after=None)
+            else:
+                vc.play(source, after=after)  # Headless Wrapper
+        else:
+            vc.play(source, after=after)
+        return True
 
     # ── Auto-start YouTube Live autonomous stream on boot ──
     @commands.Cog.listener()
@@ -187,15 +265,31 @@ class Music(commands.Cog):
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
             )
             self._yt_stream_guild = guild.id
-            await self._yt_streamer.start_autonomous(
-                playlist_url=playlist_url,
-                loop_playlist=True,
-                shuffle=True,
-            )
+            await self._yt_streamer.start()
+            
+            # Start Headless AutoDJ Master Loop natively!
+            class DummyContext:
+                def __init__(self, bot, guild):
+                    self.bot = bot
+                    self.guild = guild
+                    self.author = guild.me
+                    self.voice_client = None
+                    self.channel = guild.text_channels[0] if guild.text_channels else None
+                    self.message = type("Mock", (), {"author": self.author})()
+                async def send(self, *args, **kwargs):
+                    pass
+            
+            ctx = DummyContext(self.bot, guild)
+            self.autodj_enabled[guild.id] = True
+            
+            # Use Auto-DJ system natively to seed queue
+            # (which triggers `play_next` automatically if queue is zero)
+            self.bot.loop.create_task(self._process_autodj(ctx, override=playlist_url))
+            
             self._yt_stream_active = True
             logging.info(
                 f"YouTube Live: ✅ Auto-started autonomous 24/7 stream "
-                f"with playlist: {playlist_url[:60]}"
+                f"with AutoDJ seamlessly multiplexed via PCMBroadcaster!"
             )
         except Exception as e:
             logging.error(f"YouTube Live: Auto-start failed: {e}")
@@ -1712,7 +1806,8 @@ class Music(commands.Cog):
             source = discord.FFmpegPCMAudio(current_song_data.url, **player_options)
             player = discord.PCMVolumeTransformer(source)
             player.volume = self.current_volume.get(guild_id, 1.0)
-            ctx.voice_client.play(
+            self._dispatch_audio_play(
+                guild_id,
                 player,
                 after=lambda e: self.bot.loop.create_task(self._after_playback(ctx, e)),
             )
@@ -2097,7 +2192,7 @@ class Music(commands.Cog):
 
     async def _dj_speak(
         self,
-        voice_client,
+        voice_client_unused,  # Kept for signature compatibility
         text: str,
         guild_id: int,
         voice: str = None,
@@ -2116,6 +2211,10 @@ class Music(commands.Cog):
             is_ai: True if this is the AI side host speaking (don't overwrite dj_line context)
         """
         if not TTS_AVAILABLE:
+            return False
+
+        voice_client = self._get_audio_client(guild_id)
+        if not voice_client:
             return False
 
         # Extract {sound:name} tags before TTS so they aren't spoken aloud
@@ -2253,7 +2352,8 @@ class Music(commands.Cog):
             # We cannot await play() — it starts playback and returns immediately.
             # The 'after' callback fires when TTS playback finishes.
             loop = self.bot.loop
-            voice_client.play(
+            self._dispatch_audio_play(
+                guild_id,
                 tts_player,
                 after=lambda e: loop.call_soon_threadsafe(
                     self._on_tts_done, guild_id, e
@@ -2345,7 +2445,8 @@ class Music(commands.Cog):
         import discord
 
         guild = self.bot.get_guild(guild_id)
-        if not guild or not guild.voice_client:
+        vc = self._get_audio_client(guild_id)
+        if not guild or not vc:
             # Voice gone — skip sounds, go straight to song
             await self._play_song_after_dj(guild_id)
             return
@@ -2372,8 +2473,8 @@ class Music(commands.Cog):
                 player.volume = self.current_volume.get(guild_id, 1.0)
 
                 # Stop anything currently playing before playing the sound
-                if guild.voice_client.is_playing():
-                    guild.voice_client.stop()
+                if vc.is_playing():
+                    vc.stop()
                     await asyncio.sleep(0.1)  # Brief pause to let stop take effect
 
                 # Play and wait for this sound to finish
@@ -2384,7 +2485,7 @@ class Music(commands.Cog):
                         logging.error(f"DJ: Sound '{sound_id}' error: {e}")
                     self.bot.loop.call_soon_threadsafe(finished.set)
 
-                guild.voice_client.play(player, after=_after)
+                self._dispatch_audio_play(guild_id, player, after=_after)
                 logging.info(
                     f"DJ: Playing sound effect '{sound_id}' in guild {guild_id}"
                 )
@@ -2431,7 +2532,8 @@ class Music(commands.Cog):
                 prevent the AI from speaking again and blocking the song).
         """
         guild = self.bot.get_guild(guild_id)
-        if not guild or not guild.voice_client:
+        vc = self._get_audio_client(guild_id)
+        if not guild or not vc:
             logging.warning(f"DJ: Bot not in voice for guild {guild_id} after TTS")
             return
 
@@ -2468,7 +2570,7 @@ class Music(commands.Cog):
                 )
                 voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
                 spoke = await self._dj_speak(
-                    guild.voice_client, ai_line, guild_id, voice=voice, is_ai=True
+                    vc, ai_line, guild_id, voice=voice, is_ai=True
                 )
                 if spoke:
                     self._dj_pending[guild_id] = (ctx, data, channel_id)
@@ -2558,14 +2660,15 @@ class Music(commands.Cog):
         host's voice, then plays the song.
         """
         guild = self.bot.get_guild(guild_id)
-        if not guild or not guild.voice_client:
+        vc = self._get_audio_client(guild_id)
+        if not guild or not vc:
             logging.warning(f"AI Side Host: Bot not in voice for guild {guild_id}")
             await self._play_song_after_dj(guild_id)
             return
 
         voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
         spoke = await self._dj_speak(
-            guild.voice_client, ai_line, guild_id, voice=voice, is_ai=True
+            vc, ai_line, guild_id, voice=voice, is_ai=True
         )
 
         if spoke:
@@ -2633,7 +2736,8 @@ class Music(commands.Cog):
         elif channel_id is None:
             channel_id = ctx.channel.id
 
-        if not ctx.voice_client or not ctx.voice_client.is_connected():
+        vc = self._get_audio_client(guild_id)
+        if not vc or not vc.is_connected():
             logging.warning(f"DJ: Voice client gone for guild {guild_id}")
             return
 
@@ -2642,12 +2746,12 @@ class Music(commands.Cog):
         # failed playback (e.g. a broken TTS that never finished), force-
         # stop it. Otherwise play() raises "Already playing audio" and
         # the entire queue gets silently skipped.
-        if ctx.voice_client.is_playing():
+        if vc.is_playing():
             logging.warning(
                 f"Song playback: Voice client still playing in guild {guild_id} "
                 f"— force-stopping stuck source before starting new song"
             )
-            ctx.voice_client.stop()
+            vc.stop()
             await asyncio.sleep(0.3)
 
         # Stop any bed music before the song starts
@@ -2686,7 +2790,8 @@ class Music(commands.Cog):
                 f"Playback initiated for {data.title} with speed {current_speed}x. "
                 f"Applied volume: {player.volume}"
             )
-            ctx.voice_client.play(
+            self._dispatch_audio_play(
+                guild_id,
                 player,
                 after=lambda e: self.bot.loop.create_task(self._after_playback(ctx, e)),
             )
@@ -2971,13 +3076,17 @@ class Music(commands.Cog):
 
     # ── Bed Music (DJ Interlude) ──────────────────────────────────
 
-    async def _start_bed_music(self, voice_client, guild_id):
+    async def _start_bed_music(self, voice_client_unused, guild_id):
         """Start playing ambient bed music under the DJ's voice.
 
         Uses a loopable ambient track. The bed music is played at lower volume
         and will be stopped by _stop_bed_music() when the actual song starts.
         """
         import os
+        
+        vc = self._get_audio_client(guild_id)
+        if not vc:
+            return False
 
         bed_path = os.path.join("sounds", "bed_music.wav")
         if not os.path.exists(bed_path):
@@ -2995,7 +3104,7 @@ class Music(commands.Cog):
 
             # Can't play two sources at once on Discord's voice client.
             # If something is already playing (e.g. TTS, sound effect), skip.
-            if voice_client.is_playing():
+            if vc.is_playing():
                 logging.debug(
                     f"DJ Bed: Voice client busy in guild {guild_id}, skipping bed music"
                 )
@@ -3009,7 +3118,8 @@ class Music(commands.Cog):
             player = discord.PCMVolumeTransformer(source)
             player.volume = self.current_volume.get(guild_id, 1.0) * 0.3  # 30% volume
 
-            voice_client.play(
+            self._dispatch_audio_play(
+                guild_id,
                 player,
                 after=lambda e: self._on_bed_done(guild_id, e),
             )

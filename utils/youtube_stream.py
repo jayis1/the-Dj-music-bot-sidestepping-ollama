@@ -246,9 +246,9 @@ class YouTubeLiveStreamer:
         )
         # 4. Waiting / Bottom Ticker Strip HUD (dynamic txt reload)
         filter_chain += (
-            f"drawbox=y=H-40:color=black@0.6:width=iw:height=40:t=fill,"
+            f"drawbox=y={H}-40:color=black@0.6:width=iw:height=40:t=fill,"
             f"drawtext={font_opt_reg}textfile='{TXT_WAITING}':reload=1:"
-            f"fontcolor=white:fontsize=24:x=(w-text_w)/2:y=H-32"
+            f"fontcolor=white:fontsize=24:x=(w-text_w)/2:y={H}-32"
         )
         filter_chain += "[outv]"
 
@@ -267,7 +267,11 @@ class YouTubeLiveStreamer:
             "-rtmp_live", "live", "-rtmp_buffer", "2000"
         ])
 
-        primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
+        if "?" in self.rtmp_url:
+            base, query = self.rtmp_url.split("?", 1)
+            primary_url = f"{base.rstrip('/')}/{self.stream_key}?{query}"
+        else:
+            primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
         if self.rtmp_url.startswith("rtmps://"):
             cmd.extend(["-tls_verify", "0"])
 

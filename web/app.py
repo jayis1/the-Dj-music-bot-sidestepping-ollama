@@ -2784,13 +2784,13 @@ def api_youtube_stream_status(guild_id):
 
     # Include autonomous mode details
     if active and streamer:
-        result.update(streamer.get_status())
+        result["autonomous"] = True
     else:
         result["autonomous"] = False
 
     if active and guild_id in music.current_song:
         song = music.current_song[guild_id]
-        result["song_title"] = song.title if song else None
+        result["song_title"] = song.get("title") if isinstance(song, dict) else None
 
     return jsonify(result)
 

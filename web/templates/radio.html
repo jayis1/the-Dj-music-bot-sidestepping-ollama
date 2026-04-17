@@ -308,6 +308,56 @@
 </div>
 {% endfor %}
 
+<!-- ── YouTube Live Streaming ──────────────────────────────────────── -->
+<div class="card" style="margin-bottom: 24px; border-color: #FF0000;">
+    <div class="card-header" style="display: flex; align-items: center; gap: 10px; margin-bottom: 16px;">
+        <span style="font-size: 20px;">🔴</span>
+        <h2 style="margin: 0;">YouTube Live</h2>
+        <span id="yt-live-indicator" style="margin-left: auto; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 12px;
+            background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border);">⚪ Offline</span>
+    </div>
+    <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+        Stream the bot's audio + song titles to YouTube Live 24/7 via RTMP.
+        Get your stream key from <a href="https://studio.youtube.com/channel/UC/livestream" target="_blank" style="color: var(--accent);">YouTube Studio → Go Live</a>.
+    </p>
+
+    <div class="settings-grid" style="margin-bottom: 16px;">
+        <div class="settings-item">
+            <span class="settings-label">Stream Key</span>
+            <div style="display: flex; gap: 6px; align-items: center;">
+                <input type="password" id="yt-stream-key" placeholder="xxxx-xxxx-xxxx-xxxx"
+                    style="background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary);
+                    border-radius: var(--radius); padding: 6px 10px; font-size: 13px; font-family: monospace; width: 200px;">
+                <button onclick="toggleStreamKeyVisibility()" style="background: none; border: none; cursor: pointer; font-size: 16px;" title="Show/hide key">👁️</button>
+            </div>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">RTMP URL</span>
+            <span class="settings-value" style="font-size: 12px; font-family: monospace;">
+                {{ config.YOUTUBE_STREAM_URL }}
+            </span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Status</span>
+            <span id="yt-live-status" class="settings-value">Not streaming</span>
+        </div>
+        <div class="settings-item">
+            <span class="settings-label">Current</span>
+            <span id="yt-live-current" class="settings-value" style="font-size: 12px; color: var(--text-muted);">—</span>
+        </div>
+    </div>
+
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button id="yt-live-toggle" class="btn" onclick="toggleYouTubeLive()"
+            style="background: #FF0000; color: white; border-color: #FF0000; font-weight: 600;">
+            🔴 Go Live
+        </button>
+        <button class="btn" onclick="checkYouTubeLiveStatus()" style="border-color: var(--text-muted); color: var(--text-muted);">
+            🔄 Refresh Status
+        </button>
+    </div>
+</div>
+
 <!-- ==================== STYLES ==================== -->
 <style>
 .guild-header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
@@ -759,6 +809,139 @@ document.addEventListener('DOMContentLoaded', function() {
     })();
     {% endif %}
     {% endfor %}
+
+    // ── Check YouTube Live status on load ──
+    checkYouTubeLiveStatus();
 });
+
+// ── YouTube Live Streaming ──────────────────────────────────────
+function toggleStreamKeyVisibility() {
+    const input = document.getElementById('yt-stream-key');
+    if (input) input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function toggleYouTubeLive() {
+    const btn = document.getElementById('yt-live-toggle');
+    const keyInput = document.getElementById('yt-stream-key');
+    const indicator = document.getElementById('yt-live-indicator');
+    const statusEl = document.getElementById('yt-live-status');
+
+    // Determine the first guild with voice
+    let guildId = null;
+    {% for g in guilds %}
+    {% if g.in_voice and not guildId %}
+    guildId = '{{ g.id }}';
+    {% endif %}
+    {% endfor %}
+
+    if (!guildId) {
+        showToast('Bot must be in a voice channel to go live', 'error');
+        return;
+    }
+
+    // Check if currently live — if so, stop
+    if (indicator && indicator.textContent.includes('Live')) {
+        btn.textContent = '⏳ Stopping...';
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/${guildId}/youtube_stream/toggle`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'stop'})
+            });
+            const data = await res.json();
+            if (data.ok) {
+                showToast('🔴 YouTube Live stopped', 'success');
+            } else {
+                showToast(data.error || 'Failed to stop', 'error');
+            }
+        } catch (e) {
+            showToast('Network error', 'error');
+        }
+        btn.disabled = false;
+        checkYouTubeLiveStatus();
+        return;
+    }
+
+    // Start streaming
+    const streamKey = keyInput ? keyInput.value.trim() : '';
+    if (!streamKey) {
+        showToast('Enter a YouTube stream key first', 'error');
+        keyInput && keyInput.focus();
+        return;
+    }
+
+    btn.textContent = '⏳ Connecting...';
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/api/${guildId}/youtube_stream/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'start', stream_key: streamKey})
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔴 YouTube Live started!', 'success');
+        } else {
+            showToast(data.error || 'Failed to start', 'error');
+        }
+    } catch (e) {
+        showToast('Network error: ' + e.message, 'error');
+    }
+    btn.disabled = false;
+    checkYouTubeLiveStatus();
+}
+
+async function checkYouTubeLiveStatus() {
+    let guildId = null;
+    {% for g in guilds %}
+    {% if g.in_voice and not guildId %}
+    guildId = '{{ g.id }}';
+    {% endif %}
+    {% endfor %}
+
+    if (!guildId) {
+        const indicator = document.getElementById('yt-live-indicator');
+        const statusEl = document.getElementById('yt-live-status');
+        const btn = document.getElementById('yt-live-toggle');
+        if (indicator) indicator.textContent = '⚪ Offline';
+        if (statusEl) statusEl.textContent = 'Bot not in voice channel';
+        if (btn) { btn.textContent = '🔴 Go Live'; btn.style.background = '#FF0000'; }
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/${guildId}/youtube_stream/status`);
+        const data = await res.json();
+        const indicator = document.getElementById('yt-live-indicator');
+        const statusEl = document.getElementById('yt-live-status');
+        const currentEl = document.getElementById('yt-live-current');
+        const btn = document.getElementById('yt-live-toggle');
+        const keyInput = document.getElementById('yt-stream-key');
+
+        if (data.active && data.running) {
+            if (indicator) { indicator.textContent = '🔴 LIVE'; indicator.style.background = 'rgba(255,0,0,0.15)'; indicator.style.color = '#FF0000'; indicator.style.borderColor = '#FF0000'; }
+            if (statusEl) { statusEl.textContent = '✅ Streaming'; statusEl.style.color = 'var(--success)'; }
+            if (currentEl) currentEl.textContent = data.song_title || (data.current_url ? '🎵 Audio' : '⏳ Waiting');
+            if (btn) { btn.textContent = '⬛ Stop Live'; btn.style.background = '#333'; btn.style.borderColor = '#666'; }
+        } else if (data.active) {
+            if (indicator) { indicator.textContent = '🟡 Reconnecting'; indicator.style.background = 'rgba(245,158,11,0.15)'; indicator.style.color = 'var(--warning)'; indicator.style.borderColor = 'var(--warning)'; }
+            if (statusEl) { statusEl.textContent = '⚠️ Reconnecting...'; statusEl.style.color = 'var(--warning)'; }
+            if (btn) { btn.textContent = '⬛ Stop Live'; btn.style.background = '#333'; }
+        } else {
+            if (indicator) { indicator.textContent = '⚪ Offline'; indicator.style.background = 'var(--bg-primary)'; indicator.style.color = 'var(--text-muted)'; indicator.style.borderColor = 'var(--border)'; }
+            if (statusEl) { statusEl.textContent = 'Not streaming'; statusEl.style.color = 'var(--text-muted)'; }
+            if (currentEl) currentEl.textContent = '—';
+            if (btn) { btn.textContent = '🔴 Go Live'; btn.style.background = '#FF0000'; btn.style.borderColor = '#FF0000'; }
+        }
+
+        // Pre-fill stream key from config if available
+        if (keyInput && !keyInput.value && data.stream_key_set) {
+            keyInput.placeholder = '✅ Key set in .env (or enter new one)';
+        }
+    } catch (e) {
+        // Silently fail
+    }
+}
 </script>
 {% endblock %}

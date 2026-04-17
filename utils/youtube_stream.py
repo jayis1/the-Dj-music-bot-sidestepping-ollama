@@ -179,11 +179,7 @@ class YouTubeLiveStreamer:
 
         cmd = [
             "ffmpeg",
-            "-re",  # Real-time pacing
-            "-loop",
-            "1",  # Loop the image
-            "-i",
-            image,  # Static image input
+            *self._build_image_input(image),
             "-i",
             audio_url,  # Audio stream input
             "-c:v",
@@ -229,11 +225,7 @@ class YouTubeLiveStreamer:
 
         cmd = [
             "ffmpeg",
-            "-re",
-            "-loop",
-            "1",
-            "-i",
-            image,
+            *self._build_image_input(image),
             "-f",
             "lavfi",  # Generate silent audio
             "-i",
@@ -285,11 +277,7 @@ class YouTubeLiveStreamer:
 
         cmd = [
             "ffmpeg",
-            "-re",
-            "-loop",
-            "1",
-            "-i",
-            image,
+            *self._build_image_input(image),
             "-i",
             tts_path,
             "-c:v",
@@ -380,7 +368,9 @@ class YouTubeLiveStreamer:
     def _resolve_image(self) -> str:
         """Resolve the stream card image path.
 
-        Falls back to a generated black frame if no image is configured.
+        Falls back to the station logo if no custom image is configured.
+        The logo file (assets/logo.png) is actually a JPEG — FFmpeg handles
+        this fine regardless of extension, but we log a note.
         """
         if self.stream_image and os.path.isfile(self.stream_image):
             return self.stream_image
@@ -390,8 +380,35 @@ class YouTubeLiveStreamer:
         )
         if os.path.isfile(default):
             return default
-        # No image found — use a color source as fallback
-        # FFmpeg can generate a solid color without an image file
-        return os.path.join(
+        # Fall back to the station logo
+        logo = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png"
         )
+        if os.path.isfile(logo):
+            log.info(f"YouTube Live: Using station logo as stream card ({logo})")
+            return logo
+        # Last resort: generate a color source via FFmpeg filter
+        # This is handled by the caller — return a special marker
+        log.warning(
+            "YouTube Live: No stream card image found — will use a black frame. "
+            "Set YOUTUBE_STREAM_IMAGE in .env or place assets/logo.png"
+        )
+        return None
+
+    def _build_image_input(self, image_path: str | None) -> list:
+        """Build FFmpeg input arguments for the image/video track.
+
+        If an image path is provided, loops it as the video source.
+        If None, generates a solid-color black frame via FFmpeg lavfi.
+        """
+        if image_path:
+            return ["-re", "-loop", "1", "-i", image_path]
+        else:
+            # Generate a 1280x720 black frame with station name
+            return [
+                "-re",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=1280x720:r=25",
+            ]

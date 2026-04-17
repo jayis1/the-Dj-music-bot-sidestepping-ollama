@@ -53,6 +53,14 @@ try:
 except ImportError:
     pass
 
+# Valid even if not auto-started — allows manual ?golive
+try:
+    from utils.youtube_stream import YouTubeLiveStreamer as _YTStreamerClass
+
+    YOUTUBE_STREAMER_CLASS = _YTStreamerClass
+except ImportError:
+    YOUTUBE_STREAMER_CLASS = None
+
 
 class Music(commands.Cog):
     def __init__(self, bot):
@@ -104,6 +112,11 @@ class Music(commands.Cog):
         self._pending_cookie_retry = (
             False  # True when cookies were just updated and queue should retry
         )
+
+        # YouTube Live streaming — RTMP output to YouTube Live events
+        self._yt_streamer = None  # YouTubeLiveStreamer instance (created on ?golive)
+        self._yt_stream_active = False  # True while stream is running
+        self._yt_stream_guild = None  # Guild ID of the streaming guild
 
         # ── Persist voice settings across restarts ──
         self._voice_settings_file = os.path.join(
@@ -1102,6 +1115,15 @@ class Music(commands.Cog):
                 except Exception:
                     pass  # Don't crash trying to report a crash
 
+        # ── YouTube Live: Show waiting card between songs ──
+        if self._yt_stream_active and self._yt_streamer:
+            asyncio.ensure_future(
+                self._yt_streamer.play_waiting(
+                    f"Waiting for next track... | {config.STATION_NAME} Radio"
+                ),
+                loop=self.bot.loop,
+            )
+
         queue = await self.get_queue(guild_id)
 
         # Check if looping is enabled
@@ -2081,6 +2103,16 @@ class Music(commands.Cog):
                     self._on_tts_done, guild_id, e
                 ),
             )
+
+            # ── YouTube Live: Stream TTS audio ──
+            if self._yt_stream_active and self._yt_streamer:
+                display = clean_text if clean_text else text
+                label = "AI Side Host" if is_ai else "DJ"
+                asyncio.ensure_future(
+                    self._yt_streamer.play_tts(tts_path, f"{label}: {display}"),
+                    loop=self.bot.loop,
+                )
+
             display = clean_text if clean_text else text
             logging.info(f"DJ: Speaking in guild {guild_id}: {display[:80]}…")
             if sound_ids:
@@ -2460,6 +2492,13 @@ class Music(commands.Cog):
             )
             self.current_song[guild_id] = data
             self.song_start_time[guild_id] = time.time()
+
+            # ── YouTube Live: Stream the song ──
+            if self._yt_stream_active and self._yt_streamer and data.url:
+                asyncio.ensure_future(
+                    self._yt_streamer.play_song(data.url, data.title or "Unknown"),
+                    loop=self.bot.loop,
+                )
 
             # Record to recently-played history
             self._record_history(guild_id, data)
@@ -3193,6 +3232,154 @@ class BattleView(discord.ui.View):
             f"🅱️ Voted for **{battle['title_b']}**! ({votes_a}–{votes_b})",
             ephemeral=True,
         )
+
+    # ── YouTube Live Streaming Commands ────────────────────────────
+
+    @commands.command(name="golive")
+    @commands.is_owner()
+    async def golive(self, ctx, stream_key: str = ""):
+        """Start streaming to YouTube Live via RTMP.
+
+        Usage:
+          ?golive                    — Use the stream key from .env
+          ?golive xxxx-xxxx-xxxx    — Use a specific stream key
+
+        Get your stream key from YouTube Studio → Go Live → Stream Key.
+        The bot streams audio + a static image card with song titles.
+        """
+        if not YOUTUBE_STREAMER_CLASS:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Not Available",
+                    f"{config.ERROR_EMOJI} YouTube Live streaming module not available. "
+                    "Check that `utils/youtube_stream.py` exists and FFmpeg is installed.",
+                    discord.Color.red(),
+                )
+            )
+
+        if self._yt_stream_active:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Already Live",
+                    f"{config.SUCCESS_EMOJI} YouTube Live stream is already running! "
+                    "Use `?stoplive` to stop it.",
+                    discord.Color.blue(),
+                )
+            )
+
+        if not ctx.voice_client or not ctx.voice_client.is_connected():
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Not in Voice",
+                    f"{config.ERROR_EMOJI} The bot must be in a voice channel to stream. "
+                    "Join a channel and use `?play` first.",
+                    discord.Color.red(),
+                )
+            )
+
+        # Use provided key, or fall back to .env config
+        key = stream_key or getattr(config, "YOUTUBE_STREAM_KEY", "")
+        if not key:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "No Stream Key",
+                    f"{config.ERROR_EMOJI} No stream key provided. Get one from "
+                    "YouTube Studio → Go Live → Stream Key.\n"
+                    "Usage: `?golive your-stream-key-here`",
+                    discord.Color.orange(),
+                )
+            )
+
+        rtmp_url = getattr(
+            config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+        )
+        stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
+
+        self._yt_streamer = YOUTUBE_STREAMER_CLASS(
+            stream_key=key,
+            rtmp_url=rtmp_url,
+            stream_image=stream_image,
+        )
+        self._yt_stream_guild = ctx.guild.id
+
+        await self._yt_streamer.start()
+        self._yt_stream_active = True
+
+        # If a song is currently playing, start streaming it immediately
+        current = self.current_song.get(ctx.guild.id)
+        if current and current.url:
+            await self._yt_streamer.play_song(current.url, current.title or "Unknown")
+
+        key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+        await ctx.send(
+            embed=self.create_embed(
+                "🔴 YouTube Live Started",
+                f"{config.SUCCESS_EMOJI} Streaming to YouTube Live!\n"
+                f"📡 RTMP: `{rtmp_url}`\n"
+                f"🔑 Key: `{key_display}`\n"
+                f"🖼️ Card: `{stream_image or 'logo.png'}`\n\n"
+                "Go to **YouTube Studio → Go Live** to see the stream. "
+                "Use `?stoplive` to stop.",
+                discord.Color.green(),
+            )
+        )
+
+    @commands.command(name="stoplive")
+    @commands.is_owner()
+    async def stoplive(self, ctx):
+        """Stop the YouTube Live stream."""
+        if not self._yt_stream_active or not self._yt_streamer:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "Not Streaming",
+                    "YouTube Live stream is not running. Use `?golive` to start.",
+                    discord.Color.blue(),
+                )
+            )
+
+        await self._yt_streamer.stop()
+        self._yt_stream_active = False
+        self._yt_streamer = None
+        self._yt_stream_guild = None
+
+        await ctx.send(
+            embed=self.create_embed(
+                "YouTube Live Stopped",
+                f"{config.SUCCESS_EMOJI} YouTube Live stream has been stopped.",
+                discord.Color.green(),
+            )
+        )
+
+    @commands.command(name="livestatus")
+    async def livestatus(self, ctx):
+        """Check the YouTube Live stream status."""
+        if self._yt_stream_active and self._yt_streamer:
+            current = self._yt_streamer.current_url
+            status = "🔴 Live" if self._yt_streamer.is_running else "⚠️ Reconnecting"
+            lines = [
+                f"Status: **{status}**",
+                f"Guild: {ctx.guild.name}",
+            ]
+            if current:
+                song = self.current_song.get(ctx.guild.id)
+                lines.append(
+                    f"Now Streaming: **{song.title if song else current[:60]}**"
+                )
+            else:
+                lines.append("Now Streaming: Waiting card (between songs)")
+            await ctx.send(
+                embed=self.create_embed(
+                    "YouTube Live Status", "\n".join(lines), discord.Color.blue()
+                )
+            )
+        else:
+            await ctx.send(
+                embed=self.create_embed(
+                    "YouTube Live",
+                    "Not streaming. Use `?golive` to start.",
+                    discord.Color.dark_grey(),
+                )
+            )
 
 
 async def setup(bot):

@@ -25,6 +25,15 @@ import urllib.parse
 
 import config
 
+# Check if YouTube Live streamer module is available
+YOUTUBE_STREAMER_CLASS_AVAILABLE = False
+try:
+    from utils.youtube_stream import YouTubeLiveStreamer
+
+    YOUTUBE_STREAMER_CLASS_AVAILABLE = True
+except ImportError:
+    pass
+
 from flask import (
     Flask,
     flash,
@@ -2501,3 +2510,139 @@ def api_ytcookies_snippet():
 }})();
 """
     return jsonify({"snippet": snippet.strip(), "bot_url": host})
+
+
+# ── YouTube Live Streaming API ──────────────────────────────────────
+
+
+@app.route("/api/<int:guild_id>/youtube_stream/status")
+def api_youtube_stream_status(guild_id):
+    """Return the current YouTube Live stream status."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"active": False, "error": "Music cog not loaded"})
+
+    active = music._yt_stream_active
+    streamer = music._yt_streamer
+
+    result = {
+        "active": active,
+        "running": streamer.is_running if active and streamer else False,
+        "current_url": streamer.current_url if active and streamer else None,
+        "stream_guild": music._yt_stream_guild,
+        "stream_key_set": bool(
+            getattr(config, "YOUTUBE_STREAM_KEY", "")
+            or getattr(config, "YOUTUBE_STREAM_ENABLED", False)
+        ),
+    }
+
+    # Include current song info if streaming
+    if active and guild_id in music.current_song:
+        song = music.current_song[guild_id]
+        result["song_title"] = song.title if song else None
+
+    return jsonify(result)
+
+
+@app.route("/api/<int:guild_id>/youtube_stream/toggle", methods=["POST"])
+def api_youtube_stream_toggle(guild_id):
+    """Start or stop the YouTube Live stream from Mission Control."""
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not loaded"}), 503
+
+    if not YOUTUBE_STREAMER_CLASS_AVAILABLE:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "YouTube Live module not available (missing youtube_stream.py or ffmpeg)",
+            }
+        ), 503
+
+    data = request.json or {}
+    stream_key = data.get("stream_key", "").strip()
+    action = data.get("action", "toggle")  # "toggle", "start", "stop"
+
+    if music._yt_stream_active:
+        # Stop the stream
+        if action == "start":
+            return jsonify({"ok": False, "error": "Stream is already running"}), 409
+
+        import asyncio
+
+        async def _stop():
+            if music._yt_streamer:
+                await music._yt_streamer.stop()
+            music._yt_stream_active = False
+            music._yt_streamer = None
+            music._yt_stream_guild = None
+            logging.info("YouTube Live: Stream stopped via Mission Control")
+
+        asyncio.ensure_future(_stop(), loop=bot.loop)
+        return jsonify(
+            {"ok": True, "active": False, "message": "🔴 YouTube Live stream stopped"}
+        )
+
+    else:
+        # Start the stream
+        if action == "stop":
+            return jsonify({"ok": False, "error": "Stream is not running"}), 409
+
+        # Check that the bot is in a voice channel in this guild
+        guild = bot.get_guild(guild_id)
+        if not guild or not guild.voice_client:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "Bot is not in a voice channel in this server. Play a song first.",
+                }
+            ), 400
+
+        # Use provided key, or fall back to config
+        key = stream_key or getattr(config, "YOUTUBE_STREAM_KEY", "")
+        if not key:
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": "No stream key provided. Enter your YouTube stream key or set YOUTUBE_STREAM_KEY in .env",
+                }
+            ), 400
+
+        rtmp_url = getattr(
+            config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+        )
+        stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
+
+        import asyncio
+
+        async def _start():
+            from utils.youtube_stream import YouTubeLiveStreamer
+
+            music._yt_streamer = YouTubeLiveStreamer(
+                stream_key=key,
+                rtmp_url=rtmp_url,
+                stream_image=stream_image,
+            )
+            music._yt_stream_guild = guild_id
+            await music._yt_streamer.start()
+            music._yt_stream_active = True
+
+            # If a song is currently playing, start streaming it
+            current = music.current_song.get(guild_id)
+            if current and current.url:
+                await music._yt_streamer.play_song(
+                    current.url, current.title or "Unknown"
+                )
+            logging.info(
+                f"YouTube Live: Stream started via Mission Control for guild {guild_id}"
+            )
+
+        asyncio.ensure_future(_start(), loop=bot.loop)
+        key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+        return jsonify(
+            {
+                "ok": True,
+                "active": True,
+                "message": f"🔴 YouTube Live started! Key: {key_display}",
+            }
+        )

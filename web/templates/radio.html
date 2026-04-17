@@ -123,6 +123,7 @@
     </div>
 
     <!-- ── Battle of the Beats ──────────────────────────────────── -->
+    {% if g.in_discord %}
     <div style="margin-bottom: 20px; padding: 16px; background: linear-gradient(135deg, rgba(233,30,99,0.06) 0%, rgba(156,39,176,0.06) 100%); border: 1px solid rgba(233,30,99,0.25); border-radius: var(--radius-lg);">
         <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
             <span style="font-size: 22px;">⚔️</span>
@@ -166,6 +167,7 @@
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- ── Listeners ───────────────────────────────────────── -->
     {% if g.listeners %}

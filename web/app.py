@@ -414,6 +414,7 @@ def radio():
                     "id": guild_id,
                     "name": guild.name,
                     "member_count": guild.member_count,
+                    "in_discord": in_discord,
                     "in_voice": in_voice,
                     "voice_channel": guild.voice_client.channel.name if in_discord else ("Headless YouTube Stream" if in_voice else None),
                     "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,

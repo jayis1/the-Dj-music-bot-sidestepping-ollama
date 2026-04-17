@@ -260,6 +260,15 @@ class Music(commands.Cog):
         )
         stream_image = getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None
 
+        self.bot.loop.create_task(
+            self.start_headless_stream(guild, key, rtmp_url, stream_image, playlist_url)
+        )
+
+    async def start_headless_stream(self, guild, key, rtmp_url, stream_image, playlist_url=None):
+        """Starts the autonomous PCMBroadcaster-based stream. Can be called on boot or from UI."""
+        if self._yt_stream_active:
+            return
+
         try:
             self._yt_streamer = YOUTUBE_STREAMER_CLASS(
                 stream_key=key,

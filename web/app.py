@@ -2947,37 +2947,16 @@ def api_youtube_stream_toggle(guild_id):
 
         # ── Autonomous mode: no Discord required ──
         elif mode == "autonomous":
-            if not playlist_url:
-                playlist_url = getattr(config, "AUTODJ_DEFAULT_SOURCE", "") or ""
-            if not playlist_url:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": "No playlist URL provided. Enter a YouTube playlist URL or set "
-                        "AUTODJ_DEFAULT_SOURCE in .env",
-                    }
-                ), 400
-
+            playlist_url = getattr(config, "AUTODJ_DEFAULT_SOURCE", "") or ""
+            
             async def _start_autonomous():
-                from utils.youtube_stream import YouTubeLiveStreamer
-
-                music._yt_streamer = YouTubeLiveStreamer(
-                    stream_key=key,
+                guild = bot.guilds[0]
+                await music.start_headless_stream(
+                    guild=guild,
+                    key=key,
                     rtmp_url=rtmp_url,
                     stream_image=stream_image,
-                    stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
-                    station_name=getattr(config, "STATION_NAME", "MBot Radio"),
-                )
-                music._yt_stream_guild = guild_id
-                await music._yt_streamer.start_autonomous(
                     playlist_url=playlist_url,
-                    loop_playlist=loop_playlist,
-                    shuffle=shuffle,
-                )
-                music._yt_stream_active = True
-                logging.info(
-                    f"YouTube Live: AUTONOMOUS stream started via Mission Control "
-                    f"for guild {guild_id} — playlist: {playlist_url[:80]}"
                 )
 
             asyncio.ensure_future(_start_autonomous(), loop=bot.loop)

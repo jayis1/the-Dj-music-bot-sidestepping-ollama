@@ -351,22 +351,22 @@
     <!-- ── Mode Toggle: Mirror vs Autonomous ──────────────────────── -->
     <div style="margin-bottom: 14px;">
         <div style="display: flex; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;">
-            <button id="yt-mode-mirror" onclick="setStreamMode('mirror')" class="yt-mode-btn yt-mode-btn-active"
+            <button id="yt-mode-mirror" onclick="setStreamMode('mirror')" class="yt-mode-btn"
                 style="flex: 1; padding: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s;">
                 🪞 Mirror
             </button>
-            <button id="yt-mode-autonomous" onclick="setStreamMode('autonomous')" class="yt-mode-btn"
+            <button id="yt-mode-autonomous" onclick="setStreamMode('autonomous')" class="yt-mode-btn yt-mode-btn-active"
                 style="flex: 1; padding: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; border-left: 1px solid var(--border); transition: all 0.15s;">
                 🤖 24/7 Autonomous
             </button>
         </div>
         <div id="yt-mode-desc" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; padding: 0 4px;">
-            Mirrors Discord playback — bot must be in a voice channel
+            Standalone 24/7 radio broadcast to YouTube
         </div>
     </div>
 
     <!-- ── Autonomous Config (hidden by default) ──────────────────── -->
-    <div id="yt-autonomous-config" style="display: none; margin-bottom: 14px; padding: 12px;
+    <div id="yt-autonomous-config" style="display: block; margin-bottom: 14px; padding: 12px;
         background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius);">
         <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px;">🤖 Autonomous Mode Settings</div>
         <div style="margin-bottom: 10px;">
@@ -918,7 +918,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // ── YouTube Live Streaming ──────────────────────────────────────
 
 // Stream mode state
-let _ytStreamMode = 'mirror';  // 'mirror' or 'autonomous'
+let _ytStreamMode = 'autonomous';  // 'mirror' or 'autonomous'
 let _ytPollInterval = null;
 
 function setStreamMode(mode) {

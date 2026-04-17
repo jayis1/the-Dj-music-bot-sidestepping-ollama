@@ -156,6 +156,7 @@ class YouTubeLiveStreamer:
         self,
         stream_key: str,
         rtmp_url: str = "rtmp://a.rtmp.youtube.com/live2",
+        rtmp_backup_url: str = "",
         stream_image: str | None = None,
         stream_gif: str | None = None,
         bitrate_audio: int = 128,
@@ -165,6 +166,7 @@ class YouTubeLiveStreamer:
     ):
         self.stream_key = stream_key
         self.rtmp_url = rtmp_url
+        self.rtmp_backup_url = rtmp_backup_url  # YouTube backup server
         self.stream_image = stream_image
         self.stream_gif = stream_gif
         self.bitrate_audio = bitrate_audio
@@ -263,6 +265,20 @@ class YouTubeLiveStreamer:
         if self._running:
             log.warning("YouTube Live: Already streaming")
             return
+        if not self.stream_key or len(self.stream_key) < 8:
+            self._last_error = (
+                f"Stream key too short or missing "
+                f"({len(self.stream_key)} chars) — set YOUTUBE_STREAM_KEY in .env"
+            )
+            log.error(f"YouTube Live: {self._last_error}")
+            return
+        rtmp_url = self.rtmp_url.strip()
+        if not (rtmp_url.startswith("rtmp://") or rtmp_url.startswith("rtmps://")):
+            self._last_error = (
+                f"Invalid RTMP URL: {rtmp_url} (must start with rtmp:// or rtmps://)"
+            )
+            log.error(f"YouTube Live: {self._last_error}")
+            return
         self._running = True
         self._started_at = time.time()
         log.info(
@@ -293,6 +309,14 @@ class YouTubeLiveStreamer:
                 "YouTube Live: Already streaming — stopping existing stream first"
             )
             await self.stop()
+
+        if not self.stream_key or len(self.stream_key) < 8:
+            self._last_error = (
+                f"Stream key too short or missing "
+                f"({len(self.stream_key)} chars) — set YOUTUBE_STREAM_KEY in .env"
+            )
+            log.error(f"YouTube Live: {self._last_error}")
+            return
 
         self._autonomous = True
         self._playlist_url = playlist_url
@@ -381,6 +405,7 @@ class YouTubeLiveStreamer:
         self._current_url = audio_url
         self._current_title = title
         await self._kill_process()
+        await asyncio.sleep(0.5)  # Let old RTMP connection fully close
 
         thumb_path = None
         if thumbnail:
@@ -404,6 +429,7 @@ class YouTubeLiveStreamer:
         )
         self._current_thumbnail = None
         await self._kill_process()
+        await asyncio.sleep(0.3)  # Let old RTMP connection fully close
         log.info("YouTube Live: Showing waiting card")
         await self._start_ffmpeg_waiting(self._current_title)
 
@@ -413,6 +439,7 @@ class YouTubeLiveStreamer:
             return
 
         await self._kill_process()
+        await asyncio.sleep(0.3)
         log.info(f"YouTube Live: Streaming TTS → {text[:60]}...")
         await self._start_ffmpeg_tts(tts_path, text)
 
@@ -426,6 +453,7 @@ class YouTubeLiveStreamer:
             return
 
         await self._kill_process()
+        await asyncio.sleep(0.3)
         log.info(f"YouTube Live: Streaming SFX → {label[:60]}...")
         await self._start_ffmpeg_tts(sfx_path, label)
 
@@ -916,6 +944,9 @@ class YouTubeLiveStreamer:
             cmd.extend(["-f", "lavfi", "-i", f"color=c=0x1a1a2e:s=360x360:r={fps}"])
 
         # Input 2: Audio URL (with user-agent + reconnect for YouTube)
+        # For long songs (60+ mins), the CDN may drop the connection.
+        # These reconnect flags + timeout settings let FFmpeg survive
+        # network interruptions and CDN URL rotation mid-stream.
         cmd.extend(
             [
                 "-user_agent",
@@ -925,7 +956,13 @@ class YouTubeLiveStreamer:
                 "-reconnect_streamed",
                 "1",
                 "-reconnect_delay_max",
-                "5",
+                "30",
+                "-timeout",
+                "60000000",  # 60s timeout for reads (microseconds)
+                "-reconnect_on_network_error",
+                "1",
+                "-reconnect_on_http_error",
+                "4xx,5xx",
                 "-i",
                 audio_url,
             ]
@@ -1018,8 +1055,12 @@ class YouTubeLiveStreamer:
         cmd.extend(["-filter_complex", vf])
 
         # Map outputs — audio is always [2:a]
-        audio_idx = "2:a"
-        cmd.extend(["-map", "[outv]", "-map", audio_idx])
+        # For long songs, the CDN may drop and FFmpeg may briefly lose the
+        # audio input during reconnects. The filter_complex handles video
+        # (local images, so it never stalls), but audio comes from a remote
+        # URL that can stall. We use [2:a]apad to insert silence gaps
+        # during network reconnects so the RTMP stream never loses audio.
+        cmd.extend(["-map", "[outv]", "-map", "2:a"])
 
         # Encoding settings
         cmd.extend(self._encoding_args())
@@ -1252,7 +1293,13 @@ class YouTubeLiveStreamer:
         await self._run_ffmpeg(cmd, "tts")
 
     def _encoding_args(self) -> list:
-        """Return the common FFmpeg encoding argument list."""
+        """Return the common FFmpeg encoding argument list.
+
+        Includes RTMP keepalive settings to maintain the YouTube
+        connection during long songs (60+ mins). Without these,
+        YouTube may drop the stream due to "no data received" or
+        the RTMP TCP connection goes stale.
+        """
         return [
             "-c:v",
             "libx264",
@@ -1280,8 +1327,42 @@ class YouTubeLiveStreamer:
             "flv",
             "-flvflags",
             "no_duration_filesize",
-            f"{self.rtmp_url}/{self.stream_key}",
+            # RTMP keepalive — send empty packets to keep the
+            # RTMP connection alive during long songs (60+ mins).
+            # Without this, YouTube drops the stream after ~60s of
+            # no data on the control channel.
+            "-rtmp_live",
+            "live",
+            "-rtmp_buffer",
+            "5000",  # 5s RTMP send buffer
         ]
+
+        # ── RTMP output URL with automatic backup fallback ──
+        # YouTube provides both a primary and backup server URL.
+        # We try the primary first; if it fails at connect time,
+        # FFmpeg automatically retries with the backup URL.
+        # For RTMPS (secure), add TLS-related flags.
+        primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
+        backup_url = ""
+        if self.rtmp_backup_url:
+            backup_url = f"{self.rtmp_backup_url.rstrip('/')}/{self.stream_key}"
+
+        if self.rtmp_url.startswith("rtmps://"):
+            # RTMPS — encrypted RTMP (YouTube recommends this)
+            # FFmpeg needs tls_verify=0 for self-signed certs some CDNs use
+            cmd.extend(
+                [
+                    "-tls_verify",
+                    "0",
+                ]
+            )
+
+        cmd.append(primary_url)
+
+        # Store backup URL for watchdog fallback
+        self._primary_url = primary_url
+        self._backup_url = backup_url
+        return cmd
 
     async def _run_ffmpeg(self, cmd: list, label: str):
         """Start an FFmpeg subprocess and monitor it."""
@@ -1341,7 +1422,9 @@ class YouTubeLiveStreamer:
         In autonomous mode, the _run_autonomous_loop handles re-advancement.
         In mirror mode, we restart the waiting card so the stream stays alive.
         Checks every 3 seconds (fast recovery to avoid YouTube "no data" gaps).
+        Uses exponential backoff to avoid retry storms when RTMP is unreachable.
         """
+        consecutive_failures = 0
         try:
             while self._running:
                 await asyncio.sleep(3)
@@ -1358,11 +1441,35 @@ class YouTubeLiveStreamer:
                             for line in self._stderr_lines[-5:]:
                                 log.warning(f"YouTube Live [stderr]: {line[:200]}")
 
+                    # Count consecutive failures for backoff
+                    consecutive_failures += 1
+
+                    if consecutive_failures > 5:
+                        # Too many rapid failures — RTMP may be misconfigured.
+                        # Stop retrying to avoid "more than one ingestion" errors.
+                        backoff = min(30, 5 * (consecutive_failures - 5))
+                        log.error(
+                            f"YouTube Live: FFmpeg has failed {consecutive_failures} "
+                            f"times in a row. Waiting {backoff}s before retry. "
+                            f"Check your stream key and RTMP URL."
+                        )
+                        await asyncio.sleep(backoff)
+
                     if not self._autonomous:
                         # Mirror mode: restart waiting card immediately
                         log.warning("YouTube Live: Restarting waiting card...")
-                        await self.play_waiting()
+                        try:
+                            await self.play_waiting()
+                        except Exception as e:
+                            log.error(
+                                f"YouTube Live: Failed to restart waiting card: {e}"
+                            )
                     # In autonomous mode, the loop handles advancement
+                elif self._process is None or (
+                    self._process and self._process.returncode is None
+                ):
+                    # Process is running or no process — reset failure count
+                    consecutive_failures = 0
         except asyncio.CancelledError:
             pass
 

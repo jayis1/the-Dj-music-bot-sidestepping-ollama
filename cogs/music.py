@@ -178,6 +178,11 @@ class Music(commands.Cog):
             self._yt_streamer = YOUTUBE_STREAMER_CLASS(
                 stream_key=key,
                 rtmp_url=rtmp_url,
+                rtmp_backup_url=getattr(
+                    config,
+                    "YOUTUBE_STREAM_BACKUP_URL",
+                    "rtmp://b.rtmp.youtube.com/live2?backup=1",
+                ),
                 stream_image=stream_image,
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
             )
@@ -2123,6 +2128,7 @@ class Music(commands.Cog):
         # ── Pre-generation cache check ──
         # If a TTS file for this transition was pre-generated while the
         # previous song was playing, use it instantly (zero latency!).
+        # Files live permanently in assets/part2/ and are NOT deleted.
         pregen_entry = None
         if not is_ai:
             try:
@@ -2133,7 +2139,7 @@ class Music(commands.Cog):
                     prev_title = getattr(current, "title", "")
                 # The "upcoming" title is whatever _dj_speak is speaking about
                 # which is typically contained in the text passed in
-                pregen_entry = pregen.consume(
+                pregen_entry = pregen.lookup(
                     guild_id,
                     text[:100],  # Use first 100 chars of text as a key hint
                     prev_title=prev_title,
@@ -2449,100 +2455,17 @@ class Music(commands.Cog):
             logging.info(
                 f"AI Side Host: awaiting line generation for guild {guild_id}..."
             )
-
-            # ── Check pre-generation cache for AI side host line ──
-            ai_tts_path = None
-            ai_line = None
-            pregen = None
+            # AI side host is always generated LIVE (not pre-generated).
+            # Only the main DJ (MOSS-TTS) lines are pre-generated.
             try:
-                pregen = self._get_pregenerator()
-            except Exception:
-                pass
-
-            if pregen:
-                # Look for a cached entry by song title
-                prev = self._last_dj_line.get(guild_id, "")
-                entry = pregen.get(
-                    guild_id, getattr(data, "title", ""), prev_title=prev
-                )
-                if entry and entry.ai_tts_path and os.path.isfile(entry.ai_tts_path):
-                    ai_line = entry.ai_text
-                    ai_tts_path = entry.ai_tts_path
-                    # Consume it so it's not used twice
-                    pregen.consume(
-                        guild_id, getattr(data, "title", ""), prev_title=prev
-                    )
-                    logging.info(
-                        f"AI Side Host: Using pre-generated line for guild {guild_id}"
-                    )
-
-            if not ai_line:
-                try:
-                    ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
-                except Exception as e:
-                    logging.error(f"AI Side Host: error generating line: {e}")
-                    ai_line = None
-
+                ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
+            except Exception as e:
+                logging.error(f"AI Side Host: error generating line: {e}")
+                ai_line = None
             if ai_line:
                 logging.info(
                     f"AI Side Host: got line for guild {guild_id}, speaking..."
                 )
-                # If we have a pre-generated TTS file, pass it via a
-                # special attribute so _dj_speak can use it directly
-                if ai_tts_path and os.path.isfile(ai_tts_path):
-                    # Play the pre-generated AI TTS file directly
-                    voice_client = guild.voice_client
-                    try:
-                        if voice_client.is_playing():
-                            voice_client.stop()
-                            await asyncio.sleep(0.3)
-                        from utils.dj import extract_sound_tags
-
-                        ai_clean, ai_sfx = extract_sound_tags(ai_line)
-                        tts_source = discord.FFmpegPCMAudio(
-                            ai_tts_path,
-                            before_options="-nostdin",
-                            options="-vn -t 30",
-                        )
-                        tts_player = discord.PCMVolumeTransformer(tts_source)
-                        tts_player.volume = self.current_volume.get(guild_id, 1.0)
-                        loop = self.bot.loop
-                        voice_client.play(
-                            tts_player,
-                            after=lambda e: loop.call_soon_threadsafe(
-                                self._on_tts_done, guild_id, e
-                            ),
-                        )
-
-                        # ── YouTube Live: Stream AI TTS audio ──
-                        if self._yt_stream_active and self._yt_streamer:
-                            asyncio.ensure_future(
-                                self._yt_streamer.play_tts(
-                                    ai_tts_path,
-                                    f"AI Side Host: {ai_clean[:60]}",
-                                ),
-                                loop=self.bot.loop,
-                            )
-
-                        self._current_tts_path[guild_id] = ai_tts_path
-                        self.dj_playing_tts[guild_id] = True
-                        self._dj_pending_sounds[guild_id] = ai_sfx
-                        self._last_dj_line[guild_id] = ai_clean
-
-                        # Store pending data for _on_tts_done
-                        self._dj_pending[guild_id] = (ctx, data, channel_id)
-                        self._ai_dj_pending_line[guild_id] = ai_line
-                        logging.info(
-                            f"AI Side Host: Pre-gen TTS playing in guild {guild_id}"
-                        )
-                        return
-                    except Exception as e:
-                        logging.warning(
-                            f"AI Side Host: Pre-gen TTS playback failed: {e}, "
-                            "falling back to live generation"
-                        )
-
-                # No pregen — generate and play via _dj_speak as usual
                 voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
                 spoke = await self._dj_speak(
                     guild.voice_client, ai_line, guild_id, voice=voice, is_ai=True
@@ -3162,6 +3085,11 @@ class Music(commands.Cog):
             self._yt_streamer = YOUTUBE_STREAMER_CLASS(
                 stream_key=key,
                 rtmp_url=rtmp_url,
+                rtmp_backup_url=getattr(
+                    config,
+                    "YOUTUBE_STREAM_BACKUP_URL",
+                    "rtmp://b.rtmp.youtube.com/live2?backup=1",
+                ),
                 stream_image=getattr(config, "YOUTUBE_STREAM_IMAGE", "") or None,
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
                 station_name=getattr(config, "STATION_NAME", "MBot Radio"),

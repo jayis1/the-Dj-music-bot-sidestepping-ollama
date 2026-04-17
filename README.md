@@ -615,8 +615,8 @@ YouTube Live control panel (redesigned):
 
 ⚡ Zero-Latency Pre-Generation System (utils/pregen.py)
 - Implemented background lookahead cache that hooks into `_start_song_playback` via `_trigger_pregen()`
-- While a song plays, the bot spins up a `DjPregenerator` to asynchronously traverse the next 5 queue items
-- LLM completions (`_try_ai_side_host`), TTS generations (Moss/EdgeTTS), and Sound Effect string bindings are aggressively computed and written to `assets/part2/` locally.
-- When `_dj_speak` or `_play_song_after_dj` are triggered natively, they check the cache. 
-- Cache HIT yields an instant `discord.FFmpegPCMAudio` pointer fetch, literally reducing LLM and TTS internet API latency from ~10000ms down to zero overhead.
+- While a song plays, the bot spins up a `DjPregenerator` to asynchronously traverse the upcoming queue
+- **MOSS-TTS Isolation:** Only the deterministic main DJ intros/outros are pre-generated. The AI Side Host retains full dynamic spontaneity via live invocation.
+- **Permanent Caching:** Pre-generated TTS audio files are now written permanently to `assets/part2/` with sequential numbering to establish a solid fault-tolerant disk backlog of offline transitions.
+- When `_dj_speak` is triggered natively, it fetches the pre-rendered `discord.FFmpegPCMAudio` pointer, eliminating TTS generation latency completely.
 -->

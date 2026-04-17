@@ -2133,77 +2133,7 @@ def api_overlay_state():
     """
     music = _get_music_cog()
     if not music or not bot or not bot.guilds:
-    return jsonify({"playing": False, "title": None})
-
-
-# ── yt-dlp Cookie Auth API ──────────────────────────────────────────────
-
-@app.route("/api/ytcookies/status")
-def api_ytcookies_status():
-    """Return current yt-dlp cookie authentication status."""
-    import os
-
-    browser = getattr(config, "YTDDL_COOKIES_FROM_BROWSER", "").strip()
-    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
-
-    source = "none"
-    if browser:
-        source = "browser"
-    elif cookiefile and os.path.exists(cookiefile):
-        source = "file"
-
-    return jsonify({
-        "source": source,
-        "browser": browser if browser else None,
-        "cookiefile": cookiefile if cookiefile else None,
-        "cookiefile_exists": os.path.exists(cookiefile) if cookiefile else False,
-    })
-
-
-@app.route("/api/ytcookies/set", methods=["POST"])
-def api_ytcookies_set():
-    """Set yt-dlp cookie source at runtime (no restart needed)."""
-    data = request.json or {}
-    source = data.get("source", "").strip().lower()
-
-    if source.startswith("browser:"):
-        browser_name = source.split(":", 1)[1].strip().lower()
-        valid_browsers = ["chrome", "firefox", "brave", "edge", "opera", "vivaldi", "chromium"]
-        if browser_name not in valid_browsers:
-            return jsonify({"ok": False, "error": f"Unknown browser '{browser_name}'"}), 400
-
-        config.YTDDL_COOKIES_FROM_BROWSER = browser_name
-        from cogs.admin import _reload_ytdl_cookies
-        _reload_ytdl_cookies()
-        return jsonify({
-            "ok": True,
-            "message": f"yt-dlp will now use cookies from {browser_name}",
-        })
-
-    elif source == "file":
-        cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
-        import os
-        if not os.path.exists(cookiefile):
-            return jsonify({
-                "ok": False,
-                "error": f"Cookie file '{cookiefile}' not found. Export YouTube cookies from your browser and save as youtube_cookie.txt",
-            }), 400
-
-        config.YTDDL_COOKIES_FROM_BROWSER = ""  # clear browser priority
-        from cogs.admin import _reload_ytdl_cookies
-        _reload_ytdl_cookies()
-        return jsonify({"ok": True, "message": f"yt-dlp will now use cookie file '{cookiefile}'"})
-
-    elif source == "clear":
-        config.YTDDL_COOKIES_FROM_BROWSER = ""
-        from cogs import youtube
-        for key in ("cookiefile", "cookiesfrombrowser"):
-            youtube.YTDL_FORMAT_OPTIONS.pop(key, None)
-            youtube.YTDL_PLAYLIST_FLAT_OPTIONS.pop(key, None)
-        return jsonify({"ok": True, "message": "Cookie settings cleared"})
-
-    else:
-        return jsonify({"ok": False, "error": "Invalid source. Use 'browser:chrome', 'file', or 'clear'"}), 400
+        return jsonify({"playing": False, "title": None})
 
     # Find the first guild with active playback
     for guild in bot.guilds:
@@ -2249,3 +2179,101 @@ def api_ytcookies_set():
         )
 
     return jsonify({"playing": False, "title": None})
+
+
+# ── yt-dlp Cookie Auth API ──────────────────────────────────────────────
+
+
+@app.route("/api/ytcookies/status")
+def api_ytcookies_status():
+    """Return current yt-dlp cookie authentication status."""
+    import os
+
+    browser = getattr(config, "YTDDL_COOKIES_FROM_BROWSER", "").strip()
+    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+
+    source = "none"
+    if browser:
+        source = "browser"
+    elif cookiefile and os.path.exists(cookiefile):
+        source = "file"
+
+    return jsonify(
+        {
+            "source": source,
+            "browser": browser if browser else None,
+            "cookiefile": cookiefile if cookiefile else None,
+            "cookiefile_exists": os.path.exists(cookiefile) if cookiefile else False,
+        }
+    )
+
+
+@app.route("/api/ytcookies/set", methods=["POST"])
+def api_ytcookies_set():
+    """Set yt-dlp cookie source at runtime (no restart needed)."""
+    data = request.json or {}
+    source = data.get("source", "").strip().lower()
+
+    if source.startswith("browser:"):
+        browser_name = source.split(":", 1)[1].strip().lower()
+        valid_browsers = [
+            "chrome",
+            "firefox",
+            "brave",
+            "edge",
+            "opera",
+            "vivaldi",
+            "chromium",
+        ]
+        if browser_name not in valid_browsers:
+            return jsonify(
+                {"ok": False, "error": f"Unknown browser '{browser_name}'"}
+            ), 400
+
+        config.YTDDL_COOKIES_FROM_BROWSER = browser_name
+        from cogs.admin import _reload_ytdl_cookies
+
+        _reload_ytdl_cookies()
+        return jsonify(
+            {
+                "ok": True,
+                "message": f"yt-dlp will now use cookies from {browser_name}",
+            }
+        )
+
+    elif source == "file":
+        cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+        import os
+
+        if not os.path.exists(cookiefile):
+            return jsonify(
+                {
+                    "ok": False,
+                    "error": f"Cookie file '{cookiefile}' not found. Export YouTube cookies from your browser and save as youtube_cookie.txt",
+                }
+            ), 400
+
+        config.YTDDL_COOKIES_FROM_BROWSER = ""  # clear browser priority
+        from cogs.admin import _reload_ytdl_cookies
+
+        _reload_ytdl_cookies()
+        return jsonify(
+            {"ok": True, "message": f"yt-dlp will now use cookie file '{cookiefile}'"}
+        )
+
+    elif source == "clear":
+        config.YTDDL_COOKIES_FROM_BROWSER = ""
+        from cogs import youtube
+
+        for key in ("cookiefile", "cookiesfrombrowser"):
+            youtube.YTDL_FORMAT_OPTIONS.pop(key, None)
+            youtube.YTDL_PLAYLIST_FLAT_OPTIONS.pop(key, None)
+        return jsonify({"ok": True, "message": "Cookie settings cleared"})
+
+    else:
+        return jsonify(
+            {
+                "ok": False,
+                "error": "Invalid source. Use 'browser:chrome', 'file', or 'clear'",
+            }
+        ), 400

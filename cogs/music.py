@@ -1860,8 +1860,8 @@ class Music(commands.Cog):
             player_options = FFMPEG_OPTIONS.copy()
             if new_speed != 1.0:
                 atempo_filters = self._build_atempo_chain(new_speed)
-                player_options["options"] += f' -filter:a "{"+".join(atempo_filters)}"'
-
+                player_options["options"] += f' -filter:a "{",".join(atempo_filters)}"'
+    
             # Create and play the new player with the updated speed
             source = discord.FFmpegPCMAudio(current_song_data.get("url"), **player_options)
             player = discord.PCMVolumeTransformer(source)
@@ -2840,7 +2840,7 @@ class Music(commands.Cog):
                 audio_filters.append(f"afade=t=in:st=0:d={crossfade}")
 
             if audio_filters:
-                player_options["options"] += f' -filter:a "{"+".join(audio_filters)}"'
+                player_options["options"] += f' -filter:a "{",".join(audio_filters)}"'
 
             source = discord.FFmpegPCMAudio(data.url, **player_options)
             player = discord.PCMVolumeTransformer(source)

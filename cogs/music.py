@@ -2225,7 +2225,8 @@ class Music(commands.Cog):
 
         tts_path = self._current_tts_path.get(guild_id)
         if tts_path:
-            cleanup_tts_file(tts_path)
+            # Delay cleanup so YouTube Live FFmpeg stream has time to read it
+            self.bot.loop.call_later(15, cleanup_tts_file, tts_path)
             self._current_tts_path[guild_id] = None
 
         if error:

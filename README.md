@@ -578,6 +578,7 @@ What was done — YouTube Radio Broadcasting Master Pipeline
 - Developed PCMBroadcaster, a low-level UDP PCM matrix injector.
 - Functions as the unified Audio buffer matrix mixing TTS/SFX/Song bytes smoothly without causing socket timeouts for YouTube.
 - Headless autonomous `_autonomous_clock` automatically feeds `\x00` frames to UDP when silent to keep the Master connection brilliantly stable!
+- Fixed an issue where `_trigger_after` improperly passed `guild_id` to standard `discord.py` after callbacks, causing a `TypeError` when resolving AI Side Host TTS lambdas.
 
 🎵 Discord: cogs/music.py
 - Replaced `.play()` natively with `_dispatch_audio_play()` hook which natively checks if the bot is in a YouTube Broadcast state, dynamically wrapping audio data into `PCMBroadcaster`.

@@ -60,7 +60,7 @@ class PCMBroadcaster(discord.AudioSource):
         
         if cb and bot:
             try:
-                bot.loop.call_soon_threadsafe(cb, guild_id, error)
+                bot.loop.call_soon_threadsafe(cb, error)
             except Exception as e:
                 log.error(f"Broadcaster: Failed to trigger after-callback: {e}")
             

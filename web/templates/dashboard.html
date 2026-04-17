@@ -66,14 +66,19 @@
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'pause')" title="Play / Pause">{% if g.playing %}⏸️ Pause{% elif g.paused %}▶️ Resume{% else %}▶️ Play{% endif %}</button>
         <button class="btn" onclick="apiAction(this, '{{ g.id }}', 'skip')" title="Skip">⏭️ Skip</button>
         <button class="btn btn-danger" onclick="apiAction(this, '{{ g.id }}', 'stop')" title="Stop">⏹️ Stop</button>
-        <button class="btn btn-danger" onclick="leaveVoice(this, '{{ g.id }}')" title="Leave Voice Channel">🔌 Leave</button>
+        {% if g.in_discord %}
+        <button class="btn btn-danger" onclick="leaveVoice(this, '{{ g.id }}')" title="Leave Discord Voice Channel">🔌 Leave Discord</button>
+        {% else %}
+        <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Connect Discord as a Listener">🔌 Join Discord</button>
+        {% endif %}
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
         {% if g.ai_dj_enabled %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host" style="border-color: var(--purple); color: var(--purple);">🃏 AI On</button>{% else %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host">🃏 AI Off</button>{% endif %}
     </div>
     {% else %}
     <div class="controls controls-row" style="margin-bottom: 16px;">
-        <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Join Voice Channel">🔌 Join</button>
+        <button class="btn btn-primary" style="background: var(--danger); border-color: var(--danger);" onclick="toggleYoutubeLive(this, '{{ g.id }}')" title="Go Live on YouTube (Headless Mode)">🔴 Go Live (Radio)</button>
+        <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Join Voice Channel">🔌 Join Discord</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>
         {% if g.ai_dj_enabled %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host" style="border-color: var(--purple); color: var(--purple);">🃏 AI On</button>{% else %}<button class="btn" onclick="toggleAiDj(this, '{{ g.id }}')" title="Toggle AI Side Host">🃏 AI Off</button>{% endif %}
@@ -800,5 +805,32 @@ function toggleLyrics(guildId) {
     // Expose softRefresh globally so other code can trigger it
     window.softRefresh = softRefresh;
 })();
+
+// ── YouTube Live Integration ─────────────────────────────────────────
+async function toggleYoutubeLive(btn, guildId) {
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = '⏳';
+    try {
+        const res = await fetch(`/api/${guildId}/youtube_stream/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action: 'start', mode: 'autonomous', stream_key: ''}) 
+        });
+        const data = await res.json();
+        if (data.ok) {
+            showToast('🔴 YouTube Live starting...', 'success');
+            setTimeout(() => location.reload(), 1500);
+        } else {
+            showToast(data.error || 'Failed to toggle YouTube Live', 'error');
+            btn.disabled = false;
+            btn.textContent = origText;
+        }
+    } catch (e) {
+        showToast('Request failed: ' + e.message, 'error');
+        btn.disabled = false;
+        btn.textContent = origText;
+    }
+}
 </script>
 {% endblock %}

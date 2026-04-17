@@ -199,6 +199,10 @@ YOUTUBE_STREAM_KEY = os.environ.get("YOUTUBE_STREAM_KEY", "")
 YOUTUBE_STREAM_URL = os.environ.get(
     "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
 )
+YOUTUBE_STREAM_BACKUP_URL = os.environ.get(
+    "YOUTUBE_STREAM_BACKUP_URL",
+    "rtmp://b.rtmp.youtube.com/live2?backup=1",
+)
 YOUTUBE_STREAM_IMAGE = os.environ.get(
     "YOUTUBE_STREAM_IMAGE", ""
 )  # Path to stream card image

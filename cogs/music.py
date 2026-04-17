@@ -1924,17 +1924,23 @@ class Music(commands.Cog):
         if is_ai:
             tts_engine = "edge-tts"
             # The AI side host needs a distinct MALE voice in edge-tts.
-            # Config voice (en_news_male) is a MOSS name — map it to an edge-tts equivalent.
+            # Config voice (en_news_male) is a MOSS name — use edge-tts equivalent instead.
             AI_SIDE_HOST_EDGE_VOICE = (
                 "en-US-GuyNeural"  # Deep male voice, distinct from DJ
             )
             voice = AI_SIDE_HOST_EDGE_VOICE
             logging.info(
-                f"AI Side Host: Using edge-tts with voice '{voice}' "
-                f"(AI host uses different TTS engine and voice from main DJ)"
+                f"AI Side Host: Speaking in guild {guild_id} with voice '{voice}' "
+                f"(source=AI Side Host, engine=edge-tts)"
             )
         else:
             tts_engine = TTS_MODE  # Use configured engine (MOSS → edge-tts fallback)
+            logging.info(
+                f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
+                f"(source=DJ, engine={tts_engine}, "
+                f"guild_dj_voice={self.dj_voice.get(guild_id, '<unset>')}, "
+                f"config_default={config.DJ_VOICE})"
+            )
 
         logging.info(
             f"DJ: Speaking in guild {guild_id} with voice '{voice}' "

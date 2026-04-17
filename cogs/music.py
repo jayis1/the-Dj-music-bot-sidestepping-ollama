@@ -307,6 +307,21 @@ class Music(commands.Cog):
             # And then explicitly start playback since we're the first track
             async def _fill_and_play():
                 await self._autodj_fill(ctx)
+                
+                # Eagerly start pregeneration of DJ assets immediately to cover 
+                # MOSS-TTS server cold-start timeouts and have lines ready early.
+                try:
+                    queue = self.song_queues.get(guild.id)
+                    if queue and not queue.empty():
+                        pregen = self._get_pregenerator()
+                        # Pass empty current_title since this is the very start of the queue
+                        asyncio.ensure_future(
+                            pregen.pregenerate_upcoming(guild.id, queue, ""),
+                            loop=self.bot.loop
+                        )
+                except Exception as e:
+                    logging.debug(f"Pregen: Failed eager startup pregen: {e}")
+                    
                 self.bot.loop.call_soon_threadsafe(self.play_next, ctx)
                 
             self.bot.loop.create_task(_fill_and_play())

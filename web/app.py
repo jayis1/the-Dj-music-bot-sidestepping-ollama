@@ -94,6 +94,7 @@ if getattr(config, "REVERSE_PROXY", False):
         x_for=proxy_count,  # Trust X-Forwarded-For
         x_proto=proxy_count,  # Trust X-Forwarded-Proto (HTTP → HTTPS)
         x_host=proxy_count,  # Trust X-Forwarded-Host (correct hostname)
+        x_port=proxy_count,  # Trust X-Forwarded-Port
         x_prefix=proxy_count,  # Trust X-Forwarded-Prefix (subpath support)
     )
     logging.info(
@@ -295,10 +296,10 @@ def dashboard():
                     "voice_channel": guild.voice_client.channel.name if in_discord else None,
                     "playing": getattr(vc, 'is_playing', lambda: False)() if in_voice else False,
                     "paused": getattr(vc, 'is_paused', lambda: False)() if in_voice else False,
-                    "current_song": current.title if current else None,
-                    "current_song_url": current.webpage_url if current else None,
-                    "current_thumbnail": current.thumbnail if current else None,
-                    "current_duration": current.duration if current else None,
+                    "current_song": current.get("title") if isinstance(current, dict) else getattr(current, "title", None) if current else None,
+                    "current_song_url": current.get("webpage_url") if isinstance(current, dict) else getattr(current, "webpage_url", None) if current else None,
+                    "current_thumbnail": current.get("thumbnail") if isinstance(current, dict) else getattr(current, "thumbnail", None) if current else None,
+                    "current_duration": current.get("duration") if isinstance(current, dict) else getattr(current, "duration", None) if current else None,
                     "current_elapsed": (
                         int(time.time() - music.song_start_time[guild_id])
                         if music
@@ -308,14 +309,14 @@ def dashboard():
                     ),
                     "queue_size": queue_size,
                     "queue_duration": sum(
-                        getattr(item, "duration", 0) or 0 for item in queue_items
+                        (item.get("duration", 0) if isinstance(item, dict) else getattr(item, "duration", 0)) or 0 for item in queue_items
                     ),
                     "queue_items": [
                         {
-                            "title": item.title,
-                            "url": getattr(item, "webpage_url", None),
-                            "thumbnail": getattr(item, "thumbnail", None),
-                            "duration": getattr(item, "duration", None),
+                            "title": item.get("title") if isinstance(item, dict) else getattr(item, "title", None),
+                            "url": item.get("webpage_url") if isinstance(item, dict) else getattr(item, "webpage_url", None),
+                            "thumbnail": item.get("thumbnail") if isinstance(item, dict) else getattr(item, "thumbnail", None),
+                            "duration": item.get("duration") if isinstance(item, dict) else getattr(item, "duration", None),
                         }
                         for item in queue_items
                     ],

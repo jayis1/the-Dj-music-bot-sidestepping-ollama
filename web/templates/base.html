@@ -4,13 +4,17 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Mission Control{% endblock %} — {{ bot_name }}</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='logo.jpg') }}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <div class="layout">
         <nav class="sidebar">
             <div class="sidebar-brand">
-                <h1><span class="icon">🎵</span> {{ bot_name }}</h1>
+                <img src="{{ url_for('static', filename='logo.jpg') }}" alt="{{ bot_name }}" style="width: 36px; height: 36px; border-radius: 8px; margin-bottom: 4px;">
+                <h1>{{ bot_name }}</h1>
                 <div class="subtitle">Mission Control</div>
             </div>
             <div class="sidebar-nav">
@@ -34,6 +38,9 @@
                 </a>
                 <a href="{{ url_for('settings_page') }}" class="nav-item {% if request.endpoint == 'settings_page' %}active{% endif %}">
                     <span class="icon">⚙️</span> Settings
+                </a>
+                <a href="{{ url_for('overlay_page') }}" class="nav-item {% if request.endpoint == 'overlay_page' %}active{% endif %}" target="_blank">
+                    <span class="icon">📺</span> OBS Overlay
                 </a>
             </div>
             {% if session.get('authenticated') %}

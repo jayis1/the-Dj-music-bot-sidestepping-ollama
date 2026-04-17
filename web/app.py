@@ -2091,3 +2091,89 @@ def _get_builtin_lines(category: str) -> list:
         "callouts": CALLOUTS,
     }
     return list(mapping.get(category, []))
+
+
+# ── OBS Stream Overlay ─────────────────────────────────────────────
+
+
+@app.route("/overlay")
+def overlay_page():
+    """OBS Browser Source overlay — shows now-playing, DJ status, and animations.
+
+    Add this URL as a Browser Source in OBS:
+      http://localhost:8080/overlay
+    Set width=600, height=180, and check "Shutdown source when not visible".
+    """
+    return render_template("overlay.html")
+
+
+@app.route("/api/overlay")
+def api_overlay_state():
+    """Real-time JSON state for the OBS overlay.
+
+    Returns the first active guild's now-playing data. If the bot is in
+    multiple guilds with active playback, returns the first one found.
+
+    Response:
+    {
+      "playing": true,
+      "title": "Song Title",
+      "thumbnail": "https://...",
+      "duration": 240,
+      "elapsed": 45,
+      "dj_speaking": false,
+      "dj_enabled": true,
+      "ai_speaking": false,
+      "ai_enabled": true,
+      "station_name": "MBot",
+      "source": "DJ" | "AI Side Host" | null
+    }
+    """
+    music = _get_music_cog()
+    if not music or not bot or not bot.guilds:
+        return jsonify({"playing": False, "title": None})
+
+    # Find the first guild with active playback
+    for guild in bot.guilds:
+        gid = guild.id
+        voice = guild.voice_client
+        if not voice:
+            continue
+
+        current = music.current_song.get(gid)
+        is_playing = voice.is_playing() if voice else False
+        is_paused = voice.is_paused() if voice else False
+        dj_speaking = music.dj_playing_tts.get(gid, False)
+
+        # Calculate elapsed time
+        elapsed = 0
+        duration = current.duration if current else None
+        if current and gid in music.song_start_time and (is_playing or is_paused):
+            elapsed = int(time.time() - music.song_start_time[gid])
+
+        # Determine who's speaking
+        source = None
+        if dj_speaking:
+            source = "AI Side Host" if music._ai_dj_pending_line.get(gid) else "DJ"
+
+        # Get AI side host speaking state
+        ai_speaking = bool(music._ai_dj_pending_line.get(gid)) and dj_speaking
+
+        return jsonify(
+            {
+                "playing": is_playing or is_paused,
+                "paused": is_paused,
+                "title": current.title if current else None,
+                "thumbnail": current.thumbnail if current else None,
+                "duration": duration,
+                "elapsed": elapsed,
+                "dj_speaking": dj_speaking and not ai_speaking,
+                "ai_speaking": ai_speaking,
+                "dj_enabled": music.dj_enabled.get(gid, False),
+                "ai_enabled": music.ai_dj_enabled.get(gid, False),
+                "station_name": getattr(config, "STATION_NAME", "MBot"),
+                "source": source,
+            }
+        )
+
+    return jsonify({"playing": False, "title": None})

@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBS Overlay — {{ bot_name }}</title>
+<style>
+/* ── Reset & base ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    background: transparent;
+    font-family: 'Segoe UI', 'Inter', -apple-system, sans-serif;
+    color: #fff;
+    overflow: hidden;
+    width: 600px;
+    height: 180px;
+}
+
+/* ── Main container ── */
+.overlay {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    transition: opacity 0.4s ease, transform 0.4s ease;
+    opacity: 1;
+    transform: translateY(0);
+}
+.overlay.hidden {
+    opacity: 0;
+    transform: translateY(10px);
+}
+
+/* ── Album art ── */
+.art-container {
+    position: relative;
+    flex-shrink: 0;
+    width: 100px;
+    height: 100px;
+}
+.art {
+    width: 100px;
+    height: 100px;
+    border-radius: 12px;
+    object-fit: cover;
+    background: rgba(255,255,255,0.05);
+}
+.art-placeholder {
+    width: 100px;
+    height: 100px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(59,130,246,0.3));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 40px;
+}
+.art-glow {
+    position: absolute;
+    inset: -4px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgba(139,92,246,0.2), rgba(59,130,246,0.2));
+    filter: blur(8px);
+    z-index: -1;
+    animation: glowPulse 3s ease-in-out infinite;
+}
+@keyframes glowPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.8; }
+}
+
+/* ── Song info ── */
+.info {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.station {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: rgba(168,85,247,0.9);
+}
+.title {
+    font-size: 18px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
+}
+
+/* ── Progress bar ── */
+.progress-container {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.progress-bar {
+    flex: 1;
+    height: 4px;
+    background: rgba(255,255,255,0.12);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #8b5cf6, #3b82f6);
+    border-radius: 2px;
+    transition: width 0.5s linear;
+    width: 0%;
+}
+.time {
+    font-size: 10px;
+    color: rgba(255,255,255,0.5);
+    font-variant-numeric: tabular-nums;
+    min-width: 30px;
+}
+
+/* ── DJ/AI speaking indicator ── */
+.speaking-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 24px;
+    overflow: hidden;
+    transition: opacity 0.3s ease, max-height 0.3s ease;
+}
+.speaking-bar.hidden {
+    opacity: 0;
+    max-height: 0;
+}
+.speaking-bar.visible {
+    opacity: 1;
+    max-height: 30px;
+}
+.speaking-label {
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+.speaking-label.dj { color: #22c55e; }
+.speaking-label.ai { color: #a855f7; }
+
+/* ── Equalizer animation ── */
+.equalizer {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 16px;
+}
+.eq-bar {
+    width: 3px;
+    border-radius: 2px;
+    animation: eqBounce 0.4s ease-in-out infinite alternate;
+}
+.eq-bar:nth-child(1) { height: 6px; animation-delay: 0s; background: #8b5cf6; }
+.eq-bar:nth-child(2) { height: 12px; animation-delay: 0.1s; background: #a855f7; }
+.eq-bar:nth-child(3) { height: 8px; animation-delay: 0.2s; background: #c084fc; }
+.eq-bar:nth-child(4) { height: 14px; animation-delay: 0.15s; background: #8b5cf6; }
+.eq-bar:nth-child(5) { height: 10px; animation-delay: 0.05s; background: #a855f7; }
+
+@keyframes eqBounce {
+    0% { transform: scaleY(0.3); }
+    100% { transform: scaleY(1); }
+}
+.equalizer.idle .eq-bar {
+    animation-play-state: paused;
+    transform: scaleY(0.2);
+}
+
+/* ── Paused state ── */
+.paused-badge {
+    display: inline-block;
+    font-size: 9px;
+    background: rgba(234,179,8,0.2);
+    color: #eab308;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 8px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+</style>
+</head>
+<body>
+
+<div class="overlay hidden" id="overlay">
+    <!-- Album art -->
+    <div class="art-container">
+        <div class="art-glow" id="glow"></div>
+        <img class="art" id="art" src="" alt="" style="display:none;">
+        <div class="art-placeholder" id="artPlaceholder">🎵</div>
+    </div>
+
+    <!-- Song info -->
+    <div class="info">
+        <div class="station" id="station">LOADING</div>
+        <div class="title" id="title">Waiting for playback…</div>
+
+        <!-- Progress -->
+        <div class="progress-container">
+            <div class="time" id="elapsed">0:00</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="time" id="duration">0:00</div>
+        </div>
+
+        <!-- DJ / AI speaking indicator -->
+        <div class="speaking-bar hidden" id="speakingBar">
+            <div class="equalizer idle" id="equalizer">
+                <div class="eq-bar"></div>
+                <div class="eq-bar"></div>
+                <div class="eq-bar"></div>
+                <div class="eq-bar"></div>
+                <div class="eq-bar"></div>
+            </div>
+            <span class="speaking-label dj" id="speakingLabel">🎙️ DJ Speaking</span>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── State ──
+let prevState = { playing: false, title: null, dj_speaking: false, ai_speaking: false };
+let pollInterval = 1500; // ms between polls
+let titleScrollOffset = 0;
+
+// ── Elements ──
+const overlay = document.getElementById('overlay');
+const art = document.getElementById('art');
+const artPlaceholder = document.getElementById('artPlaceholder');
+const glow = document.getElementById('glow');
+const station = document.getElementById('station');
+const title = document.getElementById('title');
+const elapsedEl = document.getElementById('elapsed');
+const durationEl = document.getElementById('duration');
+const progressFill = document.getElementById('progressFill');
+const speakingBar = document.getElementById('speakingBar');
+const equalizer = document.getElementById('equalizer');
+const speakingLabel = document.getElementById('speakingLabel');
+
+// ── Format time ──
+function fmt(sec) {
+    if (!sec || sec <= 0) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// ── Update loop ──
+async function pollState() {
+    try {
+        const res = await fetch('/api/overlay');
+        const data = await res.json();
+        updateOverlay(data);
+    } catch (e) {
+        // Silently retry
+    }
+    setTimeout(pollState, pollInterval);
+}
+
+function updateOverlay(data) {
+    const hasSong = data.playing && data.title;
+
+    // Show/hide overlay with transition
+    if (hasSong || data.dj_speaking || data.ai_speaking) {
+        overlay.classList.remove('hidden');
+    } else if (!data.playing && !data.dj_speaking && !data.ai_speaking) {
+        overlay.classList.add('hidden');
+        return;
+    }
+
+    // Station name
+    station.textContent = data.station_name || 'MBOT RADIO';
+
+    // Title
+    if (data.title && data.title !== prevState.title) {
+        title.textContent = data.title;
+    }
+    if (!data.title) {
+        title.textContent = 'Waiting for playback…';
+    }
+
+    // Paused badge
+    let existingBadge = title.querySelector('.paused-badge');
+    if (data.paused && !existingBadge) {
+        const badge = document.createElement('span');
+        badge.className = 'paused-badge';
+        badge.textContent = 'PAUSED';
+        title.appendChild(badge);
+    } else if (!data.paused && existingBadge) {
+        existingBadge.remove();
+    }
+
+    // Album art
+    if (data.thumbnail && data.thumbnail !== prevState.thumbnail) {
+        art.src = data.thumbnail;
+        art.style.display = 'block';
+        artPlaceholder.style.display = 'none';
+    } else if (!data.thumbnail) {
+        art.style.display = 'none';
+        artPlaceholder.style.display = 'flex';
+    }
+    prevState.thumbnail = data.thumbnail;
+
+    // Progress
+    if (data.duration && data.duration > 0) {
+        const pct = Math.min(100, (data.elapsed / data.duration) * 100);
+        progressFill.style.width = pct + '%';
+        elapsedEl.textContent = fmt(data.elapsed);
+        durationEl.textContent = fmt(data.duration);
+    } else {
+        progressFill.style.width = '0%';
+        elapsedEl.textContent = '0:00';
+        durationEl.textContent = '';
+    }
+
+    // DJ / AI speaking
+    const isSpeaking = data.dj_speaking || data.ai_speaking;
+    if (isSpeaking) {
+        speakingBar.classList.remove('hidden');
+        speakingBar.classList.add('visible');
+        equalizer.classList.remove('idle');
+
+        if (data.ai_speaking) {
+            speakingLabel.textContent = '🃏 AI Side Host Speaking';
+            speakingLabel.className = 'speaking-label ai';
+        } else {
+            speakingLabel.textContent = '🎙️ DJ Speaking';
+            speakingLabel.className = 'speaking-label dj';
+        }
+    } else {
+        speakingBar.classList.add('hidden');
+        speakingBar.classList.remove('visible');
+        equalizer.classList.add('idle');
+    }
+
+    // Glow animation intensity when playing
+    if (data.playing && !data.paused) {
+        glow.style.animationDuration = '3s';
+    } else {
+        glow.style.animationDuration = '6s';
+    }
+
+    prevState = data;
+}
+
+// ── Start polling ──
+pollState();
+</script>
+</body>
+</html>

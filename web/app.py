@@ -1074,17 +1074,14 @@ def api_play(guild_id):
                     voice_channel = member.voice.channel
                     break
 
-            if not voice_channel:
-                return "No one in a voice channel"
-
-            if getattr(guild, 'voice_client', None) is None:
-                await voice_channel.connect(self_deaf=True)
-            elif not guild.voice_client.is_connected():
-                await guild.voice_client.disconnect(force=True)
-                await asyncio.sleep(0.5)
-                await voice_channel.connect(self_deaf=True)
-
-            vc = guild.voice_client
+            if voice_channel:
+                if getattr(guild, 'voice_client', None) is None:
+                    await voice_channel.connect(self_deaf=True)
+                elif not guild.voice_client.is_connected():
+                    await guild.voice_client.disconnect(force=True)
+                    await asyncio.sleep(0.5)
+                    await voice_channel.connect(self_deaf=True)
+                vc = guild.voice_client
 
         queue = await music.get_queue(guild_id)
 
@@ -1110,8 +1107,8 @@ def api_play(guild_id):
                 await queue.put(r)
             count = len(result)
 
-        # Start playback if nothing is playing
-        if getattr(vc, 'is_playing', lambda: False)() == False and getattr(vc, 'is_paused', lambda: False)() == False:
+        # Start playback if nothing is playing AND we have a voice client
+        if vc and getattr(vc, 'is_playing', lambda: False)() == False and getattr(vc, 'is_paused', lambda: False)() == False:
             # Build a minimal context object for play_next
             class WebCtx:
                 pass

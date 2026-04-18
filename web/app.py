@@ -3314,7 +3314,13 @@ def obs_page():
     Requires OBS Studio with obs-websocket 5.x plugin (bundled since OBS 28).
     Configure OBS_WS_HOST, OBS_WS_PORT, and OBS_WS_PASSWORD in .env.
     """
-    return render_template("obs.html")
+    music = _get_music_cog()
+    guilds_data = _get_guilds_data(music)
+
+    return render_template(
+        "obs.html",
+        guilds=guilds_data,
+    )
 
 
 @app.route("/api/obs/status")

@@ -77,7 +77,7 @@
     </div>
     {% else %}
     <div class="controls controls-row" style="margin-bottom: 16px;">
-        <button class="btn btn-primary" style="background: var(--danger); border-color: var(--danger);" onclick="toggleYoutubeLive(this, '{{ g.id }}')" title="Go Live on YouTube (Headless Mode)">🔴 Go Live (Radio)</button>
+        <button class="btn btn-primary" style="background: var(--danger); border-color: var(--danger);" onclick="toggleYoutubeLive(this, '{{ g.id }}')" title="Go Live on YouTube (Headless Mode)">🔴 Go Live</button>
         <button class="btn btn-primary" onclick="joinVoice(this, '{{ g.id }}')" title="Join Voice Channel">🔌 Join Discord</button>
         <button class="btn" onclick="toggleDj(this, '{{ g.id }}')" title="Toggle DJ">{% if g.dj_enabled %}🎙️ DJ On{% else %}🎙️ DJ Off{% endif %}</button>
         <button class="btn" onclick="toggleAutodj(this, '{{ g.id }}')" title="Toggle Auto-DJ">{% if g.autodj_enabled %}🔁 Auto On{% else %}🔁 Auto Off{% endif %}</button>

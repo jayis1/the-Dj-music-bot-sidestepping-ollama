@@ -2,9 +2,12 @@
 {% block title %}OBS Studio — Mission Control{% endblock %}
 
 {% block content %}
+<!-- Toast notification -->
+<div id="toast" style="display:none; position:fixed; bottom:24px; right:24px; padding:12px 20px; border-radius:8px; font-size:14px; font-weight:500; z-index:9999; transition: opacity 0.3s;"></div>
+
 <div class="page-header">
     <h2>🎬 OBS Studio</h2>
-    <p class="page-description">Control OBS Studio directly from Mission Control. Switch scenes, start/stop streaming, manage sources, and more.</p>
+    <p class="page-description">Control OBS Studio, configure YouTube Live streaming, and manage sources — all from Mission Control.</p>
 </div>
 
 <!-- OBS Connection Status -->
@@ -19,7 +22,7 @@
     </div>
 </div>
 
-<!-- Not Configured Banner (hidden when OBS is connected) -->
+<!-- Not Configured Banner (hidden when OBS is configured) -->
 <div id="obs-not-configured" class="card" style="display:none; margin-bottom:20px; padding:24px; text-align:center;">
     <div style="font-size:48px; margin-bottom:12px;">🎬</div>
     <h3 style="margin:0 0 8px;">OBS Studio Not Connected</h3>
@@ -47,7 +50,7 @@
 <div class="card" style="margin-bottom:20px; padding:20px;">
     <h3 style="margin:0 0 12px;">📺 YouTube Live Stream Key</h3>
     <p style="color:var(--text-secondary); font-size:13px; margin:0 0 16px; line-height:1.6;">
-        Configure your YouTube Live stream key here. When OBS is connected, streaming goes through OBS natively. 
+        Configure your YouTube Live stream key here. When OBS is connected, streaming goes through OBS natively.
         Without OBS, the bot streams directly via RTMP.
     </p>
     <div style="margin-bottom:12px;">
@@ -72,7 +75,95 @@
     <div style="margin-top:12px; display:none;" id="yt-key-saved-msg"></div>
 </div>
 
-<!-- Main Controls (visible when connected) -->
+<!-- YouTube Live Streaming (Go Live controls) -->
+<div id="yt-live-section" class="card" style="margin-bottom:20px; padding:20px;">
+    <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:22px;">📡</span>
+            <div>
+                <span style="font-size:15px; font-weight:600;">YouTube Live Stream</span>
+                <div style="font-size:11px; color:var(--text-muted);">Start streaming to YouTube via OBS or direct RTMP</div>
+            </div>
+        </div>
+        <span id="yt-live-indicator" style="font-size:11px; font-weight:600; padding:3px 10px; border-radius:10px;
+            background:var(--bg-secondary); color:var(--text-muted); border:1px solid var(--border);">⚪ OFFLINE</span>
+    </div>
+
+    <!-- ── Mode Toggle: Mirror / Curated ──────────────────────── -->
+    <div id="yt-mode-section" style="margin-bottom:14px;">
+        <div style="display:flex; gap:0; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
+            <button id="yt-mode-mirror" onclick="setStreamMode('mirror')" class="yt-mode-btn"
+                style="flex:1; padding:8px; border:none; cursor:pointer; font-size:12px; font-weight:600; transition:all 0.15s;">
+                🪞 Mirror
+            </button>
+            <button id="yt-mode-curated" onclick="setStreamMode('curated')" class="yt-mode-btn"
+                style="flex:1; padding:8px; border:none; cursor:pointer; font-size:12px; font-weight:600; border-left:1px solid var(--border); transition:all 0.15s;">
+                🎙️ Curated
+            </button>
+        </div>
+        <div id="yt-mode-desc" style="font-size:11px; color:var(--text-muted); margin-top:6px; padding:0 4px;">
+            Mirror Discord audio to YouTube Live
+        </div>
+    </div>
+
+    <!-- ── Curated Mode Description (shown when curated is selected) ── -->
+    <div id="yt-curated-config" style="display:none; margin-bottom:14px; padding:12px;
+        background:var(--bg-secondary); border:1px solid var(--border); border-radius:var(--radius);">
+        <div style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:10px;">🎙️ Curated Mode — Shadow DJ</div>
+        <div style="font-size:12px; color:var(--text-muted); line-height:1.6;">
+            You're the DJ. The bot streams to YouTube Live with the overlay, DJ banter, and sound effects — <strong>but you hand-pick every song</strong> from the Queue Manager.
+            <br><br>
+            <strong>How it works:</strong><br>
+            1. Hit <strong>🔴 Go Live</strong> — stream starts with a "waiting for tracks" card<br>
+            2. Go to <strong>Queue Manager</strong> → add songs one by one or paste a playlist<br>
+            3. DJ speaks intros/outros between your picks. SFX plays. Overlay updates live.<br>
+            4. When the queue empties, the stream stays up showing a waiting card until you add more.
+        </div>
+    </div>
+
+    <!-- ── Live status (shown when streaming) ────────────────── -->
+    <div id="yt-live-details" style="display:none; margin-bottom:14px; padding:12px;
+        background:rgba(255,0,0,0.06); border:1px solid rgba(255,0,0,0.2); border-radius:var(--radius);">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+            <div style="width:10px; height:10px; border-radius:50%; background:#FF0000; animation:yt-pulse-dot 1.5s ease-in-out infinite;"></div>
+            <div>
+                <div style="font-size:14px; font-weight:700; color:#FF0000;">LIVE</div>
+                <div id="yt-live-current" style="font-size:13px; color:var(--text-secondary);">—</div>
+            </div>
+            <span id="yt-live-mode-badge" style="margin-left:auto; font-size:11px; font-weight:600; padding:2px 8px; border-radius:8px;
+                background:rgba(59,130,246,0.15); color:#3b82f6;">MIRROR</span>
+        </div>
+    </div>
+
+    <!-- ── Action buttons ────────────────────────────────────── -->
+    <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+        <button id="yt-live-toggle" class="btn" onclick="toggleYouTubeLive()"
+            style="background:#FF0000; color:white; border:none; font-weight:600; font-size:13px; padding:7px 18px; border-radius:var(--radius);">
+            🔴 Go Live
+        </button>
+        <button id="yt-skip-btn" class="btn" onclick="skipYouTubeLive()" style="display:none; border-color:var(--border); color:var(--text-secondary); font-size:12px; padding:7px 14px;">
+            ⏭️ Skip
+        </button>
+        <button id="yt-reload-btn" class="btn" onclick="reloadYouTubePlaylist()" style="display:none; border-color:var(--border); color:var(--text-secondary); font-size:12px; padding:7px 14px;">
+            🔄 Reload Playlist
+        </button>
+        <button class="btn" onclick="checkYouTubeLiveStatus()"
+            style="border-color:var(--border); color:var(--text-muted); font-size:12px; padding:7px 14px;">
+            🔄 Refresh
+        </button>
+    </div>
+</div>
+
+<style>
+    @keyframes yt-pulse-dot {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    .yt-mode-btn { background:var(--bg-secondary); color:var(--text-muted); }
+    .yt-mode-btn-active { background:var(--accent) !important; color:white !important; }
+</style>
+
+<!-- Main Controls (visible when OBS connected) -->
 <div id="obs-controls" style="display:none;">
 
     <!-- Stream & Record Controls -->
@@ -132,10 +223,34 @@
 const REFRESH_INTERVAL = 5000;  // Refresh status every 5 seconds
 let obsRefreshTimer = null;
 
-// Poll OBS status on page load and every 5 seconds
+// ── YouTube Live Streaming State ──────────────────────────────
+let _ytStreamMode = 'mirror';  // 'mirror' or 'curated'
+let _ytPollInterval = null;
+
+// Get the first available guild ID for YouTube Live API calls
+{% for g in guilds %}
+const _ytGuildId = '{{ g.id }}';
+{% endfor %}
+
+// ── Toast ────────────────────────────────────────────────────
+function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.display = 'block';
+    t.style.opacity = '1';
+    t.style.background = type === 'error' ? 'var(--danger)' : 'var(--success)';
+    t.style.color = 'white';
+    t.style.border = type === 'error' ? '1px solid var(--danger)' : '1px solid var(--success)';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 2500);
+}
+
+// Poll OBS status + YouTube Live status on page load and every 5 seconds
 document.addEventListener('DOMContentLoaded', () => {
     obsRefreshStatus();
     obsRefreshTimer = setInterval(obsRefreshStatus, REFRESH_INTERVAL);
+    checkStreamKeyStatus();
+    checkYouTubeLiveStatus();
 });
 
 async function obsApi(endpoint, method='GET', body=null) {
@@ -434,9 +549,218 @@ async function saveStreamKey() {
     }
 }
 
-// Check stream key status on page load
-document.addEventListener('DOMContentLoaded', function() {
-    checkStreamKeyStatus();
-});
+// ── YouTube Live Streaming Controls ──────────────────────────────
+
+function _clearModeButtons() {
+    ['yt-mode-mirror', 'yt-mode-curated'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.classList.remove('yt-mode-btn-active');
+            btn.classList.add('yt-mode-btn');
+            btn.style.background = 'var(--bg-secondary)';
+            btn.style.color = 'var(--text-muted)';
+        }
+    });
+}
+
+function _activateModeButton(id) {
+    const btn = document.getElementById(id);
+    if (btn) {
+        btn.classList.add('yt-mode-btn-active');
+        btn.classList.remove('yt-mode-btn');
+    }
+}
+
+function setStreamMode(mode) {
+    _ytStreamMode = mode;
+    const curatedConfig = document.getElementById('yt-curated-config');
+    const desc = document.getElementById('yt-mode-desc');
+
+    _clearModeButtons();
+
+    if (mode === 'mirror') {
+        _activateModeButton('yt-mode-mirror');
+        if (curatedConfig) curatedConfig.style.display = 'none';
+        if (desc) desc.textContent = 'Mirrors Discord playback — bot must be in a voice channel';
+    } else if (mode === 'curated') {
+        _activateModeButton('yt-mode-curated');
+        if (curatedConfig) curatedConfig.style.display = 'block';
+        if (desc) desc.textContent = 'You pick the songs, DJ speaks between them — Shadow DJ mode';
+    }
+}
+
+async function toggleYouTubeLive() {
+    const btn = document.getElementById('yt-live-toggle');
+
+    if (!_ytGuildId) {
+        showToast('Bot must be in a server', 'error');
+        return;
+    }
+
+    // Check if currently live — if so, stop
+    const indicator = document.getElementById('yt-live-indicator');
+    if (indicator && indicator.textContent.includes('LIVE')) {
+        btn.textContent = '⏳ Stopping...';
+        btn.disabled = true;
+        try {
+            const res = await fetch(`/api/${_ytGuildId}/youtube_stream/toggle`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({action: 'stop'})
+            });
+            const data = await res.json();
+            if (data.ok) showToast('🔴 YouTube Live stopped', 'success');
+            else showToast(data.error || 'Failed to stop', 'error');
+        } catch (e) { showToast('Network error', 'error'); }
+        btn.disabled = false;
+        checkYouTubeLiveStatus();
+        return;
+    }
+
+    // Build request based on mode
+    const body = {
+        action: 'start',
+        mode: _ytStreamMode,
+    };
+
+    btn.textContent = '⏳ Connecting...';
+    btn.disabled = true;
+    try {
+        const res = await fetch(`/api/${_ytGuildId}/youtube_stream/toggle`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.ok) {
+            const modeLabels = {
+                'curated': ' (Shadow DJ — add songs from Queue Manager!)',
+                'mirror': ' (mirror mode)',
+            };
+            const modeLabel = modeLabels[data.mode] || '';
+            showToast('🔴 YouTube Live started' + modeLabel, 'success');
+            startYtStatusPolling();
+        } else {
+            showToast(data.error || 'Failed to start', 'error');
+        }
+    } catch (e) { showToast('Network error: ' + e.message, 'error'); }
+    btn.disabled = false;
+    checkYouTubeLiveStatus();
+}
+
+async function skipYouTubeLive() {
+    if (!_ytGuildId) return;
+    try {
+        const res = await fetch(`/api/${_ytGuildId}/youtube_stream/skip`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'}
+        });
+        const data = await res.json();
+        if (data.ok) showToast('⏭️ Skipping to next song', 'success');
+        else showToast(data.error || 'Skip failed', 'error');
+    } catch (e) { showToast('Skip failed', 'error'); }
+}
+
+async function reloadYouTubePlaylist() {
+    if (!_ytGuildId) return;
+    try {
+        const res = await fetch(`/api/${_ytGuildId}/youtube_stream/config`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({reload: true})
+        });
+        const data = await res.json();
+        if (data.ok) showToast('🔄 Playlist reloaded', 'success');
+        else showToast(data.error || 'Reload failed', 'error');
+    } catch (e) { showToast('Reload failed', 'error'); }
+}
+
+function startYtStatusPolling() {
+    if (_ytPollInterval) clearInterval(_ytPollInterval);
+    _ytPollInterval = setInterval(checkYouTubeLiveStatus, 5000);
+}
+
+function _formatUptime(seconds) {
+    if (seconds < 60) return Math.round(seconds) + 's';
+    if (seconds < 3600) return Math.round(seconds / 60) + 'm';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.round((seconds % 3600) / 60);
+    return h + 'h' + (m > 0 ? m + 'm' : '');
+}
+
+async function checkYouTubeLiveStatus() {
+    if (!_ytGuildId) return;
+
+    const indicator = document.getElementById('yt-live-indicator');
+    const details = document.getElementById('yt-live-details');
+    const currentEl = document.getElementById('yt-live-current');
+    const btn = document.getElementById('yt-live-toggle');
+    const skipBtn = document.getElementById('yt-skip-btn');
+    const reloadBtn = document.getElementById('yt-reload-btn');
+    const modeBadge = document.getElementById('yt-live-mode-badge');
+    const modeSection = document.getElementById('yt-mode-section');
+
+    try {
+        const res = await fetch(`/api/${_ytGuildId}/youtube_stream/status`);
+        const data = await res.json();
+
+        if (data.active && data.running) {
+            // LIVE
+            if (indicator) { indicator.textContent = '🔴 LIVE'; indicator.style.background = 'rgba(255,0,0,0.15)'; indicator.style.color = '#FF0000'; indicator.style.borderColor = '#FF0000'; }
+            if (details) details.style.display = 'block';
+            if (currentEl) currentEl.textContent = data.current_title || data.song_title || '🎵 Streaming audio';
+            if (btn) { btn.textContent = '⬛ Stop Live'; btn.style.background = '#555'; }
+
+            // Hide mode toggle when live (can't change mode mid-stream)
+            if (modeSection) modeSection.style.display = 'none';
+
+            // Mode badge
+            const isCurated = data.curated;
+            if (modeBadge) {
+                if (isCurated) {
+                    modeBadge.textContent = '🎙️ CURATED';
+                    modeBadge.style.background = 'rgba(168,85,247,0.15)';
+                    modeBadge.style.color = 'var(--purple)';
+                } else {
+                    modeBadge.textContent = '🪞 MIRROR';
+                    modeBadge.style.background = 'rgba(59,130,246,0.15)';
+                    modeBadge.style.color = '#3b82f6';
+                }
+            }
+
+            // Skip button (curated mode only)
+            if (skipBtn) skipBtn.style.display = isCurated ? 'inline-block' : 'none';
+            if (reloadBtn) reloadBtn.style.display = 'none';
+
+            // Keep polling while live
+            if (!_ytPollInterval) startYtStatusPolling();
+
+        } else if (data.active) {
+            // RECONNECTING
+            if (indicator) { indicator.textContent = '🟡 RECONNECTING'; indicator.style.background = 'rgba(245,158,11,0.15)'; indicator.style.color = '#f59e0b'; indicator.style.borderColor = '#f59e0b'; }
+            if (details) details.style.display = 'block';
+            if (currentEl) currentEl.textContent = 'Reconnecting to YouTube...';
+            if (btn) { btn.textContent = '⬛ Stop Live'; btn.style.background = '#555'; }
+
+        } else {
+            // OFFLINE
+            if (indicator) { indicator.textContent = '⚪ OFFLINE'; indicator.style.background = 'var(--bg-secondary)'; indicator.style.color = 'var(--text-muted)'; indicator.style.borderColor = 'var(--border)'; }
+            if (details) details.style.display = 'none';
+            if (btn) { btn.textContent = '🔴 Go Live'; btn.style.background = '#FF0000'; }
+            if (skipBtn) skipBtn.style.display = 'none';
+            if (reloadBtn) reloadBtn.style.display = 'none';
+
+            // Show mode toggle when offline
+            if (modeSection) modeSection.style.display = 'block';
+
+            // Stop polling when offline
+            if (_ytPollInterval) { clearInterval(_ytPollInterval); _ytPollInterval = null; }
+        }
+
+    } catch (e) { /* silently fail */ }
+
+    // Initialize mode button styles on first load
+    setStreamMode(_ytStreamMode);
+}
 </script>
 {% endblock %}

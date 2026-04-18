@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Environment variables (contains secrets)
+.env
+.env.bak
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+bot_activity.log
+bot_run*.log
+
+# Cache
+.ruff_cache/
+yt_dlp_cache/
+.pytest_cache/
+
+# MOSS TTS server (separate repo)
+moss-tts-server/
+
+# Presets (user-generated, created at runtime)
+presets/
+
+# Temporary files
+/tmp/
+*.tmp
+*.wav

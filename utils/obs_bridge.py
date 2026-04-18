@@ -918,26 +918,31 @@ class OBSBridge:
             scene_name = self._get_current_scene_name()
 
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
-            # If source already exists, UPDATE its settings to ensure correct
-            # PCM format (old persisted sources may have missing/wrong format)
+            # If source already exists with WRONG settings, DELETE and recreate.
+            # Simply updating settings with set_input_settings doesn't force
+            # OBS to reconnect the media — the old broken ffmpeg_options
+            # persist in memory even after the API call. Deleting the source
+            # forces OBS to release the old FFmpeg context and start fresh.
             try:
                 existing = c.get_input_settings(name=_sn)
                 if existing:
-                    log.debug(f"OBS Bridge: Source '{_sn}' already exists, updating settings")
-                    try:
-                        c.set_input_settings(
-                            name=_sn,
-                            settings={
-                                "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
-                                "is_local_file": False,
-                                "input_format": "s16le",
-                                "ffmpeg_options": "ar=48000 ac=2",
-                            },
-                            overlay=False,
-                        )
-                    except Exception as e:
-                        log.warning(f"OBS Bridge: Failed to update '{_sn}' settings: {e}")
-                    return existing
+                    # Check if the existing settings have the broken CLI format
+                    old_opts = ""
+                    if hasattr(existing, "ffmpeg_options"):
+                        old_opts = existing.ffmpeg_options or ""
+                    elif isinstance(existing, dict):
+                        old_opts = existing.get("ffmpeg_options", "") or ""
+                    if "-ar" in old_opts or old_opts == "":
+                        log.info(f"OBS Bridge: Deleting source '{_sn}' (broken ffmpeg_options: '{old_opts}')")
+                        try:
+                            c.remove_input(name=_sn)
+                        except Exception as e:
+                            log.warning(f"OBS Bridge: Failed to delete '{_sn}': {e}")
+                        # Fall through to create_input below
+                    else:
+                        # Settings look correct — skip recreation
+                        log.debug(f"OBS Bridge: Source '{_sn}' already exists with correct settings")
+                        return existing
             except Exception:
                 pass  # Source doesn't exist — proceed to create it
             return c.create_input(
@@ -1067,7 +1072,35 @@ class OBSBridge:
         else:
             log.info(f"OBS Bridge: Scene setup complete ✅ ({len(created)} items)")
 
+        # Initialize /tmp/radio_*.txt files so text_ft2_source_v2 sources
+        # with from_file=True have content to display from the first frame.
+        # Without these files, the text sources render as blank.
+        self._init_hud_files()
+
         return {"created": created, "errors": errors}
+
+    @staticmethod
+    def _init_hud_files():
+        """Create /tmp/radio_*.txt files if they don't exist.
+
+        OBS text sources with from_file=True read from these files on every
+        frame. If the file doesn't exist when the source is created, the
+        source renders blank text. Writing initial content ensures the
+        overlay is visible from the first frame.
+        """
+        import os
+        hud_files = {
+            "/tmp/radio_title.txt": "Waiting for playback...",
+            "/tmp/radio_dj.txt": "",
+            "/tmp/radio_waiting.txt": "Initializing...",
+        }
+        for path, default_text in hud_files.items():
+            if not os.path.exists(path):
+                try:
+                    with open(path, "w") as f:
+                        f.write(default_text)
+                except Exception:
+                    pass
 
     # ── Reconnect ─────────────────────────────────────────────────────────
 

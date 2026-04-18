@@ -56,36 +56,44 @@ log = logging.getLogger("obs-bridge")
 # OBS on Windows uses text_gdiplus_v2 for text; Linux/macOS use text_freetype2_v2.
 # Using the wrong kind returns obs-websocket error 605 "input kind not supported".
 _IS_LINUX = sys.platform == "linux"
-_TEXT_INPUT_KIND = "text_freetype2_v2" if _IS_LINUX else "text_gdiplus_v2"
+_TEXT_INPUT_KIND = "text_ft2_source_v2" if _IS_LINUX else "text_gdiplus_v2"
 
 
 def _text_settings(text, font_face, font_style, font_size, color,
                     align=0, valign=0, read_from_file=False, file_path=""):
     """Build platform-appropriate text source settings.
 
-    FreeType2 (Linux/macOS) uses a single 'color' field; GDI+ (Windows)
-    uses 'color1'/'color2' for gradient support. Both accept numeric
-    align (0=left,1=center,2=right) and valign (0=top,1=center,2=bottom).
+    text_ft2_source_v2 (Linux/macOS FreeType2) uses:
+      - color1/color2 for gradient (same = solid), from_file, text_file
+    text_gdiplus_v2 (Windows GDI+) uses:
+      - color1/color2 for gradient, read_from_file, file
+    Both accept numeric align (0=left,1=center,2=right) and valign.
     """
     font = {"face": font_face, "style": font_style, "size": font_size}
     base = {
         "text": text,
         "font": font,
+        "color1": color,
+        "color2": color,
         "align": align,
         "valign": valign,
-        "read_from_file": read_from_file,
     }
-    if read_from_file and file_path:
-        base["file"] = file_path
 
     if _IS_LINUX:
-        base["color"] = color
+        base["from_file"] = read_from_file
+        if read_from_file and file_path:
+            base["text_file"] = file_path
+        base["drop_shadow"] = False
+        base["outline"] = False
+        base["use_color"] = True
     else:
-        # GDI+ uses color1/color2 for gradient (same color = solid)
-        base["color1"] = color
-        base["color2"] = color
+        base["read_from_file"] = read_from_file
+        if read_from_file and file_path:
+            base["file"] = file_path
         base["opacity"] = 100
         base["gradient"] = False
+        base["bk_color"] = 0
+        base["bk_opacity"] = 0
 
     return base
 

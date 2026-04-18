@@ -292,35 +292,54 @@ EOF
 
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" "$OBS_SCENES_DIR/Radio DJ.json"
-    # Adapt scene collection to current platform (Linux needs text_freetype2_v2,
-    # Windows needs text_gdiplus_v2 — OBS error 605 uses the wrong kind).
+    # Adapt scene collection to current platform.
+    # Linux: text_ft2_source (OBS internal ID for FreeType2 plugin)
+    # Windows: text_gdiplus_v2 (OBS internal ID for GDI+ plugin)
+    # The scene collection JSON uses OBS INTERNAL IDs (not the versioned
+    # WebSocket API kinds like text_ft2_source_v2 / text_gdiplus_v2).
     if command -v python3 &>/dev/null; then
       python3 - "$OBS_SCENES_DIR/Radio DJ.json" <<'PYEOF'
 import json, sys, platform
 fp = sys.argv[1]
 with open(fp) as f: data = json.load(f)
 is_linux = platform.system() == "Linux"
-want = "text_freetype2_v2" if is_linux else "text_gdiplus_v2"
+# Scene collection JSON uses OBS internal source IDs
+want = "text_ft2_source" if is_linux else "text_gdiplus_v2"
+known = ("text_ft2_source", "text_gdiplus_v2")
 changed = False
 for scene in data.get("Items", {}).values():
     for src in scene.get("sources", []):
-        if src.get("type") in ("text_freetype2_v2", "text_gdiplus_v2") and src["type"] != want:
+        if src.get("type") in known and src["type"] != want:
             src["type"] = want
-            # GDI+ has extra keys not valid in FreeType2; clean them up
+            s = src.get("settings", {})
             if is_linux:
+                # Convert GDI+ property names to FreeType2 equivalents
+                # read_from_file → from_file, file → text_file
+                if "read_from_file" in s:
+                    s["from_file"] = s.pop("read_from_file")
+                if "file" in s:
+                    s["text_file"] = s.pop("file")
+                # Remove GDI+-only keys
                 for k in ("bk_color","bk_opacity","chatlog","chatlog_lines",
-                          "color1","color2","custom_font","ext","gradient",
-                          "gradient_color","gradient_dir","gradient_opacity",
-                          "opacity","vertical"):
-                    src.get("settings", {}).pop(k, None)
-                # Rename color1 → color if no color key
-                s = src.get("settings", {})
-                if "color" not in s and "color1" in s:
-                    s["color"] = s.pop("color1")
+                          "custom_font","ext","gradient","gradient_color",
+                          "gradient_dir","gradient_opacity","opacity","vertical"):
+                    s.pop(k, None)
+                # FreeType2 uses color1/color2 + use_color=true (same as GDI+)
+                s["use_color"] = True
+                s["drop_shadow"] = s.get("drop_shadow", False)
+            else:
+                # Convert FreeType2 property names to GDI+ equivalents
+                if "from_file" in s:
+                    s["read_from_file"] = s.pop("from_file")
+                if "text_file" in s:
+                    s["file"] = s.pop("text_file")
+                # Remove FreeType2-only keys
+                for k in ("use_color", "drop_shadow", "custom_width", "word_wrap"):
+                    s.pop(k, None)
             changed = True
 if changed:
     with open(fp, "w") as f: json.dump(data, f, indent=4)
-    print("Scene collection adapted for", "Linux (FreeType2)" if is_linux else "Windows (GDI+)")
+    print("Scene collection adapted for", "Linux (text_ft2_source)" if is_linux else "Windows (GDI+)")
 else:
     print("Scene collection already compatible")
 PYEOF

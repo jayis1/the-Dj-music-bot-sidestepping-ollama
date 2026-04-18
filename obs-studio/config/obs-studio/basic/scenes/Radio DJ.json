@@ -47,22 +47,21 @@
                     "render": true,
                     "settings": {
                         "align": 1,
-                        "color": 4294967295,
+                        "color1": 4294967295,
+                        "color2": 4294967295,
                         "drop_shadow": false,
-                        "file": "",
                         "font": {
                             "face": "DejaVu Sans",
                             "size": 48,
                             "style": "Bold"
                         },
+                        "from_file": false,
                         "outline": false,
-                        "outline_color": 4278190080,
-                        "outline_size": 2,
-                        "read_from_file": false,
                         "text": "Now Playing",
+                        "use_color": true,
                         "valign": 1
                     },
-                    "type": "text_freetype2_v2",
+                    "type": "text_ft2_source",
                     "volume": 1.0,
                     "x": 40,
                     "y": 280
@@ -83,22 +82,21 @@
                     "render": true,
                     "settings": {
                         "align": 1,
-                        "color": 4286544650,
+                        "color1": 4286544650,
+                        "color2": 4286544650,
                         "drop_shadow": false,
-                        "file": "",
                         "font": {
                             "face": "DejaVu Sans",
                             "size": 32,
                             "style": "Regular"
                         },
+                        "from_file": false,
                         "outline": false,
-                        "outline_color": 4278190080,
-                        "outline_size": 2,
-                        "read_from_file": false,
                         "text": "Radio DJ Bot",
+                        "use_color": true,
                         "valign": 0
                     },
-                    "type": "text_freetype2_v2",
+                    "type": "text_ft2_source",
                     "volume": 1.0,
                     "x": 40,
                     "y": 40
@@ -151,22 +149,21 @@
                     "render": true,
                     "settings": {
                         "align": 1,
-                        "color": 4294967295,
+                        "color1": 4294967295,
+                        "color2": 4294967295,
                         "drop_shadow": false,
-                        "file": "",
                         "font": {
                             "face": "DejaVu Sans",
                             "size": 56,
                             "style": "Bold"
                         },
+                        "from_file": false,
                         "outline": false,
-                        "outline_color": 4278190080,
-                        "outline_size": 2,
-                        "read_from_file": false,
                         "text": "🎙️ The DJ is Speaking...",
+                        "use_color": true,
                         "valign": 1
                     },
-                    "type": "text_freetype2_v2",
+                    "type": "text_ft2_source",
                     "volume": 1.0,
                     "x": 40,
                     "y": 290
@@ -219,22 +216,21 @@
                     "render": true,
                     "settings": {
                         "align": 1,
-                        "color": 4294967295,
+                        "color1": 4294967295,
+                        "color2": 4294967295,
                         "drop_shadow": false,
-                        "file": "",
                         "font": {
                             "face": "DejaVu Sans",
                             "size": 48,
                             "style": "Regular"
                         },
+                        "from_file": false,
                         "outline": false,
-                        "outline_color": 4278190080,
-                        "outline_size": 2,
-                        "read_from_file": false,
                         "text": "⏳ Waiting for next track...",
+                        "use_color": true,
                         "valign": 1
                     },
-                    "type": "text_freetype2_v2",
+                    "type": "text_ft2_source",
                     "volume": 1.0,
                     "x": 40,
                     "y": 290

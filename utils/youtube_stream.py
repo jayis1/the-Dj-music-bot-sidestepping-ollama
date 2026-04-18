@@ -213,12 +213,14 @@ class YouTubeLiveStreamer:
     async def play_waiting(self, message: str = ""):
         self.update_hud(waiting=message)
 
-    async def start_autonomous(self, playlist_url: str, *args, **kwargs):
-        """Start the stream (Called by cogs/music.py). 
-        Actual playback logic is now handled exclusively by Voice/Broadcaster queues.
+    async def start_curated(self, playlist_url: str, *args, **kwargs):
+        """Start the stream in curated (Shadow DJ) mode.
+
+        Called by cogs/music.py when the user starts a curated YouTube Live stream.
+        Actual playback logic is handled by Voice/Broadcaster queues.
         """
         await self.start()
-        self.update_hud(waiting="Autonomous Playback Initiated...")
+        self.update_hud(waiting="Curated Playback — Add songs from Queue Manager")
 
     # ── FFmpeg Core Engine ──────────────────────────────────────────
 

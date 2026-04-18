@@ -534,7 +534,7 @@ def _get_guilds_data(music):
                 "member_count": "∞",
                 "in_discord": False,
                 "in_voice": True,  # Always true so UI unlocks
-                "voice_channel": "Autonomous Broadcast",
+                "voice_channel": "Headless Radio",
                 "playing": (current is not None),
                 "paused": False,
                 "current_song": current.get("title")

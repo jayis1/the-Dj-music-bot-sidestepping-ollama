@@ -356,7 +356,10 @@ async def main():
         logging.error("  ──────────────────────────────────────────────────────────")
 
     # TTS engine
-    if tts_mode == "moss":
+    if tts_mode == "kokoro":
+        kokoro_url = getattr(config, "KOKORO_TTS_URL", "")
+        logging.info(f"  TTS Engine: 🎙️ Kokoro-FastAPI → {kokoro_url}")
+    elif tts_mode == "moss":
         logging.info(f"  TTS Engine: 🖥️ MOSS-TTS-Nano → {moss_url}")
     elif tts_mode == "vibevoice":
         logging.info(
@@ -383,7 +386,7 @@ async def main():
         if stream_playlist:
             logging.info(f"  YouTube Live playlist: 📜 {stream_playlist[:60]}")
         logging.info(
-            "  YouTube Live modes: 🪞 Mirror (Discord) · 🤖 Autonomous (24/7, no Discord needed)"
+            "  YouTube Live modes: 🪞 Mirror (Discord) · 🎙️ Curated (Shadow DJ)"
         )
     else:
         logging.info("  YouTube Live: ⚪ Disabled")

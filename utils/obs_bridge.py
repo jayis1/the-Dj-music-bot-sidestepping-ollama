@@ -814,7 +814,7 @@ class OBSBridge:
                 inputKind=_TEXT_INPUT_KIND,
                 inputName="DJ Speaking",
                 inputSettings=_text_settings(
-                    "", "DejaVu Sans", "Regular", 36,
+                    " ", "DejaVu Sans", "Regular", 36,
                     color=4278255872,  # Cyan-green
                     align=0, valign=0,
                     read_from_file=True, file_path="/tmp/radio_dj.txt",
@@ -909,6 +909,21 @@ class OBSBridge:
         FFmpeg options: Invalid argument" if you use the flag format.
         Without these, OBS logs "MP: Failed to open media" and the source
         stays silent.
+
+        REBUILD STRATEGY: We always delete+recreate the source rather than
+        trying to detect whether existing settings are correct. This is
+        because:
+          - set_input_settings() does NOT force OBS to reconnect the media
+            (the old FFmpeg context keeps running with broken options)
+          - get_input_settings() dataclass doesn't reliably expose
+            ffmpeg_options as an attribute, making detection fragile
+          - OBS persists source settings between runs — if the source was
+            created with wrong settings on a previous run, it reloads broken
+          - A fresh create_input() guarantees the correct FFmpeg context
+
+        After remove_input(), we sleep briefly (0.5s) to avoid race
+        condition error 601 ("A source already exists") — OBS needs a
+        moment to fully release the source name.
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -918,33 +933,28 @@ class OBSBridge:
             scene_name = self._get_current_scene_name()
 
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
-            # If source already exists with WRONG settings, DELETE and recreate.
-            # Simply updating settings with set_input_settings doesn't force
-            # OBS to reconnect the media — the old broken ffmpeg_options
-            # persist in memory even after the API call. Deleting the source
-            # forces OBS to release the old FFmpeg context and start fresh.
+            # Always remove the existing source first (if any).
+            # OBS persists sources between runs — a source created with
+            # wrong ffmpeg_options on a previous launch will reload broken.
+            # Deleting forces OBS to release the stale FFmpeg context.
+            source_existed = False
             try:
-                existing = c.get_input_settings(name=_sn)
-                if existing:
-                    # Check if the existing settings have the broken CLI format
-                    old_opts = ""
-                    if hasattr(existing, "ffmpeg_options"):
-                        old_opts = existing.ffmpeg_options or ""
-                    elif isinstance(existing, dict):
-                        old_opts = existing.get("ffmpeg_options", "") or ""
-                    if "-ar" in old_opts or old_opts == "":
-                        log.info(f"OBS Bridge: Deleting source '{_sn}' (broken ffmpeg_options: '{old_opts}')")
-                        try:
-                            c.remove_input(name=_sn)
-                        except Exception as e:
-                            log.warning(f"OBS Bridge: Failed to delete '{_sn}': {e}")
-                        # Fall through to create_input below
-                    else:
-                        # Settings look correct — skip recreation
-                        log.debug(f"OBS Bridge: Source '{_sn}' already exists with correct settings")
-                        return existing
+                c.get_input_settings(name=_sn)
+                source_existed = True
             except Exception:
-                pass  # Source doesn't exist — proceed to create it
+                pass  # Source doesn't exist — good, proceed to create
+
+            if source_existed:
+                log.info(f"OBS Bridge: Removing existing audio source '{_sn}' to rebuild with correct settings")
+                try:
+                    c.remove_input(name=_sn)
+                except Exception as e:
+                    log.warning(f"OBS Bridge: Failed to remove '{_sn}': {e}")
+                # Give OBS time to fully release the source name.
+                # Without this delay, create_input() fails with error 601
+                # "A source already exists" (race condition).
+                time.sleep(0.5)
+
             return c.create_input(
                 sceneName=_scene,
                 inputKind="ffmpeg_source",
@@ -1081,17 +1091,27 @@ class OBSBridge:
 
     @staticmethod
     def _init_hud_files():
-        """Create /tmp/radio_*.txt files if they don't exist.
+        """Create /tmp/radio_*.txt files with non-empty initial content.
 
         OBS text sources with from_file=True read from these files on every
         frame. If the file doesn't exist when the source is created, the
         source renders blank text. Writing initial content ensures the
         overlay is visible from the first frame.
+
+        CRITICAL: Empty string ("") renders as zero-height invisible text
+        in text_ft2_source_v2 (FreeType2). Every file MUST have at least
+        a space character " " or some visible placeholder text. Otherwise
+        the DJ Speaking and Ticker sources will be invisible until the
+        bot writes non-empty content — which might be never for the DJ
+        source until the DJ actually speaks.
         """
         import os
         hud_files = {
             "/tmp/radio_title.txt": "Waiting for playback...",
-            "/tmp/radio_dj.txt": "",
+            # Use a space, not empty string! FreeType2 renders "" as
+            # zero-height invisible text. " " ensures the source stays
+            # visible (allocated space) even when no DJ is speaking.
+            "/tmp/radio_dj.txt": " ",
             "/tmp/radio_waiting.txt": "Initializing...",
         }
         for path, default_text in hud_files.items():

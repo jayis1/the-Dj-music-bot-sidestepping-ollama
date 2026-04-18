@@ -122,14 +122,27 @@ class YouTubeLiveStreamer:
         return self._running
 
     def update_hud(self, title="", dj="", waiting=""):
-        """Dynamically overwrite FFmpeg GUI layout texts instantly on disk."""
+        """Dynamically overwrite FFmpeg GUI layout texts instantly on disk.
+
+        CRITICAL: Never write an empty string to /tmp/radio_*.txt files!
+        OBS's text_ft2_source_v2 (FreeType2) renders empty strings as
+        zero-height invisible text. When a field has no content, write
+        a single space " " instead so the text source allocates space
+        and stays visible for future updates.
+        """
         try:
-            with open(TXT_TITLE, "w") as f:
-                f.write(self._safe_text(title, 80))
+            # Title: empty = keep whatever's there (don't blank the title)
+            if title:
+                with open(TXT_TITLE, "w") as f:
+                    f.write(self._safe_text(title, 80))
+            # DJ: empty string → write space (avoid invisible FreeType2 text)
+            dj_text = self._safe_text(dj, 80) if dj else " "
             with open(TXT_DJ, "w") as f:
-                f.write(self._safe_text(dj, 80))
+                f.write(dj_text)
+            # Waiting: empty string → write space (avoid invisible FreeType2 text)
+            wait_text = self._safe_text(waiting, 80) if waiting else " "
             with open(TXT_WAITING, "w") as f:
-                f.write(self._safe_text(waiting, 80))
+                f.write(wait_text)
         except Exception:
             pass
 

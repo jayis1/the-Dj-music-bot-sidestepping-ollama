@@ -244,7 +244,7 @@ class OBSBridge:
 
         except Exception as e:
             error_msg = str(e)
-            log.debug(f"OBS Bridge: Request failed → {error_msg}")
+            log.warning(f"OBS Bridge: Request failed → {error_msg}")
             return {"error": error_msg, "connected": True}
         finally:
             try:
@@ -398,8 +398,17 @@ class OBSBridge:
 
     def create_scene(self, scene_name: str) -> dict:
         """Create a new scene in OBS. No-op if it already exists."""
+        # Check if scene already exists — skip if so (idempotent)
+        try:
+            status = self.get_status()
+            existing_scenes = status.get("scenes", [])
+            if scene_name in existing_scenes:
+                return {"connected": True, "status": "ok", "data": {"scene_name": scene_name, "already_exists": True}}
+        except Exception:
+            pass
+
         return self._safe_call(
-            lambda c, sn=scene_name: c.create_scene(sceneName=sn)
+            lambda c, sn=scene_name: c.create_scene(name=sn)
         )
 
     def set_current_scene(self, scene_name: str) -> dict:
@@ -407,6 +416,14 @@ class OBSBridge:
         return self._safe_call(
             lambda c, sn=scene_name: c.set_current_program_scene(sceneName=sn)
         )
+
+    def _get_current_scene_name(self) -> str:
+        """Get the name of the current OBS scene. Falls back to 'Scene'."""
+        try:
+            status = self.get_status()
+            return status.get("current_scene", "Scene") or "Scene"
+        except Exception:
+            return "Scene"
 
     # ── Source Control ────────────────────────────────────────────────────
 
@@ -599,8 +616,21 @@ class OBSBridge:
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
 
+        # If no scene specified, use the current scene
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
         def _create(c, _sn=source_name, _u=url, _w=width, _h=height, _scene=scene_name):
-            kwargs = dict(
+            # Check if source already exists — skip if so (idempotent)
+            try:
+                existing = c.get_input_settings(inputName=_sn)
+                if existing:
+                    log.debug(f"OBS Bridge: Source '{_sn}' already exists, skipping creation")
+                    return existing
+            except Exception:
+                pass  # Source doesn't exist — proceed to create it
+            return c.create_input(
+                sceneName=_scene,
                 inputKind="browser_source",
                 inputName=_sn,
                 inputSettings={
@@ -613,9 +643,6 @@ class OBSBridge:
                 },
                 sceneItemEnabled=True,
             )
-            if _scene:
-                kwargs["sceneName"] = _scene
-            return c.create_input(**kwargs)
 
         return self._safe_call(_create)
 
@@ -633,8 +660,21 @@ class OBSBridge:
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
 
+        # If no scene specified, use the current scene
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
-            kwargs = dict(
+            # Check if source already exists — skip if so (idempotent)
+            try:
+                existing = c.get_input_settings(inputName=_sn)
+                if existing:
+                    log.debug(f"OBS Bridge: Source '{_sn}' already exists, skipping creation")
+                    return existing
+            except Exception:
+                pass  # Source doesn't exist — proceed to create it
+            return c.create_input(
+                sceneName=_scene,
                 inputKind="ffmpeg_source",
                 inputName=_sn,
                 inputSettings={
@@ -643,9 +683,6 @@ class OBSBridge:
                 },
                 sceneItemEnabled=True,
             )
-            if _scene:
-                kwargs["sceneName"] = _scene
-            return c.create_input(**kwargs)
 
         return self._safe_call(_create)
 

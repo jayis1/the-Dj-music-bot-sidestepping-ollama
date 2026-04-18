@@ -323,26 +323,24 @@ class YouTubeLiveStreamer:
             # Step 3: Create browser overlay source (no-op if it already exists)
             overlay_url = os.environ.get("OBS_OVERLAY_URL", "http://localhost:8080/overlay")
             log.info(f"YouTube Live/OBS: Overlay URL → {overlay_url}")
-            try:
-                self._obs_bridge.create_browser_source(
-                    source_name="Browser Overlay (Bot)",
-                    url=overlay_url,
-                    width=1280,
-                    height=720,
-                    scene_name=overlay_scene,
-                )
-            except Exception as e:
-                log.debug(f"YouTube Live/OBS: Browser source creation note: {e}")
+            result = self._obs_bridge.create_browser_source(
+                source_name="Browser Overlay (Bot)",
+                url=overlay_url,
+                width=1280,
+                height=720,
+                scene_name=overlay_scene,
+            )
+            if result.get("error"):
+                log.warning(f"YouTube Live/OBS: Browser source issue: {result['error']}")
 
             # Step 4: Create FFmpeg audio source (UDP PCM from bot)
-            try:
-                self._obs_bridge.create_audio_source(
-                    source_name="Bot Audio (UDP)",
-                    udp_port=12345,
-                    scene_name=overlay_scene,
-                )
-            except Exception as e:
-                log.debug(f"YouTube Live/OBS: Audio source creation note: {e}")
+            result = self._obs_bridge.create_audio_source(
+                source_name="Bot Audio (UDP)",
+                udp_port=12345,
+                scene_name=overlay_scene,
+            )
+            if result.get("error"):
+                log.warning(f"YouTube Live/OBS: Audio source issue: {result['error']}")
 
             # Step 5: Switch to the overlay scene BEFORE starting stream
             # This ensures the correct content is there from frame 1

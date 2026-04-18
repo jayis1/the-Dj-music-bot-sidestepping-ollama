@@ -142,7 +142,7 @@ The bot supports three TTS engines with automatic fallback. Configure via `.env`
 | `TTS_MODE` | `moss` | `vibevoice` | `edge-tts` |
 | Latency | ~2-8s | ~300ms | 2–5 seconds |
 | Server | moss-tts-server Docker | VibeVoice-Realtime | None |
-| Voices | `en_warm_female`, `en_news_male` | `en-Carter_man`, etc. | `en-US-AriaNeural`, etc. |
+| Voices | `en_warm_female`, `en_news_male`, `da_female`, `da_male` | `en-Carter_man`, etc. | `en-US-AriaNeural`, `da-DK-JeppeNeural`, etc. |
 | GPU | Not needed | Required for speed | N/A |
 | Internet | Not required | Not required | Required |
 | Open source | ✅ | ✅ | ❌ |
@@ -168,7 +168,9 @@ DJ_VOICE=en_warm_female         # or any .wav filename in assets/moss_voices/
 OLLAMA_DJ_VOICE=en_news_male    # different voice for AI side host
 ```
 
-**Custom Voices:** Add `.wav` prompt audio files to `assets/moss_voices/` (no server restart needed!).
+**Custom Voices:** Add `.wav` prompt audio files (5-30s clean speech) to `assets/moss_voices/` (no server restart needed!). Naming convention: `en_warm_female.wav`, `da_male.wav`, etc.
+
+**Danish voices:** Built-in Danish voices `da_female` and `da_male` use MOSS voice cloning for MOSS mode, and automatically map to `da-DK-SofieNeural` / `da-DK-JeppeNeural` when falling back to Edge TTS.
 
 ### Setting Up VibeVoice
 ```bash
@@ -627,8 +629,9 @@ nano .env           # Paste your DISCORD_TOKEN
 | Speed slider doesn't apply | Set speed only after the song has started playing; setting at 1.0× before queuing avoids the race |
 | MOSS TTS server down error | Ensure moss-tts-nano is running: `curl http://your-server:18083/api/warmup-status` — Settings page shows live status |
 | MOSS warmup not ready | MOSS-TTS takes ~2-15 seconds to load models into memory on first infer request. The bot automatically retries if it hits this state. |
-| MOSS missing prompt audio files | Ensure `assets/moss_voices/` contains `.wav` files (e.g. `en_warm_female.wav`, `en_news_male.wav`) |
+| MOSS missing prompt audio files | Ensure `assets/moss_voices/` contains `.wav` files (e.g. `en_warm_female.wav`, `da_female.wav`) |
 | VibeVoice voice not found | Use voices like `en-Carter_man` (not Edge TTS names like `en-US-AriaNeural`) when `TTS_MODE=vibevoice` |
+| Danish voice falls back to English | Edge TTS fallback auto-maps `da_female` → `da-DK-SofieNeural`, `da_male` → `da-DK-JeppeNeural`. Ensure edge-tts is installed: `pip install edge-tts` |
 | Dashboard 500 error | Check Jinja template `{% if %}`/`{% endif %}` balance — run `./launch.sh doctor` |
 | Age-restricted videos won't play | Use `?fetch_and_set_cookies <youtube_url>` to set cookies |
 | Bot appears stuck in voice after crash | Restart bot — `on_ready` forces disconnect from all stale voice sessions |

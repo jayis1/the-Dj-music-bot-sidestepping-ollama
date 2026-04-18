@@ -26,3 +26,5 @@ Naming convention:
 Available voices:
 - en_warm_female: Default DJ voice (warm, friendly female English voice)
 - en_news_male: News anchor style male English voice (good for AI side host)
+- da_female: Danish female voice (dansk, varm kvinde)
+- da_male: Danish male voice (dansk, nyhedsvært)

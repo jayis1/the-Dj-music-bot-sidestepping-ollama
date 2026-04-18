@@ -1356,6 +1356,35 @@ DEFAULT_VOICE_MOSS = "en_warm_female"
 DEFAULT_VOICE_EDGE = "en-US-AriaNeural"
 DEFAULT_VOICE_VIBEVOICE = "en-Carter_man"
 
+# ── Language-aware Edge TTS fallback voices ─────────────────────────────
+# When a MOSS/VibeVoice voice in a non-English language falls back to
+# edge-tts, we look up the language prefix from the voice name and use
+# the best matching Edge TTS voice for that language — instead of blindly
+# falling back to en-US-AriaNeural which would sound wrong.
+EDGE_VOICE_BY_LANG: dict[str, str] = {
+    "en": "en-US-AriaNeural",
+    "da": "da-DK-JeppeNeural",       # Danish male
+    "da_f": "da-DK-SofieNeural",     # Danish female
+    "zh": "zh-CN-XiaoxiaoNeural",
+    "ja": "ja-JP-NanamiNeural",
+    "ko": "ko-KR-SunHiNeural",
+    "de": "de-DE-KatjaNeural",
+    "es": "es-ES-ElviraNeural",
+    "fr": "fr-FR-DeniseNeural",
+    "it": "it-IT-ElsaNeural",
+    "pt": "pt-PT-RaquelNeural",
+    "ru": "ru-RU-SvetlanaNeural",
+    "ar": "ar-SA-ZariyahNeural",
+    "sv": "sv-SE-HilleviNeural",
+    "nl": "nl-NL-ColetteNeural",
+    "pl": "pl-PL-AgnieszkaNeural",
+    "cs": "cs-CZ-VlastaNeural",
+    "hu": "hu-HU-NoemiNeural",
+    "tr": "tr-TR-EmelNeural",
+    "el": "el-GR-AthenaNeural",
+    "fa": "fa-IR-DilaraNeural",
+}
+
 # Sample rates for local engines that output PCM/WAV
 MOSS_SAMPLE_RATE = 48000
 MOSS_CHANNELS = 2  # MOSS-TTS-Nano outputs stereo (48 kHz, 2-channel)
@@ -1368,6 +1397,8 @@ VIBEVOICE_SAMPLE_RATE = 24000
 MOSS_VOICE_CATALOG: dict[str, str] = {
     "en_warm_female": "English - Warm Female (default DJ voice)",
     "en_news_male": "English - News Anchor Male",
+    "da_female": "Danish - Female (dansk, varm kvinde)",
+    "da_male": "Danish - Male (dansk, nyhedsvært)",
 }
 
 
@@ -1438,6 +1469,35 @@ def _engine_for_voice(voice: str) -> str | None:
     return None
 
 
+def _edge_voice_for_moss_name(voice: str) -> str:
+    """Map a MOSS/VibeVoice voice name to the best matching Edge TTS voice.
+
+    Extracts the language prefix (e.g. 'da' from 'da_female', 'en' from
+    'en_news_male') and looks up the best Edge TTS voice for that language.
+    Also detects female/male from the voice name suffix for languages that
+    have distinct male/female Edge TTS voices.
+
+    Falls back to DEFAULT_VOICE_EDGE (en-US-AriaNeural) if no match.
+    """
+    # Extract language prefix from voice name
+    lang_prefix = voice.split("_")[0].lower() if "_" in voice else voice[:2].lower()
+
+    # Detect gender from voice name suffix (female/male/f/m)
+    voice_lower = voice.lower()
+    is_female = any(w in voice_lower for w in ("female", "woman", "girl", "_f"))
+
+    # Try language+gender specific mapping first (e.g. "da_f" → da-DK-SofieNeural)
+    if is_female and f"{lang_prefix}_f" in EDGE_VOICE_BY_LANG:
+        return EDGE_VOICE_BY_LANG[f"{lang_prefix}_f"]
+
+    # Then try language-only mapping (e.g. "da" → da-DK-JeppeNeural)
+    if lang_prefix in EDGE_VOICE_BY_LANG:
+        return EDGE_VOICE_BY_LANG[lang_prefix]
+
+    # No match — fall back to English default
+    return DEFAULT_VOICE_EDGE
+
+
 def _resolve_voice(voice: str, engine: str = "") -> str:
     """Resolve a voice name for the given engine.
 
@@ -1454,17 +1514,17 @@ def _resolve_voice(voice: str, engine: str = "") -> str:
     voice_engine = _engine_for_voice(voice)
 
     # If we can identify the voice's engine and it doesn't match the target,
-    # swap to the target engine's default.
+    # swap to the target engine's best voice — language-aware when possible.
     if voice_engine and voice_engine != engine:
         defaults = {
             "moss": DEFAULT_VOICE_MOSS,
             "vibevoice": DEFAULT_VOICE_VIBEVOICE,
-            "edge-tts": DEFAULT_VOICE_EDGE,
+            "edge-tts": _edge_voice_for_moss_name(voice),
         }
         new_voice = defaults.get(engine, voice)
         logging.info(
             f"DJ: Voice '{voice}' is a {voice_engine} voice but TTS engine is "
-            f"{engine} — resolved to {engine} default '{new_voice}'"
+            f"{engine} — resolved to {engine} voice '{new_voice}'"
         )
         return new_voice
 
@@ -1485,11 +1545,14 @@ def _resolve_voice(voice: str, engine: str = "") -> str:
             return DEFAULT_VOICE_VIBEVOICE
     elif engine == "edge-tts":
         if "_" in voice and "Neural" not in voice:
+            # This is a MOSS/VibeVoice voice name — resolve to a language-matched
+            # Edge TTS voice instead of blindly using the English default.
+            resolved = _edge_voice_for_moss_name(voice)
             logging.info(
                 f"DJ: Voice '{voice}' looks like a local TTS voice but TTS is "
-                f"edge-tts — resolved to edge-tts default '{DEFAULT_VOICE_EDGE}'"
+                f"edge-tts — resolved to edge-tts voice '{resolved}'"
             )
-            return DEFAULT_VOICE_EDGE
+            return resolved
 
     return voice
 

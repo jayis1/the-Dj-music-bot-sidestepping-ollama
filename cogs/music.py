@@ -2738,16 +2738,12 @@ class Music(commands.Cog):
         pending_sounds = self._dj_pending_sounds.pop(guild_id, [])
 
         if pending_sounds:
-            # Start bed music for the gap between TTS and song start.
-            # We couldn't start it earlier because TTS was using the voice client.
-            # Now TTS is done, so bed music can play under the sound effects.
+            # Do NOT start bed music here — Discord's VoiceClient can only play
+            # one source at a time. Bed music + sound effects = "Already playing
+            # audio" error. Sound effects take priority over bed music.
+            # Bed music will be started in _play_dj_sounds_then_song AFTER the
+            # sound effects finish, if there's still a gap before the song.
             # It'll be stopped by _stop_bed_music() in _start_song_playback.
-            guild = self.bot.get_guild(guild_id)
-            if guild and guild.voice_client:
-                asyncio.ensure_future(
-                    self._start_bed_music(guild.voice_client, guild_id),
-                    loop=self.bot.loop,
-                )
 
             logging.info(
                 f"DJ: Playing {len(pending_sounds)} sound effects for guild {guild_id}"
@@ -2770,6 +2766,10 @@ class Music(commands.Cog):
         Play a sequence of sound effects, then play the pending song.
         Each sound is capped at MAX_SOUND_SECONDS to prevent long sounds
         from blocking the next song.
+
+        Sound effects ALWAYS take priority over bed music. Bed music
+        is stopped before playing sounds and restarted after sounds
+        finish (to fill the gap before the song starts).
         """
         from utils.soundboard import get_sound_path
         import os as _os
@@ -2780,6 +2780,10 @@ class Music(commands.Cog):
             # Voice gone — skip sounds, go straight to song
             await self._play_song_after_dj(guild_id)
             return
+
+        # Stop bed music — sound effects take priority over bed music.
+        # Discord's VoiceClient can only play one source at a time.
+        await self._stop_bed_music(guild_id)
 
         for sound_id in sound_ids:
             path = get_sound_path(sound_id)
@@ -2842,7 +2846,14 @@ class Music(commands.Cog):
                 logging.error(f"DJ: Failed to play sound '{sound_id}': {e}")
                 continue
 
-        # All sounds done — play the song (AI side host handled in _play_song_after_dj)
+        # All sounds done. Start bed music for the brief gap before the
+        # song starts playing — this gives a smooth radio feel. The song
+        # will stop bed music via _stop_bed_music() in _start_song_playback.
+        guild = self.bot.get_guild(guild_id)
+        if guild and guild.voice_client:
+            await self._start_bed_music(guild.voice_client, guild_id)
+
+        # Now play the song (AI side host handled in _play_song_after_dj)
         await self._play_song_after_dj(guild_id)
 
     async def _play_song_after_dj(self, guild_id, skip_ai=False):

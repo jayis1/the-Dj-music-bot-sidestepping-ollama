@@ -2834,8 +2834,10 @@ def api_youtube_stream_status(guild_id):
     # Include autonomous mode details
     if active and streamer:
         result["autonomous"] = True
+        result["curated"] = getattr(music, "_yt_curated_mode", False)
     else:
         result["autonomous"] = False
+        result["curated"] = False
 
     if active and guild_id in music.current_song:
         song = music.current_song[guild_id]
@@ -3023,9 +3025,37 @@ def api_youtube_stream_toggle(guild_id):
                 }
             )
 
+        # ── Curated (Shadow DJ) mode: stream live, but you pick every song ──
+        elif mode == "curated":
+
+            async def _start_curated():
+                target_guild = bot.get_guild(guild_id) or _get_mock_guild(guild_id)
+                await music.start_headless_stream(
+                    guild=target_guild,
+                    key=key,
+                    rtmp_url=rtmp_url,
+                    stream_image=stream_image,
+                    playlist_url=None,  # No auto-fill — queue stays empty
+                    curated=True,
+                )
+
+            asyncio.ensure_future(_start_curated(), loop=bot.loop)
+            key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+            return jsonify(
+                {
+                    "ok": True,
+                    "active": True,
+                    "mode": "curated",
+                    "message": f"🔴 YouTube Live started (Shadow DJ curated)! Add songs from Queue Manager. Key: {key_display}",
+                }
+            )
+
         else:
             return jsonify(
-                {"ok": False, "error": "Invalid mode. Use 'mirror' or 'autonomous'"}
+                {
+                    "ok": False,
+                    "error": "Invalid mode. Use 'mirror', 'curated', or 'autonomous'",
+                }
             ), 400
 
 

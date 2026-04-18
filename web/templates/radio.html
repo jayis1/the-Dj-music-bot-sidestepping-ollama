@@ -348,16 +348,20 @@
         </div>
     </div>
 
-    <!-- ── Mode Toggle: Mirror vs Autonomous ──────────────────────── -->
+    <!-- ── Mode Toggle: Mirror / Curated / Autonomous ──────────────────────── -->
     <div style="margin-bottom: 14px;">
         <div style="display: flex; gap: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden;">
             <button id="yt-mode-mirror" onclick="setStreamMode('mirror')" class="yt-mode-btn"
                 style="flex: 1; padding: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s;">
                 🪞 Mirror
             </button>
-            <button id="yt-mode-autonomous" onclick="setStreamMode('autonomous')" class="yt-mode-btn yt-mode-btn-active"
+            <button id="yt-mode-curated" onclick="setStreamMode('curated')" class="yt-mode-btn"
                 style="flex: 1; padding: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; border-left: 1px solid var(--border); transition: all 0.15s;">
-                🤖 24/7 Autonomous
+                🎙️ Curated
+            </button>
+            <button id="yt-mode-autonomous" onclick="setStreamMode('autonomous')" class="yt-mode-btn"
+                style="flex: 1; padding: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; border-left: 1px solid var(--border); transition: all 0.15s;">
+                🤖 24/7 Auto
             </button>
         </div>
         <div id="yt-mode-desc" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; padding: 0 4px;">
@@ -365,8 +369,23 @@
         </div>
     </div>
 
+    <!-- ── Curated Config ──────────────────────────── -->
+    <div id="yt-curated-config" style="display: none; margin-bottom: 14px; padding: 12px;
+        background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius);">
+        <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px;">🎙️ Curated Mode — Shadow DJ</div>
+        <div style="font-size: 12px; color: var(--text-muted); line-height: 1.6;">
+            You're the DJ. The bot streams to YouTube Live with the overlay, DJ banter, and sound effects — <strong>but you hand-pick every song</strong> from the Queue Manager.
+            <br><br>
+            <strong>How it works:</strong><br>
+            1. Hit <strong>🔴 Go Live</strong> — stream starts with a "waiting for tracks" card<br>
+            2. Go to <strong>Queue Manager</strong> → add songs one by one or paste a playlist<br>
+            3. DJ speaks intros/outros between your picks. SFX plays. Overlay updates live.<br>
+            4. When the queue empties, the stream stays up showing a waiting card until you add more.
+        </div>
+    </div>
+
     <!-- ── Autonomous Config (hidden by default) ──────────────────── -->
-    <div id="yt-autonomous-config" style="display: block; margin-bottom: 14px; padding: 12px;
+    <div id="yt-autonomous-config" style="display: none; margin-bottom: 14px; padding: 12px;
         background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius);">
         <div style="font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px;">🤖 Autonomous Mode Settings</div>
         <div style="margin-bottom: 10px;">
@@ -918,33 +937,51 @@ document.addEventListener('DOMContentLoaded', function() {
 // ── YouTube Live Streaming ──────────────────────────────────────
 
 // Stream mode state
-let _ytStreamMode = 'autonomous';  // 'mirror' or 'autonomous'
+let _ytStreamMode = 'autonomous';  // 'mirror', 'curated', or 'autonomous'
 let _ytPollInterval = null;
+
+function _clearModeButtons() {
+    ['yt-mode-mirror', 'yt-mode-curated', 'yt-mode-autonomous'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.classList.remove('yt-mode-btn-active');
+            btn.classList.add('yt-mode-btn');
+            btn.style.background = 'var(--bg-secondary)';
+            btn.style.color = 'var(--text-muted)';
+        }
+    });
+}
+
+function _activateModeButton(id) {
+    const btn = document.getElementById(id);
+    if (btn) {
+        btn.classList.add('yt-mode-btn-active');
+        btn.classList.remove('yt-mode-btn');
+    }
+}
 
 function setStreamMode(mode) {
     _ytStreamMode = mode;
-    const mirrorBtn = document.getElementById('yt-mode-mirror');
-    const autoBtn = document.getElementById('yt-mode-autonomous');
     const autoConfig = document.getElementById('yt-autonomous-config');
+    const curatedConfig = document.getElementById('yt-curated-config');
     const desc = document.getElementById('yt-mode-desc');
 
+    _clearModeButtons();
+
     if (mode === 'mirror') {
-        mirrorBtn.classList.add('yt-mode-btn-active');
-        mirrorBtn.classList.remove('yt-mode-btn');
-        autoBtn.classList.remove('yt-mode-btn-active');
-        autoBtn.classList.add('yt-mode-btn');
-        autoBtn.style.background = 'var(--bg-secondary)';
-        autoBtn.style.color = 'var(--text-muted)';
+        _activateModeButton('yt-mode-mirror');
         if (autoConfig) autoConfig.style.display = 'none';
+        if (curatedConfig) curatedConfig.style.display = 'none';
         if (desc) desc.textContent = 'Mirrors Discord playback — bot must be in a voice channel';
+    } else if (mode === 'curated') {
+        _activateModeButton('yt-mode-curated');
+        if (autoConfig) autoConfig.style.display = 'none';
+        if (curatedConfig) curatedConfig.style.display = 'block';
+        if (desc) desc.textContent = 'You pick the songs, DJ speaks between them — Shadow DJ mode';
     } else {
-        autoBtn.classList.add('yt-mode-btn-active');
-        autoBtn.classList.remove('yt-mode-btn');
-        mirrorBtn.classList.remove('yt-mode-btn-active');
-        mirrorBtn.classList.add('yt-mode-btn');
-        mirrorBtn.style.background = 'var(--bg-secondary)';
-        mirrorBtn.style.color = 'var(--text-muted)';
+        _activateModeButton('yt-mode-autonomous');
         if (autoConfig) autoConfig.style.display = 'block';
+        if (curatedConfig) curatedConfig.style.display = 'none';
         if (desc) desc.textContent = 'Plays from a playlist 24/7 — no Discord voice channel needed';
     }
 }
@@ -1053,6 +1090,9 @@ async function toggleYouTubeLive() {
         }
     }
 
+    // Curated mode needs no playlist — songs are added manually via Queue Manager
+    // (body.playlist_url stays empty, backend will start stream without auto-fill)
+
     btn.textContent = '⏳ Connecting...';
     btn.disabled = true;
     try {
@@ -1063,7 +1103,12 @@ async function toggleYouTubeLive() {
         });
         const data = await res.json();
         if (data.ok) {
-            const modeLabel = data.mode === 'autonomous' ? ' (24/7 autonomous!)' : '';
+            const modeLabels = {
+                'autonomous': ' (24/7 autonomous!)',
+                'curated': ' (Shadow DJ — add songs from Queue Manager!)',
+                'mirror': ' (mirror mode)',
+            };
+            const modeLabel = modeLabels[data.mode] || '';
             showToast('🔴 YouTube Live started' + modeLabel, 'success');
             // Start polling for status
             startYtStatusPolling();
@@ -1146,14 +1191,21 @@ async function checkYouTubeLiveStatus() {
 
             // Mode badge
             const isAuto = data.autonomous;
+            const isCurated = data.curated;
             if (modeBadge) {
-                modeBadge.textContent = isAuto ? '🤖 AUTONOMOUS' : '🪞 MIRROR';
-                modeBadge.style.background = isAuto ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)';
-                modeBadge.style.color = isAuto ? 'var(--success)' : '#3b82f6';
+                if (isCurated) {
+                    modeBadge.textContent = '🎙️ CURATED';
+                    modeBadge.style.background = 'rgba(168,85,247,0.15)';
+                    modeBadge.style.color = 'var(--purple)';
+                } else {
+                    modeBadge.textContent = isAuto ? '🤖 AUTONOMOUS' : '🪞 MIRROR';
+                    modeBadge.style.background = isAuto ? 'rgba(34,197,94,0.15)' : 'rgba(59,130,246,0.15)';
+                    modeBadge.style.color = isAuto ? 'var(--success)' : '#3b82f6';
+                }
             }
 
-            // Skip button (autonomous only)
-            if (skipBtn) skipBtn.style.display = isAuto ? 'inline-block' : 'none';
+            // Skip button (autonomous + curated only)
+            if (skipBtn) skipBtn.style.display = (isAuto || isCurated) ? 'inline-block' : 'none';
             if (reloadBtn) reloadBtn.style.display = isAuto ? 'inline-block' : 'none';
 
             // Autonomous stats

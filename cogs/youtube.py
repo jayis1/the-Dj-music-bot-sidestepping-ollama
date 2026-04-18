@@ -69,6 +69,7 @@ FORMAT_FALLBACK_CHAIN = [
     "ba/b",  # Short aliases
     "best",  # Any single best format (may include video)
     "worstaudio/worst",  # Desperate: lowest quality that works
+    "18",  # Android/iOS pre-muxed 360p — always works even on DRM tracks with android client
 ]
 
 
@@ -94,7 +95,7 @@ def _make_base_opts():
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.88 Safari/537.36"
         },
-        "extractor_args": {"youtube": {"player_client": ["ios", "tv", "web"]}},
+        "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
         "extract_flat": "discard_in_playlist",
     }
 
@@ -241,7 +242,47 @@ async def _resolve_with_fallback(url, loop):
             is_drm_error = "drm protected" in error_str.lower()
 
             if is_drm_error:
-                # DRM-protected video — no format string will help, raise specific error
+                # DRM-protected video with current client. Try android client
+                # as a last resort — android doesn't enforce Widevine DRM
+                # and returns format 18 (pre-muxed 360p) even on DRM tracks.
+                current_clients = (
+                    opts.get("extractor_args", {})
+                    .get("youtube", {})
+                    .get("player_client", [])
+                )
+                if "android" not in current_clients:
+                    logging.warning(
+                        f"_resolve_with_fallback: DRM hit with {current_clients} — "
+                        f"retrying with android client. URL: {url}"
+                    )
+                    try:
+                        drm_opts = base_opts.copy()
+                        drm_opts["format"] = "18/bestaudio/best"
+                        drm_opts["extractor_args"] = {
+                            "youtube": {"player_client": ["android"]}
+                        }
+                        data = await loop.run_in_executor(
+                            None,
+                            lambda: yt_dlp.YoutubeDL(drm_opts).extract_info(
+                                url, download=False
+                            ),
+                        )
+                        if data:
+                            stream_url = data.get("filepath") or data.get("url", "")
+                            if not stream_url.startswith(
+                                "https://www.youtube.com/watch"
+                            ):
+                                logging.info(
+                                    "_resolve_with_fallback: Android client bypassed DRM — "
+                                    f"got format {data.get('format_id')}"
+                                )
+                                return data
+                    except Exception as android_err:
+                        logging.warning(
+                            f"_resolve_with_fallback: Android DRM bypass also failed: {android_err}"
+                        )
+
+                # All DRM bypasses failed — raise specific error for play_next to skip
                 logging.warning(
                     f"_resolve_with_fallback: DRM-protected video — skipping. "
                     f"URL: {url}"

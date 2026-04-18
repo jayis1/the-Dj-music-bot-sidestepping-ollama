@@ -124,6 +124,7 @@ class Music(commands.Cog):
         self._yt_streamer = None  # YouTubeLiveStreamer instance (created on ?golive)
         self._yt_stream_active = False  # True while stream is running
         self._yt_stream_guild = None  # Guild ID of the streaming guild
+        self._yt_curated_mode = False  # True when in Shadow DJ (curated) mode
         self._broadcasters = {}  # guild_id -> PCMBroadcaster
         self._headless_clients = {}  # guild_id -> PCMBroadcasterWrapper
 
@@ -250,11 +251,24 @@ class Music(commands.Cog):
         )
 
     async def start_headless_stream(
-        self, guild, key, rtmp_url, stream_image, playlist_url=None
+        self, guild, key, rtmp_url, stream_image, playlist_url=None, curated=False
     ):
-        """Starts the autonomous PCMBroadcaster-based stream. Can be called on boot or from UI."""
+        """Starts the headless PCMBroadcaster-based stream.
+
+        Args:
+            guild: Guild object (real or mock)
+            key: YouTube stream key
+            rtmp_url: RTMP server URL
+            stream_image: Optional stream card image
+            playlist_url: YouTube playlist to auto-fill (None for curated mode)
+            curated: If True, start stream with empty queue (Shadow DJ mode).
+                     The DJ speaks, the overlay is live, but you add songs
+                     manually from Mission Control's Queue Manager.
+        """
         if self._yt_stream_active:
             return
+
+        self._yt_curated_mode = curated
 
         try:
             self._yt_streamer = YOUTUBE_STREAMER_CLASS(
@@ -312,36 +326,47 @@ class Music(commands.Cog):
             if playlist_url:
                 self.autodj_source[guild.id] = playlist_url
 
-            # Use Auto-DJ system natively to seed queue
+            # Show curated waiting card on overlay
+            if curated:
+                self._yt_streamer.update_hud(
+                    title="🎵 Waiting for tracks...",
+                    dj="Shadow DJ Mode — add songs from Queue Manager",
+                    waiting="Curated Mode",
+                )
+
+            # Use Auto-DJ system natively to seed queue (skip in curated mode)
             # And then explicitly start playback since we're the first track
             async def _fill_and_play():
                 self.is_booting = True
-                if playlist_url:
+
+                # Only auto-fill in autonomous mode (not curated)
+                if not curated and playlist_url:
                     await self._autodj_fill(ctx)
 
                 # Eagerly start pregeneration of DJ assets immediately to cover
                 # MOSS-TTS server cold-start timeouts and have lines ready early.
-                try:
-                    queue = self.song_queues.get(guild.id)
-                    if queue and not queue.empty():
-                        pregen = self._get_pregenerator()
-                        # Pass empty current_title since this is the very start of the queue
-                        asyncio.ensure_future(
-                            pregen.pregenerate_upcoming(guild.id, queue, ""),
-                            loop=self.bot.loop,
-                        )
+                if not curated:
+                    try:
+                        queue = self.song_queues.get(guild.id)
+                        if queue and not queue.empty():
+                            pregen = self._get_pregenerator()
+                            # Pass empty current_title since this is the very start of the queue
+                            asyncio.ensure_future(
+                                pregen.pregenerate_upcoming(guild.id, queue, ""),
+                                loop=self.bot.loop,
+                            )
 
-                        # Wait for either 25 tracks to generate, or 120 seconds max timeout
-                        max_wait = 120
-                        queued_target = min(25, queue.qsize())
-                        if queued_target > 0:
-                            for _ in range(max_wait):
-                                if len(pregen.pregen_queue) >= queued_target:
-                                    break
-                                await asyncio.sleep(1)
+                            # Wait for either 25 tracks to generate, or 120 seconds max timeout
+                            max_wait = 120
+                            queued_target = min(25, queue.qsize())
+                            if queued_target > 0:
+                                for _ in range(max_wait):
+                                    if len(pregen.pregen_queue) >= queued_target:
+                                        break
+                                    await asyncio.sleep(1)
 
-                except Exception as e:
-                    logging.debug(f"Pregen: Failed eager startup pregen: {e}")
+                    except Exception as e:
+                        logging.debug(f"Pregen: Failed eager startup pregen: {e}")
 
                 self.is_booting = False
 
@@ -352,9 +377,10 @@ class Music(commands.Cog):
             self.bot.loop.create_task(_fill_and_play())
 
             self._yt_stream_active = True
+            mode_label = "curated (Shadow DJ)" if curated else "autonomous 24/7"
             logging.info(
-                f"YouTube Live: ✅ Auto-started autonomous 24/7 stream "
-                f"with AutoDJ seamlessly multiplexed via PCMBroadcaster!"
+                f"YouTube Live: ✅ Started {mode_label} stream "
+                f"with DJ engine seamlessly multiplexed via PCMBroadcaster!"
             )
         except Exception as e:
             logging.error(f"YouTube Live: Auto-start failed: {e}")
@@ -1070,16 +1096,24 @@ class Music(commands.Cog):
                     # DRM is a per-video issue, not a systemic auth problem.
                     # Skip the track WITHOUT incrementing the consecutive failure
                     # counter so the queue keeps playing non-DRM tracks.
-                    if isinstance(e, DRMProtectedError) or "drm protected" in error_str:
+                    is_drm = (
+                        isinstance(e, DRMProtectedError) or "drm protected" in error_str
+                    )
+                    is_unavailable = (
+                        "not available" in error_str or "video unavailable" in error_str
+                    )
+
+                    if is_drm or is_unavailable:
+                        reason = "DRM-protected" if is_drm else "unavailable/removed"
                         logging.warning(
-                            f"play_next: Skipping DRM-protected track "
+                            f"play_next: Skipping {reason} track "
                             f"'{data.title}' — not a systemic issue, queue continues."
                         )
-                        # Guard: if entire playlist is DRM-protected, stop recursing
+                        # Guard: if entire playlist is bad, stop recursing
                         if _drm_skip_count >= 20:
                             logging.error(
-                                f"play_next: {_drm_skip_count} consecutive DRM skips in "
-                                f"{ctx.guild.name}. Stopping — playlist may be entirely DRM-protected."
+                                f"play_next: {_drm_skip_count} consecutive skips in "
+                                f"{ctx.guild.name}. Stopping — playlist may be entirely unplayable."
                             )
                             await self._safe_change_presence(activity=None)
                             self._start_inactivity_timer(guild_id)

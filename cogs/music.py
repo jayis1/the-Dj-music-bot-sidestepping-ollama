@@ -110,6 +110,7 @@ class Music(commands.Cog):
         self.ai_dj_voice = {}  # guild_id -> str (TTS voice name for side host)
         self._ai_dj_pending_line = {}  # guild_id -> str|None (AI line waiting to be spoken)
         self._last_dj_line = {}  # guild_id -> str (what the main DJ just said, for AI context)
+        self._ai_sidehost_prefetch = {}  # guild_id -> asyncio.Task (prefetched AI line, started during DJ speech)
 
         # Battle of the Beats — live voting showdowns (per-guild)
         self._battles = {}  # guild_id -> dict {song_a, song_b, votes_a, votes_b, message_id, channel_id, timer_task, created_at}
@@ -2679,6 +2680,13 @@ class Music(commands.Cog):
                 ),
             )
 
+            # ── Prefetch AI Side Host line in parallel ──
+            # Start the Ollama generation NOW while the DJ is still speaking,
+            # so by the time DJ + sound effects finish, the AI line is already
+            # ready (or nearly ready). This eliminates the 10-15s bed music gap.
+            if not is_ai and self.ai_dj_enabled.get(guild_id, False):
+                self._prefetch_ai_sidehost(guild_id)
+
             # ── YouTube Live: Stream TTS audio ──
             if self._yt_stream_active and self._yt_streamer:
                 display = clean_text if clean_text else text
@@ -2876,18 +2884,63 @@ class Music(commands.Cog):
             f"tts_available={TTS_AVAILABLE}, skip_ai={skip_ai}"
         )
         if not skip_ai and ai_enabled and OLLAMA_DJ_AVAILABLE and TTS_AVAILABLE:
-            # Pass what the main DJ just said so the AI can react to it
-            dj_line = self._last_dj_line.get(guild_id, "")
-            logging.info(
-                f"AI Side Host: awaiting line generation for guild {guild_id}..."
-            )
-            # AI side host is always generated LIVE (not pre-generated).
-            # Only the main DJ (MOSS-TTS) lines are pre-generated.
-            try:
-                ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
-            except Exception as e:
-                logging.error(f"AI Side Host: error generating line: {e}")
-                ai_line = None
+            # ── Use prefetched AI line (started during DJ speech) if available ──
+            # The prefetch was launched in _dj_speak when the main DJ started
+            # talking, so by now it's likely already done (0s wait) or nearly
+            # done (a few seconds at most), instead of the full 10-15s Ollama
+            # latency that would play bed music while the listener waits.
+            prefetch_task = self._ai_sidehost_prefetch.pop(guild_id, None)
+            ai_line = None
+
+            if prefetch_task and not prefetch_task.done():
+                # Still running — await it (much shorter wait than starting fresh)
+                logging.info(
+                    f"AI Side Host: awaiting prefetched result for guild {guild_id} "
+                    f"(still generating...)"
+                )
+                try:
+                    ai_line = await asyncio.wait_for(
+                        asyncio.shield(prefetch_task), timeout=20
+                    )
+                except asyncio.TimeoutError:
+                    logging.warning(
+                        f"AI Side Host: prefetch timed out for guild {guild_id}, "
+                        f"skipping AI line"
+                    )
+                    ai_line = None
+                except Exception as e:
+                    logging.error(f"AI Side Host: prefetch error for guild {guild_id}: {e}")
+                    ai_line = None
+            elif prefetch_task and prefetch_task.done():
+                # Already done — instant!
+                try:
+                    ai_line = prefetch_task.result()
+                except Exception as e:
+                    logging.error(f"AI Side Host: prefetch result error for guild {guild_id}: {e}")
+                    ai_line = None
+                if ai_line:
+                    logging.info(
+                        f"AI Side Host: prefetched line READY for guild {guild_id} "
+                        f"(zero wait!)"
+                    )
+                else:
+                    logging.info(
+                        f"AI Side Host: prefetch returned None for guild {guild_id} "
+                        f"(random chance skipped or generation failed)"
+                    )
+            else:
+                # No prefetch was started (e.g. DJ spoke before AI was enabled)
+                # Fall back to generating live
+                dj_line = self._last_dj_line.get(guild_id, "")
+                logging.info(
+                    f"AI Side Host: no prefetch for guild {guild_id}, "
+                    f"generating live..."
+                )
+                try:
+                    ai_line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
+                except Exception as e:
+                    logging.error(f"AI Side Host: error generating line: {e}")
+                    ai_line = None
             if ai_line:
                 logging.info(
                     f"AI Side Host: got line for guild {guild_id}, speaking..."
@@ -2917,6 +2970,35 @@ class Music(commands.Cog):
         # Now play the actual song
         logging.info(f"Playing song for guild {guild_id} (skip_ai={skip_ai})")
         await self._start_song_playback(ctx, data, channel_id)
+
+    def _prefetch_ai_sidehost(self, guild_id: int):
+        """Launch AI side host line generation as a background task.
+
+        Called when the main DJ starts speaking so the Ollama call runs
+        in parallel with DJ TTS + sound effects. By the time _play_song_after_dj
+        runs, the AI line is typically already ready — eliminating the
+        10-15s bed-music gap where the listener waits for the AI to think.
+        """
+        # Cancel any stale prefetch for this guild
+        old = self._ai_sidehost_prefetch.get(guild_id)
+        if old and not old.done():
+            old.cancel()
+
+        async def _generate():
+            dj_line = self._last_dj_line.get(guild_id, "")
+            try:
+                line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
+                return line
+            except Exception as e:
+                logging.warning(f"AI Side Host prefetch failed for guild {guild_id}: {e}")
+                return None
+
+        task = asyncio.ensure_future(_generate(), loop=self.bot.loop)
+        self._ai_sidehost_prefetch[guild_id] = task
+        logging.info(
+            f"AI Side Host: Prefetch started for guild {guild_id} "
+            f"(running in parallel with DJ speech)"
+        )
 
     async def _try_ai_side_host(self, guild_id, dj_line: str = "") -> str | None:
         """Try to generate an AI side host line for this moment.

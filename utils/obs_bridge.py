@@ -719,7 +719,7 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_gdiplus_v2",
+                inputKind="text_freetype2_v2",
                 inputName="Station Name",
                 inputSettings={
                     "text": "MBOT RADIO",
@@ -728,10 +728,9 @@ class OBSBridge:
                         "style": "Bold",
                         "size": 42,
                     },
-                    "color1": 4294967295,       # White (ARGB)
-                    "color2": 4294967295,
-                    "align": "left",
-                    "valign": "top",
+                    "color": 4294967295,
+                    "align": 0,
+                    "valign": 0,
                     "read_from_file": False,
                 },
                 sceneItemEnabled=True,
@@ -749,7 +748,7 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_gdiplus_v2",
+                inputKind="text_freetype2_v2",
                 inputName="Now Playing",
                 inputSettings={
                     "text": "Waiting for playback...",
@@ -758,10 +757,9 @@ class OBSBridge:
                         "style": "Bold",
                         "size": 56,
                     },
-                    "color1": 4294967264,       # Gold (0xFFD700FF ARGB)
-                    "color2": 4294967264,
-                    "align": "left",
-                    "valign": "top",
+                    "color": 4294967264,
+                    "align": 0,
+                    "valign": 0,
                     "read_from_file": True,
                     "file": "/tmp/radio_title.txt",
                 },
@@ -780,7 +778,7 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_gdiplus_v2",
+                inputKind="text_freetype2_v2",
                 inputName="DJ Speaking",
                 inputSettings={
                     "text": "",
@@ -789,10 +787,9 @@ class OBSBridge:
                         "style": "Regular",
                         "size": 36,
                     },
-                    "color1": 4278255872,       # Cyan-green (0x00FFCCFF ARGB)
-                    "color2": 4278255872,
-                    "align": "left",
-                    "valign": "top",
+                    "color": 4278255872,
+                    "align": 0,
+                    "valign": 0,
                     "read_from_file": True,
                     "file": "/tmp/radio_dj.txt",
                 },
@@ -811,7 +808,7 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_gdiplus_v2",
+                inputKind="text_freetype2_v2",
                 inputName="Ticker",
                 inputSettings={
                     "text": "Initializing...",
@@ -820,10 +817,9 @@ class OBSBridge:
                         "style": "Regular",
                         "size": 24,
                     },
-                    "color1": 4294967295,       # White (ARGB)
-                    "color2": 4294967295,
-                    "align": "center",
-                    "valign": "bottom",
+                    "color": 4294967295,
+                    "align": 1,
+                    "valign": 2,
                     "read_from_file": True,
                     "file": "/tmp/radio_waiting.txt",
                 },

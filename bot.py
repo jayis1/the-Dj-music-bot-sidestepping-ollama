@@ -497,6 +497,32 @@ def run_web_server():
                 from utils.obs_bridge import get_bridge
                 bridge = get_bridge()
                 if bridge and bridge.enabled:
+                    # Write service.json to OBS profile directory FIRST.
+                    # OBS reads this file when initializing the output module.
+                    # Without it, OBS falls back to RTMPS with no key → TLS errors.
+                    import json, os
+                    profile_dir = os.path.expanduser(
+                        "~/.config/obs-studio/basic/profiles/RadioDJ"
+                    )
+                    try:
+                        os.makedirs(profile_dir, exist_ok=True)
+                        service_data = {
+                            "type": "rtmp_custom",
+                            "settings": {
+                                "server": rtmp_server,
+                                "key": stream_key,
+                            },
+                        }
+                        with open(os.path.join(profile_dir, "service.json"), "w") as f:
+                            json.dump(service_data, f, indent=4)
+                        logging.info(
+                            f"OBS: Wrote service.json → {profile_dir} "
+                            f"(server: {rtmp_server}, key: ...{stream_key[-4:]})"
+                        )
+                    except Exception as e:
+                        logging.warning(f"OBS: Failed to write service.json: {e}")
+
+                    # ALSO push via WebSocket API (OBS applies these immediately)
                     result = bridge.set_stream_settings(
                         service="rtmp_custom",
                         server=rtmp_server,
@@ -506,6 +532,12 @@ def run_web_server():
                         logging.warning(f"OBS: Failed to push stream settings at startup: {result}")
                     else:
                         logging.info(f"OBS: Stream settings pushed (RTMP: {rtmp_server}, key: ...{stream_key[-4:]})")
+            else:
+                logging.warning(
+                    "OBS: ⚠️ No YOUTUBE_STREAM_KEY configured. "
+                    "OBS will not be able to stream to YouTube. "
+                    "Set YOUTUBE_STREAM_KEY in .env or Mission Control."
+                )
 
             # Ensure all required Radio DJ scenes exist in OBS.
             # OBS may silently drop scenes from the JSON collection if it

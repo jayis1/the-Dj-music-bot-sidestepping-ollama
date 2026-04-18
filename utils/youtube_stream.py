@@ -117,6 +117,15 @@ class YouTubeLiveStreamer:
         
         self.update_hud(waiting="Booting Mainframes...")
 
+        # Warn immediately if stream key is missing — the #1 cause of
+        # "preparing stream" / TLS / "Connection reset by peer" errors
+        if not self.stream_key:
+            log.warning(
+                "YouTube Live: ⚠️ No stream key configured! "
+                "Set YOUTUBE_STREAM_KEY in .env or Mission Control → Radio → Stream Key. "
+                "Without it, OBS cannot connect to YouTube."
+            )
+
     @property
     def is_running(self) -> bool:
         return self._running
@@ -284,12 +293,14 @@ class YouTubeLiveStreamer:
         """Configure OBS for streaming and start the stream.
 
         Sets up everything OBS needs to stream to YouTube Live:
-        1. Push RTMP server + stream key to OBS
-        2. Ensure the overlay scene exists
-        3. Create browser overlay source (Mission Control overlay)
-        4. Create audio source (UDP PCM from bot's PCMBroadcaster)
-        5. Switch to the overlay scene
-        6. Start OBS streaming
+        0. Pre-flight checks: stream key, RTMP reachability
+        1. Write service.json to OBS profile dir (OBS reads this on startup)
+        2. Push RTMP server + stream key to OBS via WebSocket
+        3. Ensure the overlay scene exists
+        4. Create overlay sources (native color+text)
+        5. Create audio source (UDP PCM from bot's PCMBroadcaster)
+        6. Switch to the overlay scene
+        7. Start OBS streaming
 
         Returns True if streaming started successfully, False otherwise.
         """
@@ -303,11 +314,33 @@ class YouTubeLiveStreamer:
         self._stream_starting = True
 
         try:
-            # Step 1: Configure OBS stream settings: RTMP server + stream key
+            # ── Step 0: Pre-flight checks ──────────────────────────────
+            if not self.stream_key:
+                log.error(
+                    "YouTube Live/OBS: ❌ No stream key configured! "
+                    "Set YOUTUBE_STREAM_KEY in .env or Mission Control → Radio → Stream Key. "
+                    "Get your key from YouTube Studio → Go Live → Stream Key."
+                )
+                return False
+
+            log.info(
+                f"YouTube Live/OBS: Pre-flight OK — stream key: ...{self.stream_key[-4:]}, "
+                f"RTMP: {self.rtmp_url}"
+            )
+
+            # ── Step 1: Write service.json to OBS profile directory ────
+            # OBS reads service.json from the active profile directory on startup.
+            # If this file is missing, OBS has no idea which streaming service to use
+            # and falls back to RTMPS with no server/key — causing TLS errors and
+            # "Connection reset by peer". Writing this file ensures OBS has the
+            # correct RTMP server + stream key even before the WebSocket API pushes it.
+            self._write_obs_service_json()
+
+            # ── Step 2: Configure OBS stream settings via WebSocket API ─
             rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
             log.info(
                 f"YouTube Live/OBS: Configuring stream → {rtmp_endpoint} "
-                f"(key: {self.stream_key[:4]}...)"
+                f"(key: ...{self.stream_key[-4:]})"
             )
             result = self._obs_bridge.set_stream_settings(
                 service="rtmp_custom",
@@ -320,7 +353,7 @@ class YouTubeLiveStreamer:
 
             log.info("YouTube Live/OBS: Stream settings configured ✅")
 
-            # Step 2: Ensure the overlay scene exists
+            # ── Step 3: Ensure the overlay scene exists ────────────────
             overlay_scene = os.environ.get(
                 "OBS_SCENE_OVERLAY", "📺 Overlay Only"
             )
@@ -333,7 +366,7 @@ class YouTubeLiveStreamer:
                 except Exception:
                     pass  # Scene might already exist (race), that's OK
 
-            # Step 3: Create overlay sources (native color+text, or browser if available)
+            # ── Step 4: Create overlay sources (native color+text) ──────
             # On Debian 12, obs-browser plugin is NOT available, so browser_source
             # fails with error 605. We try native overlay first (color+text sources)
             # which works on all platforms, and fall back to browser source on
@@ -353,7 +386,7 @@ class YouTubeLiveStreamer:
                     "Overlay may be incomplete."
                 )
 
-            # Step 4: Create FFmpeg audio source (UDP PCM from bot)
+            # ── Step 5: Create FFmpeg audio source (UDP PCM from bot) ───
             result = self._obs_bridge.create_audio_source(
                 source_name="Bot Audio (UDP)",
                 udp_port=12345,
@@ -361,13 +394,15 @@ class YouTubeLiveStreamer:
             )
             if result.get("error"):
                 log.warning(f"YouTube Live/OBS: Audio source issue: {result['error']}")
+            else:
+                log.info("YouTube Live/OBS: Audio source created ✅")
 
-            # Step 5: Switch to the overlay scene BEFORE starting stream
+            # ── Step 6: Switch to the overlay scene BEFORE starting stream
             # This ensures the correct content is there from frame 1
             self._obs_bridge.set_current_scene(overlay_scene)
             log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
 
-            # Step 6: Start OBS streaming
+            # ── Step 7: Start OBS streaming ─────────────────────────────
             result = self._obs_bridge.start_streaming()
             if not result.get("connected"):
                 log.warning(f"YouTube Live/OBS: Failed to start streaming: {result}")
@@ -390,6 +425,65 @@ class YouTubeLiveStreamer:
             return False
         finally:
             self._stream_starting = False
+
+    def _write_obs_service_json(self):
+        """Write service.json to the active OBS profile directory on disk.
+
+        OBS reads service.json from the active profile directory (e.g.
+        ~/.config/obs-studio/basic/profiles/RadioDJ/) to know which
+        streaming service to use, the RTMP server URL, and the stream key.
+
+        If this file is missing or contains an empty stream key, OBS:
+          - Still tries to connect to YouTube on start_streaming()
+          - Falls back to RTMPS (TLS), causing "Error in the pull function"
+            and "Connection reset by peer" errors
+          - The stream never actually starts
+
+        Writing this file BEFORE calling start_streaming() via the WebSocket
+        API ensures OBS has the correct service configuration even if the
+        WebSocket push arrives after OBS has already initialized its output
+        module.
+
+        This is a defensive measure — the WebSocket set_stream_service_settings()
+        should also write this file, but we do it ourselves to be certain.
+        """
+        import json
+
+        # Find the active OBS profile directory
+        # OBS uses --profile "RadioDJ" from start.sh
+        profile_name = os.environ.get("OBS_PROFILE_NAME", "RadioDJ")
+        profile_dir = os.path.expanduser(
+            f"~/.config/obs-studio/basic/profiles/{profile_name}"
+        )
+
+        if not os.path.isdir(profile_dir):
+            # Try to create the directory if it doesn't exist
+            try:
+                os.makedirs(profile_dir, exist_ok=True)
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
+                return
+
+        rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
+
+        service_data = {
+            "type": "rtmp_custom",
+            "settings": {
+                "server": rtmp_endpoint,
+                "key": self.stream_key,
+            },
+        }
+
+        service_json_path = os.path.join(profile_dir, "service.json")
+        try:
+            with open(service_json_path, "w") as f:
+                json.dump(service_data, f, indent=4)
+            log.info(
+                f"YouTube Live/OBS: Wrote service.json → {profile_dir} "
+                f"(server: {rtmp_endpoint}, key: ...{self.stream_key[-4:]})"
+            )
+        except Exception as e:
+            log.warning(f"YouTube Live/OBS: Failed to write service.json: {e}")
 
     async def _stop_obs_stream(self):
         """Stop OBS streaming."""

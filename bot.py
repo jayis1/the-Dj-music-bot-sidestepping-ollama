@@ -506,6 +506,13 @@ def run_web_server():
                         logging.warning(f"OBS: Failed to push stream settings at startup: {result}")
                     else:
                         logging.info(f"OBS: Stream settings pushed (RTMP: {rtmp_server}, key: ...{stream_key[-4:]})")
+
+            # Ensure all required Radio DJ scenes exist in OBS.
+            # OBS may silently drop scenes from the JSON collection if it
+            # can't parse sources — this fixes that by creating them live.
+            bridge = get_bridge()
+            if bridge and bridge.enabled:
+                bridge.ensure_scenes_exist()
         except Exception as e:
             logging.warning(f"OBS Bridge initialization failed: {e}")
 

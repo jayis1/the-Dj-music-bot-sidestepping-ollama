@@ -915,11 +915,25 @@ class OBSBridge:
             scene_name = self._get_current_scene_name()
 
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
-            # Check if source already exists — skip if so (idempotent)
+            # If source already exists, UPDATE its settings to ensure correct
+            # PCM format (old persisted sources may have missing/wrong format)
             try:
                 existing = c.get_input_settings(name=_sn)
                 if existing:
-                    log.debug(f"OBS Bridge: Source '{_sn}' already exists, skipping creation")
+                    log.debug(f"OBS Bridge: Source '{_sn}' already exists, updating settings")
+                    try:
+                        c.set_input_settings(
+                            name=_sn,
+                            settings={
+                                "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
+                                "is_local_file": False,
+                                "input_format": "s16le",
+                                "ffmpeg_options": "-ar 48000 -ac 2",
+                            },
+                            overlay=False,
+                        )
+                    except Exception as e:
+                        log.warning(f"OBS Bridge: Failed to update '{_sn}' settings: {e}")
                     return existing
             except Exception:
                 pass  # Source doesn't exist — proceed to create it
@@ -941,6 +955,117 @@ class OBSBridge:
 
         return self._safe_call(_create)
 
+    # ── Scene Setup ─────────────────────────────────────────────────────────
+
+    def ensure_scenes_exist(self) -> dict:
+        """Create all required Radio DJ scenes and sources via WebSocket API.
+
+        Instead of relying on OBS to correctly parse the scene collection JSON
+        (which silently drops scenes with unknown source types), this method
+        programmatically creates every scene and source that the bot needs.
+
+        Safe to call repeatedly — idempotent (skips existing scenes/sources).
+
+        Returns a dict with 'created' (list of created items) and 'errors'.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled"}
+
+        created = []
+        errors = []
+
+        # ── Scene definitions ──
+        scenes = {
+            "️ Now Playing": {
+                "sources": [
+                    ("color_source_v3", "Background Color", {
+                        "color": 4278190080, "width": 1280, "height": 720,
+                    }),
+                    (_TEXT_INPUT_KIND, "Now Playing Title", _text_settings(
+                        "Now Playing", "DejaVu Sans", "Bold", 48,
+                        color=4294967295, align=1, valign=1,
+                    )),
+                    (_TEXT_INPUT_KIND, "Station Name", _text_settings(
+                        "Radio DJ Bot", "DejaVu Sans", "Regular", 32,
+                        color=4286544650, align=1, valign=0,
+                    )),
+                ],
+            },
+            "🎙️ DJ Speaking": {
+                "sources": [
+                    ("color_source_v3", "Background Color", {
+                        "color": 4278190303, "width": 1280, "height": 720,
+                    }),
+                    (_TEXT_INPUT_KIND, "DJ Speaking Title", _text_settings(
+                        "🎙️ The DJ is Speaking...", "DejaVu Sans", "Bold", 56,
+                        color=4294967295, align=1, valign=1,
+                    )),
+                ],
+            },
+            "⏳ Waiting": {
+                "sources": [
+                    ("color_source_v3", "Background Color", {
+                        "color": 4286544384, "width": 1280, "height": 720,
+                    }),
+                    (_TEXT_INPUT_KIND, "Waiting Title", _text_settings(
+                        "⏳ Waiting for next track...", "DejaVu Sans", "Regular", 48,
+                        color=4294967295, align=1, valign=1,
+                    )),
+                ],
+            },
+            "📺 Overlay Only": {
+                "sources": [
+                    ("color_source_v3", "Overlay Background", {
+                        "color": 4278190080, "width": 1280, "height": 720,
+                    }),
+                ],
+            },
+        }
+
+        for scene_name, scene_def in scenes.items():
+            # Create the scene (idempotent)
+            result = self.create_scene(scene_name)
+            if result.get("error") and not result.get("data", {}).get("already_exists"):
+                errors.append(f"scene:{scene_name}: {result['error']}")
+                continue  # Can't add sources to a scene that doesn't exist
+            if not result.get("data", {}).get("already_exists"):
+                created.append(f"scene:{scene_name}")
+
+            # Create each source in the scene
+            for input_kind, source_name, settings in scene_def["sources"]:
+                # Check if source already exists globally
+                try:
+                    existing = self._safe_call(
+                        lambda c, sn=source_name: c.get_input_settings(name=sn)
+                    )
+                    if existing and not existing.get("error"):
+                        continue  # Source already exists
+                except Exception:
+                    pass
+
+                def _make_src(c, _scene=scene_name, _kind=input_kind,
+                              _name=source_name, _settings=settings):
+                    return c.create_input(
+                        sceneName=_scene,
+                        inputKind=_kind,
+                        inputName=_name,
+                        inputSettings=_settings,
+                        sceneItemEnabled=True,
+                    )
+
+                result = self._safe_call(_make_src)
+                if result.get("error"):
+                    errors.append(f"source:{scene_name}/{source_name}: {result['error']}")
+                else:
+                    created.append(f"source:{scene_name}/{source_name}")
+
+        if errors:
+            log.warning(f"OBS Bridge: Scene setup had errors: {errors}")
+        else:
+            log.info(f"OBS Bridge: Scene setup complete ✅ ({len(created)} items)")
+
+        return {"created": created, "errors": errors}
+
     # ── Reconnect ─────────────────────────────────────────────────────────
 
     def reconnect(self) -> dict:
@@ -957,6 +1082,7 @@ class OBSBridge:
     def switch_scene(self, scene_name: str) -> bool:
         """Try to switch to a scene (non-blocking, fire-and-forget).
 
+        Falls back to '📺 Overlay Only' if the target scene doesn't exist.
         Returns True if the request was sent (not guaranteed to succeed).
         Used by the bot for auto scene switching — failures are logged
         but never crash the bot.
@@ -965,12 +1091,15 @@ class OBSBridge:
             return False
         try:
             result = self.set_current_scene(scene_name)
-            if result.get("status") == "ok" or result.get("connected"):
-                log.debug(f"OBS Auto Scene: Switched to '{scene_name}'")
+            if result.get("status") == "ok" or (result.get("connected") and not result.get("error")):
                 return True
-            else:
-                log.debug(f"OBS Auto Scene: Failed to switch to '{scene_name}': {result.get('error', 'unknown')}")
-                return False
+            # Scene not found? Fall back to overlay scene
+            if result.get("error") and "No source" in str(result.get("error", "")):
+                fallback = "📺 Overlay Only"
+                log.debug(f"OBS Auto Scene: '{scene_name}' not found, falling back to '{fallback}'")
+                result = self.set_current_scene(fallback)
+                return result.get("status") == "ok" or (result.get("connected") and not result.get("error"))
+            return False
         except Exception as e:
             log.debug(f"OBS Auto Scene: Exception switching to '{scene_name}': {e}")
             return False

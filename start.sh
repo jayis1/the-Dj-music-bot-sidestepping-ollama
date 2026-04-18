@@ -374,7 +374,7 @@ PYEOF
       fi
 
       # Start OBS headless via xvfb-run (handles Xvfb lifecycle automatically)
-      xvfb-run -a obs --minimize-to-tray --disable-shutdown-check --collection "Radio DJ" &
+      xvfb-run -a obs --minimize-to-tray --disable-shutdown-check --collection "Radio DJ" --profile "RadioDJ" &
       OBS_PID=$!
       sleep 3
 

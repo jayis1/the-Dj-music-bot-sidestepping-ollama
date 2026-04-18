@@ -320,18 +320,25 @@ class YouTubeLiveStreamer:
                 except Exception:
                     pass  # Scene might already exist (race), that's OK
 
-            # Step 3: Create browser overlay source (no-op if it already exists)
-            overlay_url = os.environ.get("OBS_OVERLAY_URL", "http://localhost:8080/overlay")
-            log.info(f"YouTube Live/OBS: Overlay URL → {overlay_url}")
-            result = self._obs_bridge.create_browser_source(
-                source_name="Browser Overlay (Bot)",
-                url=overlay_url,
-                width=1280,
-                height=720,
+            # Step 3: Create overlay sources (native color+text, or browser if available)
+            # On Debian 12, obs-browser plugin is NOT available, so browser_source
+            # fails with error 605. We try native overlay first (color+text sources)
+            # which works on all platforms, and fall back to browser source on
+            # platforms where obs-browser is installed.
+            overlay_scene = os.environ.get(
+                "OBS_SCENE_OVERLAY", "📺 Overlay Only"
+            )
+
+            # Try native overlay first (works everywhere including Debian 12)
+            log.info("YouTube Live/OBS: Creating native overlay (color+text sources)")
+            result = self._obs_bridge.create_native_overlay(
                 scene_name=overlay_scene,
             )
-            if result.get("error"):
-                log.warning(f"YouTube Live/OBS: Browser source issue: {result['error']}")
+            if result.get("errors"):
+                log.warning(
+                    f"YouTube Live/OBS: Native overlay had errors: {result['errors']}. "
+                    "Overlay may be incomplete."
+                )
 
             # Step 4: Create FFmpeg audio source (UDP PCM from bot)
             result = self._obs_bridge.create_audio_source(

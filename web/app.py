@@ -3449,16 +3449,12 @@ def api_obs_streaming_configure_and_start():
     if result.get("error") and not result.get("connected"):
         return jsonify({"ok": False, "error": f"Failed to configure OBS stream settings: {result.get('error', 'unknown')}"})
 
-    # Step 3: Ensure overlay browser source exists in the "📺 Overlay Only" scene
-    overlay_url = getattr(config, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+    # Step 3: Ensure overlay source exists in the "📺 Overlay Only" scene
+    # Use native overlay (color+text sources) which works on all platforms
+    # including Debian 12 where obs-browser plugin is not available.
     overlay_scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
 
-    # Try to create the browser source (no-op if it already exists)
-    bridge.create_browser_source(
-        source_name="Browser Overlay (Bot)",
-        url=overlay_url,
-        width=1280,
-        height=720,
+    bridge.create_native_overlay(
         scene_name=overlay_scene,
     )
 

@@ -8,14 +8,27 @@ streaming, recording, and filters — all from the web UI.
 Protocol docs: https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.json
 Python client: https://github.com/obs-websocket-community-project/obsws-python
 
-obsws-python ReqClient API:
+obsws-python ReqClient API (v1.8.0):
   The ReqClient has NAMED methods for every request, e.g.:
     client.start_stream()
     client.stop_stream()
     client.toggle_stream()
     client.get_stream_status()
-    client.set_current_program_scene(sceneName="My Scene")
+    client.set_current_program_scene(name="My Scene")
+    client.set_current_scene_transition(name="Cut")
+    client.set_studio_mode_enabled(enabled=True)
+    client.set_scene_item_enabled(scene_name="Scene", item_id=1, enabled=True)
+    client.set_input_mute(name="Mic", muted=True)
+    client.set_input_volume(name="Mic", vol_db=0.0)
+    client.get_input_settings(name="Browser Overlay")
+    client.get_scene_item_list(name="Scene")
+    client.save_source_screenshot(name="Source", img_format="png", file_path="", width=1280, height=720, quality=-1)
     ...
+
+  IMPORTANT: obsws-python uses its OWN parameter names, NOT the OBS WebSocket RPC names.
+  For example, the RPC "sceneName" becomes "name", "inputName" becomes "name",
+  "sceneItemId" becomes "item_id", etc. Always check the actual Python signature
+  before using a method.
 
   There is NO generic client.call() method. The low-level client.send(param, data, raw=True)
   sends a raw request and returns a raw dict, but named methods are preferred because
@@ -414,7 +427,7 @@ class OBSBridge:
     def set_current_scene(self, scene_name: str) -> dict:
         """Switch to a different OBS scene."""
         return self._safe_call(
-            lambda c, sn=scene_name: c.set_current_program_scene(sceneName=sn)
+            lambda c, sn=scene_name: c.set_current_program_scene(name=sn)
         )
 
     def _get_current_scene_name(self) -> str:
@@ -439,7 +452,7 @@ class OBSBridge:
 
         return self._safe_call(
             lambda c, sn=scene_name, iid=item_id, v=visible: c.set_scene_item_enabled(
-                sceneName=sn, sceneItemId=iid, sceneItemEnabled=v
+                scene_name=sn, item_id=iid, enabled=v
             )
         )
 
@@ -449,7 +462,7 @@ class OBSBridge:
         if client is None:
             return -1
         try:
-            resp = client.get_scene_item_list(sceneName=scene_name)
+            resp = client.get_scene_item_list(name=scene_name)
             items = resp.scene_items if hasattr(resp, "scene_items") else resp.get("sceneItems", [])
             for item in items:
                 name = item.source_name if hasattr(item, "source_name") else item.get("sourceName", "")
@@ -467,20 +480,20 @@ class OBSBridge:
     def set_source_mute(self, source_name: str, muted: bool) -> dict:
         """Mute/unmute an audio source."""
         return self._safe_call(
-            lambda c, sn=source_name, m=muted: c.set_input_mute(inputName=sn, inputMuted=m)
+            lambda c, sn=source_name, m=muted: c.set_input_mute(name=sn, muted=m)
         )
 
     def toggle_source_mute(self, source_name: str) -> dict:
         """Toggle mute on an audio source."""
         return self._safe_call(
-            lambda c, sn=source_name: c.toggle_input_mute(inputName=sn)
+            lambda c, sn=source_name: c.toggle_input_mute(name=sn)
         )
 
     def set_source_volume(self, source_name: str, volume_db: float) -> dict:
         """Set volume of a source in dB."""
         return self._safe_call(
             lambda c, sn=source_name, v=volume_db: c.set_input_volume(
-                inputName=sn, inputVolumeDb=v
+                name=sn, vol_db=v
             )
         )
 
@@ -489,7 +502,7 @@ class OBSBridge:
     def set_current_transition(self, transition_name: str) -> dict:
         """Set the active scene transition."""
         return self._safe_call(
-            lambda c, tn=transition_name: c.set_current_scene_transition(transitionName=tn)
+            lambda c, tn=transition_name: c.set_current_scene_transition(name=tn)
         )
 
     def trigger_transition(self) -> dict:
@@ -503,13 +516,13 @@ class OBSBridge:
     def enable_studio_mode(self) -> dict:
         """Enable OBS studio mode."""
         return self._safe_call(
-            lambda c: c.set_studio_mode_enabled(studioModeEnabled=True)
+            lambda c: c.set_studio_mode_enabled(enabled=True)
         )
 
     def disable_studio_mode(self) -> dict:
         """Disable OBS studio mode."""
         return self._safe_call(
-            lambda c: c.set_studio_mode_enabled(studioModeEnabled=False)
+            lambda c: c.set_studio_mode_enabled(enabled=False)
         )
 
     # ── Replay Buffer ────────────────────────────────────────────────────
@@ -539,22 +552,22 @@ class OBSBridge:
     # ── Screenshot ────────────────────────────────────────────────────────
 
     def take_screenshot(self, source_name: str = "") -> dict:
-        """Take a screenshot of a source (or the main output)."""
-        if source_name:
-            return self._safe_call(
-                lambda c, sn=source_name: c.save_source_screenshot(
-                    sourceName=sn,
-                    imageFormat="png",
-                    imageWidth=1280,
-                    imageHeight=720,
-                )
-            )
+        """Take a screenshot of a source (or the main output).
+        
+        Note: obsws-python 1.8.0 save_source_screenshot signature is:
+            save_source_screenshot(name, img_format, file_path, width, height, quality)
+        We save to /tmp/ and return the path. If file_path is empty, OBS returns
+        a base64-encoded image in the response instead.
+        """
+        target = source_name or "️ Now Playing"
         return self._safe_call(
-            lambda c: c.save_source_screenshot(
-                sourceName="️ Now Playing",
-                imageFormat="png",
-                imageWidth=1280,
-                imageHeight=720,
+            lambda c, sn=target: c.save_source_screenshot(
+                name=sn,
+                img_format="png",
+                file_path="",
+                width=1280,
+                height=720,
+                quality=-1,
             )
         )
 
@@ -607,6 +620,11 @@ class OBSBridge:
         Used to add the Mission Control overlay as a browser source
         that OBS can stream to YouTube Live.
 
+        NOTE: On Debian 12, OBS 29.x does NOT include the obs-browser
+        plugin, so browser_source will fail with error 605. Use
+        create_native_overlay() instead for a color+text source approach
+        that works on all platforms.
+
         Args:
             source_name: Name for the source in OBS
             url: URL the browser source will display
@@ -623,7 +641,7 @@ class OBSBridge:
         def _create(c, _sn=source_name, _u=url, _w=width, _h=height, _scene=scene_name):
             # Check if source already exists — skip if so (idempotent)
             try:
-                existing = c.get_input_settings(inputName=_sn)
+                existing = c.get_input_settings(name=_sn)
                 if existing:
                     log.debug(f"OBS Bridge: Source '{_sn}' already exists, skipping creation")
                     return existing
@@ -646,6 +664,215 @@ class OBSBridge:
 
         return self._safe_call(_create)
 
+    def create_native_overlay(self, scene_name: str = "") -> dict:
+        """Create a native OBS overlay using color + text sources.
+
+        This is the cross-platform alternative to browser_source — it works
+        on Debian 12 where obs-browser is not available. It creates:
+          1. A dark color_source_v3 as the background
+          2. Multiple text_gdiplus_v2 sources that read from /tmp/radio_*.txt
+             files (written by youtube_stream.py update_hud())
+
+        The text sources auto-update by reading from the .txt files on each
+        frame render, so they stay in sync with the bot's playback state.
+
+        Args:
+            scene_name: Scene to add sources to (empty = current scene)
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        results = {}
+
+        # ── 1. Background color source ──────────────────────────────────
+        def _create_bg(c, _scene=scene_name):
+            try:
+                existing = c.get_input_settings(name="Overlay Background")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="color_source_v3",
+                inputName="Overlay Background",
+                inputSettings={
+                    "color": 4278190080,  # 0xFF000000 = opaque black (ARGB)
+                    "width": 1280,
+                    "height": 720,
+                },
+                sceneItemEnabled=True,
+            )
+
+        results["background"] = self._safe_call(_create_bg)
+
+        # ── 2. Station name text source ────────────────────────────
+        def _create_station(c, _scene=scene_name):
+            try:
+                existing = c.get_input_settings(name="Station Name")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="text_gdiplus_v2",
+                inputName="Station Name",
+                inputSettings={
+                    "text": "MBOT RADIO",
+                    "font": {
+                        "face": "DejaVu Sans",
+                        "style": "Bold",
+                        "size": 42,
+                    },
+                    "color1": 4294967295,       # White (ARGB)
+                    "color2": 4294967295,
+                    "align": "left",
+                    "valign": "top",
+                    "read_from_file": False,
+                },
+                sceneItemEnabled=True,
+            )
+
+        results["station_text"] = self._safe_call(_create_station)
+
+        # ── 3. Now Playing title text source (reads from file) ─────
+        def _create_title(c, _scene=scene_name):
+            try:
+                existing = c.get_input_settings(name="Now Playing")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="text_gdiplus_v2",
+                inputName="Now Playing",
+                inputSettings={
+                    "text": "Waiting for playback...",
+                    "font": {
+                        "face": "DejaVu Sans",
+                        "style": "Bold",
+                        "size": 56,
+                    },
+                    "color1": 4294967264,       # Gold (0xFFD700FF ARGB)
+                    "color2": 4294967264,
+                    "align": "left",
+                    "valign": "top",
+                    "read_from_file": True,
+                    "file": "/tmp/radio_title.txt",
+                },
+                sceneItemEnabled=True,
+            )
+
+        results["title_text"] = self._safe_call(_create_title)
+
+        # ── 4. DJ/Speaking text source (reads from file) ───────────
+        def _create_dj(c, _scene=scene_name):
+            try:
+                existing = c.get_input_settings(name="DJ Speaking")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="text_gdiplus_v2",
+                inputName="DJ Speaking",
+                inputSettings={
+                    "text": "",
+                    "font": {
+                        "face": "DejaVu Sans",
+                        "style": "Regular",
+                        "size": 36,
+                    },
+                    "color1": 4278255872,       # Cyan-green (0x00FFCCFF ARGB)
+                    "color2": 4278255872,
+                    "align": "left",
+                    "valign": "top",
+                    "read_from_file": True,
+                    "file": "/tmp/radio_dj.txt",
+                },
+                sceneItemEnabled=True,
+            )
+
+        results["dj_text"] = self._safe_call(_create_dj)
+
+        # ── 5. Waiting/ticker text source (reads from file) ────────
+        def _create_waiting(c, _scene=scene_name):
+            try:
+                existing = c.get_input_settings(name="Ticker")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="text_gdiplus_v2",
+                inputName="Ticker",
+                inputSettings={
+                    "text": "Initializing...",
+                    "font": {
+                        "face": "DejaVu Sans",
+                        "style": "Regular",
+                        "size": 24,
+                    },
+                    "color1": 4294967295,       # White (ARGB)
+                    "color2": 4294967295,
+                    "align": "center",
+                    "valign": "bottom",
+                    "read_from_file": True,
+                    "file": "/tmp/radio_waiting.txt",
+                },
+                sceneItemEnabled=True,
+            )
+
+        results["ticker_text"] = self._safe_call(_create_waiting)
+
+        # ── 6. Position scene items ────────────────────────────────
+        # Set transform (position, size) for each text source so they
+        # appear in the right places on the 1280x720 canvas.
+        self._position_overlay_items(scene_name)
+
+        errors = [k for k, v in results.items() if v.get("error")]
+        if errors:
+            log.warning(f"OBS Bridge: Native overlay had errors: {errors}")
+        else:
+            log.info("OBS Bridge: Native overlay created ✅")
+
+        return {"connected": True, "status": "ok", "sources_created": list(results.keys()), "errors": errors or None}
+
+    def _position_overlay_items(self, scene_name: str):
+        """Position overlay text sources on the 1280x720 canvas.
+
+        Uses set_scene_item_transform to position each source.
+        OBS scene item positions are in pixels from top-left.
+        """
+        # Positions for the overlay elements
+        positions = {
+            "Station Name": {"x": 450, "y": 150},
+            "Now Playing": {"x": 450, "y": 210},
+            "DJ Speaking": {"x": 450, "y": 280},
+            "Ticker": {"x": 0, "y": 670},
+        }
+
+        for source_name, pos in positions.items():
+            item_id = self._get_scene_item_id(scene_name, source_name)
+            if item_id < 0:
+                continue  # Source not found — skip
+            try:
+                self._safe_call(
+                    lambda c, sn=scene_name, iid=item_id, px=pos["x"], py=pos["y"]:
+                        c.set_scene_item_transform(
+                            scene_name=sn, item_id=iid, transform={"positionX": px, "positionY": py}
+                        )
+                )
+            except Exception as e:
+                log.debug(f"OBS Bridge: Failed to position '{source_name}': {e}")
+
     def create_audio_source(self, source_name: str, udp_port: int = 12345, scene_name: str = "") -> dict:
         """Create a FFmpeg audio source that reads from the PCMBroadcaster UDP pipe.
 
@@ -656,6 +883,14 @@ class OBSBridge:
             source_name: Name for the source in OBS
             udp_port: UDP port to listen on (default 12345)
             scene_name: Scene to add the source to (empty = current scene)
+
+        IMPORTANT: The UDP stream contains raw PCM s16le 48kHz stereo data.
+        OBS's FFmpeg source cannot auto-detect the format of a raw PCM stream,
+        so we must explicitly specify:
+          - input_format: "s16le" (signed 16-bit little-endian)
+          - FFmpeg options: "-ar 48000 -ac 2" (48kHz, 2 channels)
+        Without these, OBS logs "MP: Failed to open media" and the source
+        stays silent.
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -667,7 +902,7 @@ class OBSBridge:
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
             # Check if source already exists — skip if so (idempotent)
             try:
-                existing = c.get_input_settings(inputName=_sn)
+                existing = c.get_input_settings(name=_sn)
                 if existing:
                     log.debug(f"OBS Bridge: Source '{_sn}' already exists, skipping creation")
                     return existing
@@ -680,6 +915,11 @@ class OBSBridge:
                 inputSettings={
                     "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
                     "is_local_file": False,
+                    # CRITICAL: Raw PCM format specification — OBS cannot
+                    # auto-detect the format of a raw UDP stream. Without these,
+                    # OBS logs "MP: Failed to open media" and the source is silent.
+                    "input_format": "s16le",
+                    "ffmpeg_options": "-ar 48000 -ac 2",
                 },
                 sceneItemEnabled=True,
             )

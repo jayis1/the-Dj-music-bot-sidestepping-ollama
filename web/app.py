@@ -652,7 +652,7 @@ def radio():
         guilds=guilds_data,
         bot_user=str(bot.user) if bot else "Not connected",
         guild_count=len(bot.guilds) if bot else 0,
-        tts_mode=getattr(config, "TTS_MODE", "moss"),
+        tts_mode=getattr(config, "TTS_MODE", "kokoro"),
         config=config,
     )
 
@@ -972,7 +972,8 @@ def api_save_default_voice(guild_id):
 def api_voices(guild_id):
     """Return available TTS voices, with server-side caching to avoid repeated API calls.
 
-    Supports three TTS engines via config.TTS_MODE:
+    Supports four TTS engines via config.TTS_MODE:
+    - "kokoro": Returns Kokoro voices from built-in catalog + server query (cached 30 min)
     - "moss": Returns voices from assets/moss_voices/ directory (cached 30 min)
     - "vibevoice": Queries VibeVoice-Realtime /config endpoint (cached 30 min)
     - "edge-tts": Fetches from Microsoft's TTS API (cached 30 min)
@@ -980,6 +981,55 @@ def api_voices(guild_id):
     from utils.dj import list_voices, EDGE_TTS_AVAILABLE, TTS_MODE as CURRENT_TTS_MODE
 
     lang = request.args.get("lang", "en")
+
+    # ── Kokoro TTS mode ────────────────────────────────────────────
+    if CURRENT_TTS_MODE == "kokoro":
+        cache_key = "_kokoro_voice_cache"
+        cache_timestamp_key = "_kokoro_voice_cache_ts"
+
+        if not hasattr(api_voices, cache_key):
+            setattr(api_voices, cache_key, None)
+            setattr(api_voices, cache_timestamp_key, 0)
+
+        cached_voices = getattr(api_voices, cache_key)
+        cache_ts = getattr(api_voices, cache_timestamp_key)
+        cache_ttl = 30 * 60  # 30 minutes
+
+        if cached_voices is not None and (time.time() - cache_ts) < cache_ttl:
+            return jsonify({"voices": cached_voices, "tts_mode": "kokoro"})
+
+        raw_voices = _run_async(list_voices(lang))
+        if raw_voices is None:
+            if cached_voices is not None:
+                return jsonify(
+                    {"voices": cached_voices, "cached": True, "tts_mode": "kokoro"}
+                )
+            return jsonify(
+                {
+                    "voices": [],
+                    "tts_mode": "kokoro",
+                    "error": "Failed to fetch voices from Kokoro-FastAPI server. "
+                    "Make sure the server is running at {url}.".format(
+                        url=getattr(config, "KOKORO_TTS_URL", "http://localhost:8880")
+                    ),
+                }
+            )
+
+        formatted = [
+            {
+                "name": v.get("ShortName", v.get("name", "")),
+                "is_default": v.get("default", False),
+                "gender": v.get("Gender", v.get("gender", "?")),
+                "locale": v.get("Locale", v.get("locale", "?")),
+                "description": v.get("description", ""),
+            }
+            for v in raw_voices
+        ]
+
+        setattr(api_voices, cache_key, formatted)
+        setattr(api_voices, cache_timestamp_key, time.time())
+
+        return jsonify({"voices": formatted, "tts_mode": "kokoro"})
 
     # ── MOSS TTS mode ────────────────────────────────────────────
     if CURRENT_TTS_MODE == "moss":
@@ -1434,7 +1484,7 @@ def settings_page():
         mem_mb=mem_mb,
         cpu_pct=cpu_pct,
         auto_refresh=False,
-        tts_mode=getattr(config, "TTS_MODE", "moss"),
+        tts_mode=getattr(config, "TTS_MODE", "kokoro"),
         moss_tts_url=getattr(config, "MOSS_TTS_URL", "http://localhost:18083"),
         vibevoice_tts_url=getattr(config, "VIBEVOICE_TTS_URL", "http://localhost:3000"),
         edge_tts_available=EDGE_TTS_AVAILABLE,
@@ -2935,9 +2985,16 @@ def api_youtube_stream_status(guild_id):
 
 @app.route("/api/save_stream_key", methods=["POST"])
 def api_save_stream_key():
-    """Permanently save the YouTube stream key to the .env file."""
+    """Permanently save the YouTube stream key to the .env file.
+    
+    Uses file locking to prevent corruption from concurrent writes.
+    Matches the YOUTUBE_STREAM_KEY line exactly (handles spaces around =)
+    and appends it if not found.
+    """
+    import re
+
     data = request.json or {}
-    stream_key = data.get("stream_key", "").strip() or data.get("stream_key", "").strip()
+    stream_key = data.get("stream_key", "").strip()
     if not stream_key:
         return jsonify({"error": "Stream key required"}), 400
 
@@ -2945,34 +3002,60 @@ def api_save_stream_key():
     if not os.path.isfile(env_file):
         return jsonify({"error": ".env file not found"}), 500
 
-    lines = []
+    # Read, modify, write with file locking to prevent corruption
+    import fcntl
+
+    lines_out = []
     found = False
-    with open(env_file, "r") as f:
-        for line in f:
-            if line.strip().startswith(
-                "YOUTUBE_STREAM_KEY="
-            ) and not line.strip().startswith("#"):
-                lines.append(f"YOUTUBE_STREAM_KEY={stream_key}\n")
+    key_pattern = re.compile(r'^YOUTUBE_STREAM_KEY\s*=')
+
+    try:
+        with open(env_file, "r") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            lines_in = f.readlines()
+
+        for line in lines_in:
+            stripped = line.strip()
+            # Skip comment lines
+            if stripped.startswith("#"):
+                lines_out.append(line)
+                continue
+            # Match exactly YOUTUBE_STREAM_KEY= (with optional spaces around =)
+            if key_pattern.match(stripped):
+                lines_out.append(f"YOUTUBE_STREAM_KEY={stream_key}\n")
                 found = True
             else:
-                lines.append(line)
-    if not found:
-        lines.append(f"\nYOUTUBE_STREAM_KEY={stream_key}\n")
+                lines_out.append(line)
 
-    with open(env_file, "w") as f:
-        f.writelines(lines)
+        if not found:
+            lines_out.append(f"\nYOUTUBE_STREAM_KEY={stream_key}\n")
 
-    config.YOUTUBE_STREAM_KEY = stream_key
-    return jsonify({"ok": True})
+        with open(env_file, "w") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            f.writelines(lines_out)
+            f.flush()
+            os.fsync(f.fileno())
+            fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+        # Update in-memory config
+        config.YOUTUBE_STREAM_KEY = stream_key
+        logging.info(f"Dashboard: YouTube stream key saved to .env (hint: ...{stream_key[-4:]})")
+        return jsonify({"ok": True})
+
+    except Exception as e:
+        logging.error(f"Dashboard: Failed to save stream key: {e}")
+        return jsonify({"error": f"Failed to save: {e}"}), 500
 
 
 @app.route("/api/obs/stream_key_status")
 def api_stream_key_status():
-    """Check if a YouTube stream key is configured (for OBS page display)."""
+    """Check if a YouTube stream key is configured (for OBS page display).
+    
+    Only reveals the last 4 characters as a hint to avoid exposing the full key.
+    """
     key = getattr(config, "YOUTUBE_STREAM_KEY", "")
     if key:
-        # Show first 4 and last 4 chars as a hint
-        key_hint = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+        key_hint = f"...{key[-4:]}" if len(key) >= 4 else "***"
         return jsonify({"key_set": True, "key_hint": key_hint})
     return jsonify({"key_set": False, "key_hint": None})
 

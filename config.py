@@ -38,36 +38,49 @@ LOG_CHANNEL_ID = int(os.environ.get("LOG_CHANNEL_ID", 0) or 0) or None
 # Change this if you want a different default voice.
 # Use ?djvoices in Discord to see available voices.
 # The voice name format depends on the active TTS engine:
-#   MOSS:       name of a .wav file in assets/moss_voices/ (without extension)
-#   VibeVoice:  en-Carter_man, en-Journalist_woman, etc.
+#   Kokoro:    af_bella, af_sky, am_adam, bf_emma, etc. (prefix = language+gender)
+#   MOSS:      name of a .wav file in assets/moss_voices/ (without extension)
+#   VibeVoice: en-Carter_man, en-Journalist_woman, etc.
 #   Edge TTS:   en-US-AriaNeural, en-US-GuyNeural, etc.
-DJ_VOICE = os.environ.get("DJ_VOICE", "en_warm_female")
+DJ_VOICE = os.environ.get("DJ_VOICE", "af_bella")
 
 # ── TTS Engine ──────────────────────────────────────────────────────────
-# The bot supports three TTS engines:
+# The bot supports four TTS engines with a cascading fallback chain:
 #
-# 1. "moss" (default) — MOSS-TTS-Nano via its FastAPI server.
-#    Local, open-weight, 0.1B params, runs on CPU or GPU. Voice clone via
-#    prompt audio files. 48 kHz stereo output, multilingual (20 languages).
+# 1. "kokoro" (default) — Kokoro-FastAPI via its OpenAI-compatible API.
+#    GPU-accelerated (NVIDIA CUDA), best quality voice synthesis. 82M params.
+#    Local, fast (~35-100x realtime on GPU), OpenAI-compatible /v1/audio/speech.
+#    See: https://github.com/remsky/Kokoro-FastAPI
+#    Docker: docker compose up -d  (includes kokoro-tts service)
+#    Voice names: af_bella, af_sky, am_adam, am_michael, bf_emma, bf_isabella, etc.
+#    Prefixes: af=American female, am=American male, bf=British female, bm=British male
+#
+# 2. "moss" — MOSS-TTS-Nano via its FastAPI server.
+#    CPU-friendly, voice cloning via .wav prompt files. 48 kHz stereo, multilingual.
 #    See: https://github.com/OpenMOSS/MOSS-TTS-Nano
-#    Start with: docker compose up -d  (includes MOSS-TTS-Nano server)
 #    Voices are .wav prompt audio files in assets/moss_voices/
 #
-# 2. "vibevoice" — Uses a separately-hosted VibeVoice-Realtime WebSocket server.
+# 3. "vibevoice" — Uses a separately-hosted VibeVoice-Realtime WebSocket server.
 #    Lower latency (~300ms), runs on GPU/CPU in a separate process.
 #    Requires: VibeVoice server running (see https://github.com/microsoft/VibeVoice)
 #    Voice names like: en-Carter_man, en-Journalist_woman, de-Anna_woman
 #    (The legacy alias "local" also works and maps to vibevoice.)
 #
-# 3. "edge-tts" — Microsoft Edge TTS voices (cloud-based).
+# 4. "edge-tts" — Microsoft Edge TTS voices (cloud-based).
 #    Free, no server needed, 100+ voices in 40+ languages, but higher latency
 #    and depends on Microsoft's cloud API. Used as automatic fallback.
 #    Requires: pip install edge-tts
 #    Voice names like: en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural
 #
-# Fallback chain: moss → edge-tts  (or vibevoice → edge-tts)
-# If the primary engine fails, the bot automatically falls back to edge-tts.
-TTS_MODE = os.environ.get("TTS_MODE", "moss").lower()
+# Fallback chain: kokoro → moss → edge-tts  (or moss → edge-tts, vibevoice → edge-tts)
+# If the primary engine fails, the bot automatically falls back to the next in chain.
+TTS_MODE = os.environ.get("TTS_MODE", "kokoro").lower()
+
+# Kokoro-FastAPI server URL (only used when TTS_MODE=kokoro).
+# Start with: docker compose up -d kokoro-tts
+# Or: python start-cpu.sh / start-gpu.sh from the Kokoro-FastAPI repo.
+# Docker: http://kokoro-tts:8880  |  Bare metal: http://localhost:8880
+KOKORO_TTS_URL = os.environ.get("KOKORO_TTS_URL", "http://localhost:8880")
 
 # MOSS-TTS-Nano server URL (only used when TTS_MODE=moss).
 # Start with: moss-tts-nano serve --port 18083
@@ -153,17 +166,19 @@ if _OLLAMA_DJ_CHANCE_RAW != OLLAMA_DJ_CHANCE:
 # This makes the two hosts sound like different people.
 # Use ?djvoices in Discord to see available voices.
 # NOTE: The default is determined by the active TTS engine at startup:
+#   Kokoro:    am_adam (American male, contrasts with the default female DJ voice)
 #   MOSS:      en_news_male (male, contrasts with the default female DJ voice)
 #   VibeVoice: en-Carter_man
 #   Edge TTS:  en-US-GuyNeural
 # You can override this in .env with any valid voice name for your TTS engine.
 _OLLAMA_DJ_VOICE_DEFAULTS = {
+    "kokoro": "am_adam",
     "moss": "en_news_male",
     "vibevoice": "en-Carter_man",
     "edge-tts": "en-US-GuyNeural",
 }
 _ollama_dj_voice_fallback = _OLLAMA_DJ_VOICE_DEFAULTS.get(
-    os.environ.get("TTS_MODE", "moss").lower(), "en-US-GuyNeural"
+    os.environ.get("TTS_MODE", "kokoro").lower(), "en-US-GuyNeural"
 )
 OLLAMA_DJ_VOICE = os.environ.get("OLLAMA_DJ_VOICE", _ollama_dj_voice_fallback)
 

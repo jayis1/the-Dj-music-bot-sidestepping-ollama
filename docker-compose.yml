@@ -8,7 +8,8 @@
 #
 # Services (all start by default with docker compose up -d):
 #   - bot:        The Radio DJ Discord bot + web dashboard
-#   - moss-tts:   MOSS-TTS-Nano voice cloning server (CPU, 0.1B params)
+#   - kokoro-tts: Kokoro-FastAPI TTS server (GPU-accelerated, primary voice)
+#   - moss-tts:   MOSS-TTS-Nano voice cloning server (CPU fallback, 0.1B params)
 #   - ollama:     AI side host LLM server (auto-pulls model on first start)
 #   - obs:        Headless OBS Studio for streaming + scene control
 #
@@ -48,7 +49,35 @@
 
 services:
 
+  # ── Kokoro-FastAPI TTS server (GPU primary, MOSS fallback) ────────────
+  # High-quality GPU-accelerated TTS using Kokoro-82M model.
+  # OpenAI-compatible /v1/audio/speech endpoint. NVIDIA GPU required.
+  # See: https://github.com/remsky/Kokoro-FastAPI
+  kokoro-tts:
+    image: ghcr.io/remsky/kokoro-fastapi-gpu:latest
+    container_name: kokoro-tts
+    restart: unless-stopped
+    ports:
+      - "8880:8880"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - API_LOG_LEVEL=WARNING
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8880/v1/audio/voices"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   # ── MOSS-TTS-Nano server ──────────────────────────────────────────────
+  # Fallback TTS engine — CPU-friendly, voice cloning via prompt audio files.
+  # Used as fallback when Kokoro is unavailable or TTS_MODE=kokoro.
   moss-tts:
     image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
     # Uncomment to build locally instead:
@@ -176,7 +205,8 @@ services:
     environment:
       # Container-aware overrides — these point the bot at the Docker services
       - MOSS_TTS_URL=http://moss-tts:18083
-      - TTS_MODE=moss
+      - KOKORO_TTS_URL=http://kokoro-tts:8880
+      - TTS_MODE=kokoro
       - OLLAMA_HOST=http://ollama:11434
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455
@@ -220,7 +250,8 @@ services:
       - .env
     environment:
       - MOSS_TTS_URL=http://moss-tts:18083
-      - TTS_MODE=moss
+      - KOKORO_TTS_URL=http://kokoro-tts:8880
+      - TTS_MODE=kokoro
       - OLLAMA_HOST=http://ollama:11434
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455
@@ -333,7 +364,8 @@ services:
       - .env
     environment:
       - MOSS_TTS_URL=http://moss-tts:18083
-      - TTS_MODE=moss
+      - KOKORO_TTS_URL=http://kokoro-tts:8880
+      - TTS_MODE=kokoro
       - OLLAMA_HOST=http://ollama:11434
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455
@@ -441,7 +473,8 @@ services:
       - .env
     environment:
       - MOSS_TTS_URL=http://moss-tts:18083
-      - TTS_MODE=moss
+      - KOKORO_TTS_URL=http://kokoro-tts:8880
+      - TTS_MODE=kokoro
       - OLLAMA_HOST=http://ollama:11434
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455

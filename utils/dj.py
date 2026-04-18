@@ -2,21 +2,28 @@
 utils/dj.py — Radio DJ mode for MBot.
 
 Generates Text-to-Speech DJ commentary between songs using:
-- MOSS-TTS-Nano via its FastAPI server (default, local, CPU/GPU, voice clone)
-- VibeVoice-Realtime (separate WebSocket server, GPU-accelerated)
-- Microsoft Edge TTS (cloud fallback)
+- Kokoro-FastAPI (default, GPU-accelerated, OpenAI-compatible API)
+- MOSS-TTS-Nano (fallback, local, CPU-friendly, voice clone)
+- Microsoft Edge TTS (last resort, cloud-based)
 
 The DJ speaks like a real radio host — with energy, personality, time-aware
 greetings, listener callouts, weather-style banter, and natural transitions.
 
 TTS engine is selected via config.TTS_MODE:
-- "moss" (default): MOSS-TTS-Nano FastAPI server. 0.1B params, CPU-friendly.
+- "kokoro" (default): Kokoro-FastAPI OpenAI-compatible server. 82M params,
+  GPU-accelerated. Best quality, ~35-100x realtime on NVIDIA GPU.
+  Voice names: af_bella, am_adam, bf_emma, etc.
+  Docker: docker compose up -d kokoro-tts
+  See: https://github.com/remsky/Kokoro-FastAPI
+- "moss": MOSS-TTS-Nano FastAPI server. 0.1B params, CPU-friendly.
   Voice cloning via prompt audio files in assets/moss_voices/.
   Start with: moss-tts-nano serve --port 18083
   See: https://github.com/OpenMOSS/MOSS-TTS-Nano
 - "vibevoice": Uses a VibeVoice-Realtime WebSocket server on a separate port.
   (The legacy alias "local" also maps to vibevoice.)
 - "edge-tts": Microsoft Edge TTS (cloud-based, always-available fallback).
+
+Fallback chain: kokoro → moss → edge-tts (or moss → edge-tts, vibevoice → edge-tts)
 """
 
 import asyncio
@@ -53,30 +60,23 @@ except ImportError:
 # ── TTS Engine Detection ─────────────────────────────────────────────
 
 # Resolve TTS mode, handling legacy aliases
-_raw_tts_mode = getattr(config, "TTS_MODE", "moss").lower()
+_raw_tts_mode = getattr(config, "TTS_MODE", "kokoro").lower()
 
-# Backward compat: "local" and "kokoro" are legacy names
+# Backward compat: "local" is a legacy name for vibevoice
 if _raw_tts_mode == "local":
     logging.warning(
         'DJ: TTS_MODE="local" is deprecated. Use "vibevoice" instead. '
         'Mapping "local" → "vibevoice" for now.'
     )
     _raw_tts_mode = "vibevoice"
-elif _raw_tts_mode == "kokoro":
-    logging.warning(
-        'DJ: TTS_MODE="kokoro" is no longer supported. '
-        'Switching to "moss" (MOSS-TTS-Nano). '
-        "See https://github.com/OpenMOSS/MOSS-TTS-Nano for setup."
-    )
-    _raw_tts_mode = "moss"
 
-KNOWN_TTS_MODES = {"moss", "vibevoice", "edge-tts"}
+KNOWN_TTS_MODES = {"kokoro", "moss", "vibevoice", "edge-tts"}
 if _raw_tts_mode not in KNOWN_TTS_MODES:
-    logging.warning(f"DJ: Unknown TTS_MODE '{_raw_tts_mode}', falling back to moss")
-    _raw_tts_mode = "moss"
+    logging.warning(f"DJ: Unknown TTS_MODE '{_raw_tts_mode}', falling back to kokoro")
+    _raw_tts_mode = "kokoro"
 
-# Validate: moss and vibevoice both need aiohttp for HTTP calls
-if _raw_tts_mode in ("moss", "vibevoice") and not AIOHTTP_AVAILABLE:
+# Validate: kokoro, moss and vibevoice all need aiohttp for HTTP calls
+if _raw_tts_mode in ("kokoro", "moss", "vibevoice") and not AIOHTTP_AVAILABLE:
     logging.warning(
         f"DJ: TTS_MODE={_raw_tts_mode} but aiohttp not installed. "
         "Install with: pip install aiohttp"
@@ -93,7 +93,7 @@ TTS_MODE = _raw_tts_mode
 # configured and its dependencies are installed. Used by cogs/music.py
 # to gate DJ mode — DJ should work with any engine, not just edge-tts.
 TTS_AVAILABLE = (
-    (TTS_MODE in ("moss", "vibevoice") and AIOHTTP_AVAILABLE)
+    (TTS_MODE in ("kokoro", "moss", "vibevoice") and AIOHTTP_AVAILABLE)
     or (TTS_MODE == "edge-tts" and EDGE_TTS_AVAILABLE)
     or EDGE_TTS_AVAILABLE  # edge-tts is always a fallback
 )
@@ -107,6 +107,7 @@ MOSS_VOICES_DIR = os.path.join(
 )
 
 # Resolve server URLs from config
+KOKORO_TTS_URL = getattr(config, "KOKORO_TTS_URL", "http://localhost:8880")
 MOSS_TTS_URL = getattr(config, "MOSS_TTS_URL", "http://localhost:18083")
 
 VIBEVOICE_TTS_URL = getattr(config, "VIBEVOICE_TTS_URL", "") or getattr(
@@ -114,7 +115,10 @@ VIBEVOICE_TTS_URL = getattr(config, "VIBEVOICE_TTS_URL", "") or getattr(
 )
 
 # Log the active TTS configuration at startup
-if TTS_MODE == "moss":
+if TTS_MODE == "kokoro":
+    logging.info(f"DJ: Using Kokoro-FastAPI server at {KOKORO_TTS_URL}")
+    logging.info(f"DJ: Fallback chain: kokoro → moss → edge-tts")
+elif TTS_MODE == "moss":
     logging.info(f"DJ: Using MOSS-TTS-Nano server at {MOSS_TTS_URL}")
     logging.info(f"DJ: MOSS voice prompts directory: {MOSS_VOICES_DIR}")
 elif TTS_MODE == "vibevoice":
@@ -1368,6 +1372,7 @@ def generate_outro(
 # ── TTS Generation ─────────────────────────────────────────────────
 
 # Default voice names per engine — used when no voice is explicitly set
+DEFAULT_VOICE_KOKORO = "af_bella"
 DEFAULT_VOICE_MOSS = "en_warm_female"
 DEFAULT_VOICE_EDGE = "en-US-AriaNeural"
 DEFAULT_VOICE_VIBEVOICE = "en-Carter_man"
@@ -1405,6 +1410,60 @@ EDGE_VOICE_BY_LANG: dict[str, str] = {
 MOSS_SAMPLE_RATE = 48000
 MOSS_CHANNELS = 2  # MOSS-TTS-Nano outputs stereo (48 kHz, 2-channel)
 VIBEVOICE_SAMPLE_RATE = 24000
+KOKORO_SAMPLE_RATE = 24000  # Kokoro-FastAPI outputs 24 kHz natively
+
+# ── Kokoro voice catalog ────────────────────────────────────────────────────
+# Kokoro voices use a prefix system: [a|b][f|m]_name
+#   af = American female, am = American male
+#   bf = British female,  bm = British male
+#   ef = English female (Indian English), em = English male (Indian English)
+#   ff = French female,   fm = French male (actually Haitian)
+#   hf = Hindi female,    hm = Hindi male
+#   jf = Japanese female (not in v1_0, may be added later)
+#   pf = Portuguese female, pm = Portuguese male (Brazilian)
+#   zf = Chinese female,   zm = Chinese male (Mandarin)
+#
+# Voice mixing: "af_bella(2)+af_sky(1)" for 67%/33% mix
+# See: https://github.com/remsky/Kokoro-FastAPI for full voice list
+KOKORO_VOICE_CATALOG: dict[str, str] = {
+    # American voices
+    "af_bella": "American Female - Bella (warm, natural, primary DJ voice)",
+    "af_nicole": "American Female - Nicole",
+    "af_sarah": "American Female - Sarah",
+    "af_sky": "American Female - Sky (soft, soothing)",
+    "am_adam": "American Male - Adam (news anchor)",
+    "am_michael": "American Male - Michael",
+    # British voices
+    "bf_alice": "British Female - Alice",
+    "bf_emma": "British Female - Emma",
+    "bf_isabella": "British Female - Isabella",
+    "bm_daniel": "British Male - Daniel",
+    "bm_george": "British Male - George",
+    "bm_lewis": "British Male - Lewis",
+    # Indian English voices
+    "ef_dora": "English (Indian) Female - Dora",
+    "em_alex": "English (Indian) Male - Alex",
+    # French voices
+    "ff_siwss": "French Female - Swiss",
+    "fm_siwss": "French Male - Swiss",
+    # Hindi voices
+    "hf_alpha": "Hindi Female - Alpha",
+    "hf_beta": "Hindi Female - Beta",
+    "hm_alpha": "Hindi Male - Alpha",
+    "hm_beta": "Hindi Male - Beta",
+    # Portuguese voices
+    "pf_dora": "Portuguese (Brazilian) Female - Dora",
+    "pm_santa": "Portuguese (Brazilian) Male - Santa",
+    # Chinese voices
+    "zf_xiaobei": "Chinese (Mandarin) Female - Xiaobei",
+    "zf_xiaoni": "Chinese (Mandarin) Female - Xiaoni",
+    "zf_xiaoxiao": "Chinese (Mandarin) Female - Xiaoxiao",
+    "zf_xiaoyi": "Chinese (Mandarin) Female - Xiaoyi",
+    "zm_yunjian": "Chinese (Mandarin) Male - Yunjian",
+    "zm_yunxi": "Chinese (Mandarin) Male - Yunxi",
+    "zm_yunxia": "Chinese (Mandarin) Male - Yunxia",
+    "zm_yunyang": "Chinese (Mandarin) Male - Yunyang",
+}
 
 # ── MOSS voice prompt catalog ────────────────────────────────────────────
 # Built-in voices shipped in assets/moss_voices/. Each is a .wav prompt
@@ -1447,8 +1506,13 @@ def _is_moss_voice(voice: str) -> bool:
     MOSS voice names correspond to .wav prompt files in assets/moss_voices/.
     They typically use underscores like 'en_warm_female', 'en_news_male'.
     They don't contain 'Neural' (Edge TTS) or hyphens (VibeVoice).
+    Note: Kokoro voices like 'af_bella' also use underscores, so we check
+    for Kokoro's prefix pattern first in _engine_for_voice().
     """
     if "Neural" in voice:
+        return False
+    # Kokoro voices use [ab][fm]_ prefix pattern — disambiguate from MOSS
+    if _is_kokoro_voice(voice):
         return False
     # If a .wav file exists for this name, it's definitely a MOSS voice
     prompt_files = _list_moss_prompt_files()
@@ -1456,6 +1520,27 @@ def _is_moss_voice(voice: str) -> bool:
         return True
     # Heuristic: has underscores but no hyphens and not Neural
     return "_" in voice and "-" not in voice
+
+
+def _is_kokoro_voice(voice: str) -> bool:
+    """Return True if a voice name looks like a Kokoro TTS voice.
+
+    Kokoro voices use a prefix system: [abefhjpz][fm]_name
+    Examples: af_bella, am_adam, bf_emma, zm_yunxi, jf_2
+    They have exactly one underscore with a known 2-char prefix,
+    or they're in the KOKORO_VOICE_CATALOG.
+    """
+    if voice in KOKORO_VOICE_CATALOG:
+        return True
+    # Check prefix pattern: first two chars should be [abefhjpz][fm] followed by _
+    import re
+    if re.match(r'^[abefhjpz][fm]_\w+$', voice):
+        return True
+    # Also match voice combos like "af_bella(2)+af_sky(1)"
+    if "+" in voice:
+        # Multi-voice combination — this is a Kokoro feature
+        return True
+    return False
 
 
 def _is_edge_voice(voice: str) -> bool:
@@ -1474,8 +1559,10 @@ def _is_vibevoice_voice(voice: str) -> bool:
 def _engine_for_voice(voice: str) -> str | None:
     """Guess which TTS engine a voice name belongs to.
 
-    Returns 'moss', 'vibevoice', 'edge-tts', or None if unclear.
+    Returns 'kokoro', 'moss', 'vibevoice', 'edge-tts', or None if unclear.
     """
+    if _is_kokoro_voice(voice):
+        return "kokoro"
     if _is_moss_voice(voice):
         return "moss"
     if _is_edge_voice(voice):
@@ -1514,11 +1601,59 @@ def _edge_voice_for_moss_name(voice: str) -> str:
     return DEFAULT_VOICE_EDGE
 
 
+def _kokoro_voice_for_name(voice: str) -> str:
+    """Map any voice name (MOSS, Edge, VibeVoice, Kokoro) to the best Kokoro voice.
+
+    Uses the same language-detection logic as _edge_voice_for_moss_name(),
+    but maps to Kokoro voice names instead of Edge TTS names.
+
+    Falls back to DEFAULT_VOICE_KOKORO (af_bella) if no match.
+    """
+    # If it's already a valid Kokoro voice, return as-is
+    if voice in KOKORO_VOICE_CATALOG:
+        return voice
+
+    # Extract language prefix from the voice name
+    voice_lower = voice.lower()
+
+    # Detect gender/female from suffix
+    is_female = any(w in voice_lower for w in ("female", "woman", "girl", "_f", "aria", "sofie", "bella", "emma"))
+
+    # Language mapping: language prefix → Kokoro voice
+    voice_map = {
+        "en": "af_bella" if is_female else "am_adam",
+        "da": "af_bella",  # Danish → fallback to English (Kokoro has no Danish voice yet)
+        "zh": "zf_xiaoxiao" if is_female else "zm_yunyang",
+        "ja": "af_bella",  # Japanese → fallback to English for now
+        "ko": "af_bella",   # Korean → fallback to English
+        "de": "af_bella",   # German → fallback to English
+        "es": "af_bella",   # Spanish → fallback to English
+        "fr": "ff_siwss" if is_female else "fm_siwss",
+        "it": "af_bella",   # Italian → fallback to English
+        "pt": "pf_dora" if is_female else "pm_santa",
+        "ru": "af_bella",   # Russian → fallback to English
+        "ar": "af_bella",   # Arabic → fallback to English
+        "sv": "af_bella",   # Swedish → fallback to English
+        "nl": "af_bella",   # Dutch → fallback to English
+        "pl": "af_bella",   # Polish → fallback to English
+        "hi": "hf_alpha" if is_female else "hm_alpha",
+    }
+
+    # Try to extract language prefix from voice name
+    lang_prefix = voice.split("_")[0].lower() if "_" in voice else voice[:2].lower()
+
+    # Handle edge-tts style prefixes like "da-DK" → "da"
+    if "-" in voice and len(voice.split("-")[0]) == 2:
+        lang_prefix = voice.split("-")[0].lower()
+
+    return voice_map.get(lang_prefix, DEFAULT_VOICE_KOKORO)
+
+
 def _resolve_voice(voice: str, engine: str = "") -> str:
     """Resolve a voice name for the given engine.
 
     If the voice looks like it belongs to a different engine (e.g. passing an
-    Edge TTS voice name like 'en-US-AriaNeural' when using MOSS), swap it
+    Edge TTS voice name like 'en-US-AriaNeural' when using Kokoro), swap it
     for that engine's default instead of silently producing incompatible audio.
 
     Logs a warning when a cross-engine swap happens so the user knows why
@@ -1533,11 +1668,16 @@ def _resolve_voice(voice: str, engine: str = "") -> str:
     # swap to the target engine's best voice — language-aware when possible.
     if voice_engine and voice_engine != engine:
         defaults = {
+            "kokoro": DEFAULT_VOICE_KOKORO,
             "moss": DEFAULT_VOICE_MOSS,
             "vibevoice": DEFAULT_VOICE_VIBEVOICE,
             "edge-tts": _edge_voice_for_moss_name(voice),
         }
-        new_voice = defaults.get(engine, voice)
+        # For kokoro, try language-aware mapping from MOSS/Edge voice names
+        if engine == "kokoro":
+            new_voice = _kokoro_voice_for_name(voice)
+        else:
+            new_voice = defaults.get(engine, voice)
         logging.info(
             f"DJ: Voice '{voice}' is a {voice_engine} voice but TTS engine is "
             f"{engine} — resolved to {engine} voice '{new_voice}'"
@@ -1545,7 +1685,23 @@ def _resolve_voice(voice: str, engine: str = "") -> str:
         return new_voice
 
     # Heuristic fallback: if we couldn't identify the engine, use pattern matching
-    if engine == "moss":
+    if engine == "kokoro":
+        if "Neural" in voice:
+            resolved = _kokoro_voice_for_name(voice)
+            logging.info(
+                f"DJ: Voice '{voice}' looks like an edge-tts voice but TTS is "
+                f"kokoro — resolved to kokoro voice '{resolved}'"
+            )
+            return resolved
+        if "-" in voice and "_" in voice:
+            # VibeVoice voice → map to kokoro
+            resolved = _kokoro_voice_for_name(voice)
+            logging.info(
+                f"DJ: Voice '{voice}' looks like a vibevoice voice but TTS is "
+                f"kokoro — resolved to kokoro voice '{resolved}'"
+            )
+            return resolved
+    elif engine == "moss":
         if "Neural" in voice:
             logging.info(
                 f"DJ: Voice '{voice}' looks like an edge-tts voice but TTS is "
@@ -1561,7 +1717,7 @@ def _resolve_voice(voice: str, engine: str = "") -> str:
             return DEFAULT_VOICE_VIBEVOICE
     elif engine == "edge-tts":
         if "_" in voice and "Neural" not in voice:
-            # This is a MOSS/VibeVoice voice name — resolve to a language-matched
+            # This is a MOSS/Kokoro voice name — resolve to a language-matched
             # Edge TTS voice instead of blindly using the English default.
             resolved = _edge_voice_for_moss_name(voice)
             logging.info(
@@ -1581,7 +1737,9 @@ async def list_voices(language: str = "en") -> list[dict]:
 
     Each entry is a dict with keys: ShortName/name, Gender, Locale.
     """
-    if TTS_MODE == "moss":
+    if TTS_MODE == "kokoro":
+        return await _list_voices_kokoro(language)
+    elif TTS_MODE == "moss":
         return await _list_voices_moss(language)
     elif TTS_MODE == "vibevoice":
         return await _list_voices_vibevoice(language)
@@ -1597,7 +1755,90 @@ async def list_voices(language: str = "en") -> list[dict]:
         return []
 
 
-async def _list_voices_moss(language: str = "en") -> list[dict]:
+async def _list_voices_kokoro(language: str = "en") -> list[dict]:
+    """List Kokoro-FastAPI voices.
+
+    First queries the Kokoro server's /v1/audio/voices endpoint for the
+    complete list of available voices. Falls back to the built-in catalog
+    if the server is unreachable.
+    """
+    result = []
+
+    # Try to query the Kokoro server for the full voice list
+    if AIOHTTP_AVAILABLE:
+        try:
+            async with aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as session:
+                async with session.get(f"{KOKORO_TTS_URL}/v1/audio/voices") as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        voices_list = data.get("voices", [])
+                        for v in voices_list:
+                            name = v if isinstance(v, str) else v.get("name", "")
+                            if not name:
+                                continue
+                            # Determine locale and gender from name prefix
+                            parts = name.split("_", 1)
+                            prefix = parts[0] if parts else ""
+                            # Parse Kokoro prefix: af, am, bf, bm, ef, em, ff, fm, hf, hm, pf, pm, zf, zm
+                            locale_map = {
+                                "a": "en-US", "b": "en-GB", "e": "en-IN",
+                                "f": "fr-FR", "h": "hi-IN", "p": "pt-BR",
+                                "z": "zh-CN", "j": "ja-JP",
+                            }
+                            gender_map = {"f": "Female", "m": "Male"}
+                            lang_code = prefix[0] if len(prefix) >= 1 else "a"
+                            gender_code = prefix[1] if len(prefix) >= 2 else "f"
+                            locale = locale_map.get(lang_code, "en-US")
+                            gender = gender_map.get(gender_code, "Unknown")
+
+                            if language and not locale.lower().startswith(language.lower()):
+                                if not locale.split("-")[0].lower().startswith(language.lower()):
+                                    continue
+
+                            desc = KOKORO_VOICE_CATALOG.get(name, f"Kokoro voice ({locale})")
+                            result.append({
+                                "ShortName": name,
+                                "Gender": gender,
+                                "Locale": locale,
+                                "name": name,
+                                "default": name == DEFAULT_VOICE_KOKORO,
+                                "description": desc,
+                            })
+                        if result:
+                            return result
+        except Exception as e:
+            logging.debug(f"DJ: Failed to query Kokoro voice list: {e}")
+
+    # Fallback: use the built-in catalog
+    for name, desc in sorted(KOKORO_VOICE_CATALOG.items()):
+        prefix = name.split("_")[0].lower() if "_" in name else "af"
+        lang_code = prefix[0] if len(prefix) >= 1 else "a"
+        gender_code = prefix[1] if len(prefix) >= 2 else "f"
+        locale_map = {
+            "a": "en-US", "b": "en-GB", "e": "en-IN",
+            "f": "fr-FR", "h": "hi-IN", "p": "pt-BR",
+            "z": "zh-CN", "j": "ja-JP",
+        }
+        gender_map = {"f": "Female", "m": "Male"}
+        locale = locale_map.get(lang_code, "en-US")
+        gender = gender_map.get(gender_code, "Unknown")
+
+        if language and not locale.lower().startswith(language.lower()):
+            if not locale.split("-")[0].lower().startswith(language.lower()):
+                continue
+
+        result.append({
+            "ShortName": name,
+            "Gender": gender,
+            "Locale": locale,
+            "name": name,
+            "default": name == DEFAULT_VOICE_KOKORO,
+            "description": desc,
+        })
+
+    return result
     """List MOSS-TTS-Nano voices from the prompt audio files directory.
 
     Scans assets/moss_voices/ for .wav files and also queries the MOSS server
@@ -1780,6 +2021,54 @@ async def _list_voices_vibevoice(language: str = "en") -> list[dict]:
 # ── TTS audio generation ──────────────────────────────────────────────
 
 
+# ── Kokoro-FastAPI server health check ─────────────────────────────────────
+_kokoro_last_health_check: float = 0.0
+_kokoro_healthy: bool | None = None  # None = never checked
+_KOKORO_HEALTH_CACHE_TTL = 30  # seconds before re-checking a "healthy" result
+_KOKORO_HEALTH_CACHE_TTL_DOWN = 10  # seconds before re-checking a "down" result
+
+
+async def _check_kokoro_health() -> bool:
+    """Quick health check: can we reach the Kokoro-FastAPI server?
+
+    Probes /v1/audio/voices which is a lightweight GET endpoint.
+    Returns True if the server is up and responding, False otherwise.
+    Caches the result to avoid hammering the server on every TTS call.
+    """
+    global _kokoro_last_health_check, _kokoro_healthy
+
+    import time as _time
+
+    now = _time.monotonic()
+    cache_ttl = _KOKORO_HEALTH_CACHE_TTL if _kokoro_healthy else _KOKORO_HEALTH_CACHE_TTL_DOWN
+    if _kokoro_healthy is not None and (now - _kokoro_last_health_check) < cache_ttl:
+        return _kokoro_healthy
+
+    if not AIOHTTP_AVAILABLE:
+        _kokoro_healthy = False
+        _kokoro_last_health_check = now
+        return False
+
+    url = f"{KOKORO_TTS_URL}/v1/audio/voices"
+    try:
+        async with aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=5, connect=3)
+        ) as session:
+            async with session.get(url) as resp:
+                _kokoro_healthy = resp.status == 200
+                _kokoro_last_health_check = now
+                if not _kokoro_healthy:
+                    logging.warning(
+                        f"DJ: Kokoro health check returned {resp.status}"
+                    )
+                return _kokoro_healthy
+    except Exception as e:
+        logging.warning(f"DJ: Kokoro server at {KOKORO_TTS_URL} is unreachable: {e}")
+        _kokoro_healthy = False
+        _kokoro_last_health_check = now
+        return False
+
+
 # ── MOSS-TTS-Nano server health check ────────────────────────────────────
 _moss_last_health_check: float = 0.0
 _moss_healthy: bool | None = None  # None = never checked
@@ -1879,9 +2168,10 @@ async def generate_tts(
     Routes to the appropriate TTS engine. By default uses config.TTS_MODE,
     but a different engine can be specified via the `engine` parameter.
 
-    This allows the AI side host to use a different TTS engine than the
-    main DJ — e.g. the DJ uses MOSS (local) while the AI host uses
-    edge-tts (cloud) for a distinct voice.
+    Tries the primary engine first, then falls back through the chain:
+    - kokoro → moss → edge-tts
+    - moss → edge-tts
+    - vibevoice → edge-tts
 
     Args:
         text: The text to synthesize.
@@ -1889,11 +2179,12 @@ async def generate_tts(
         source: Who is speaking — e.g. "DJ" or "AI Side Host".
             Used in log messages to distinguish who generated the TTS.
         engine: Override the TTS engine for this call.
+            "kokoro": Use Kokoro-FastAPI (with moss → edge-tts fallback).
             "moss": Use MOSS-TTS-Nano (with edge-tts fallback).
             "vibevoice": Use VibeVoice (with edge-tts fallback).
             "edge-tts": Use Microsoft Edge TTS directly (no fallback).
 
-    Returns the path to a WAV file (moss/vibevoice) or MP3 file (edge-tts).
+    Returns the path to a WAV file (kokoro/moss/vibevoice) or MP3 file (edge-tts).
     The caller must delete the file after use via cleanup_tts_file().
     Returns None if TTS is unavailable or generation fails.
     """
@@ -1905,14 +2196,62 @@ async def generate_tts(
 
     # Resolve default voice based on the active engine
     if voice is None:
-        if active_engine == "moss":
+        if active_engine == "kokoro":
+            voice = DEFAULT_VOICE_KOKORO
+        elif active_engine == "moss":
             voice = DEFAULT_VOICE_MOSS
         elif active_engine == "vibevoice":
             voice = DEFAULT_VOICE_VIBEVOICE
         else:
             voice = DEFAULT_VOICE_EDGE
 
-    if active_engine == "moss":
+    if active_engine == "kokoro":
+        # Try Kokoro first, then fall back to moss, then edge-tts
+        healthy = await _check_kokoro_health()
+        if healthy:
+            resolved_voice = _resolve_voice(voice, "kokoro")
+            result = await _generate_tts_kokoro(text, resolved_voice, source=source)
+            if result is not None:
+                return result
+            logging.warning(
+                f"{source}: Kokoro TTS generation failed despite server being up. "
+                "Falling back to MOSS."
+            )
+        else:
+            logging.warning(
+                f"{source}: Kokoro-FastAPI server is down or not ready, "
+                "falling back to MOSS. "
+                "Start it with: docker compose up -d kokoro-tts"
+            )
+
+        # Fallback: MOSS
+        moss_healthy = await _check_moss_health()
+        if moss_healthy:
+            resolved_voice_moss = _resolve_voice(voice, "moss")
+            moss_voice, prompt_path = _resolve_moss_voice(resolved_voice_moss)
+            result = await _generate_tts_moss(
+                text, moss_voice, prompt_path, source=source
+            )
+            if result is not None:
+                return result
+            logging.warning(
+                f"{source}: MOSS TTS generation also failed. "
+                "Falling back to edge-tts."
+            )
+        else:
+            logging.warning(
+                f"{source}: MOSS server also down. Falling back to edge-tts."
+            )
+
+        # Final fallback: edge-tts
+        fallback_voice = _resolve_voice(voice, "edge-tts")
+        if fallback_voice != voice:
+            logging.info(
+                f"{source}: Voice '{voice}' won't work with edge-tts fallback, "
+                f"using '{fallback_voice}' instead"
+            )
+
+    elif active_engine == "moss":
         # Quick health check — skip MOSS entirely if server is down or not warmed up
         healthy = await _check_moss_health()
         if healthy:
@@ -1969,6 +2308,95 @@ async def generate_tts(
 
     logging.info(f"{source}: Using edge-tts fallback (voice={fallback_voice})")
     return await _generate_tts_edge(text, fallback_voice, source=source)
+
+
+async def _generate_tts_kokoro(
+    text: str, voice: str = DEFAULT_VOICE_KOKORO, source: str = "DJ"
+) -> str | None:
+    """Generate TTS audio using Kokoro-FastAPI.
+
+    Uses the OpenAI-compatible /v1/audio/speech endpoint.
+    Kokoro returns raw WAV audio bytes directly — no base64 decoding needed.
+    Returns the path to a WAV file, or None on failure.
+    """
+    if not AIOHTTP_AVAILABLE:
+        logging.error(f"{source}: aiohttp not installed, cannot use Kokoro TTS")
+        return None
+
+    url = f"{KOKORO_TTS_URL}/v1/audio/speech"
+    payload = {
+        "model": "kokoro",
+        "input": text.strip(),
+        "voice": voice,
+        "response_format": "wav",
+        "speed": 1.0,
+    }
+
+    # Kokoro is fast on GPU — 30s should be plenty even for long DJ lines
+    timeout = aiohttp.ClientTimeout(total=30, connect=5)
+
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(url, json=payload) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    logging.error(
+                        f"{source}: Kokoro TTS returned status {resp.status}: "
+                        f"{error_text[:300]}"
+                    )
+                    return None
+
+                audio_bytes = await resp.read()
+
+    except aiohttp.ClientConnectorError as e:
+        logging.error(
+            f"{source}: Cannot connect to Kokoro server at {KOKORO_TTS_URL}. "
+            f"Is the server running? Error: {e}"
+        )
+        return None
+    except asyncio.TimeoutError:
+        logging.error(
+            f"{source}: Kokoro TTS timed out (30s). "
+            "The server may be overloaded or still starting. Falling back."
+        )
+        return None
+    except Exception as e:
+        logging.error(f"{source}: Kokoro TTS unexpected error: {e}")
+        return None
+
+    # Validate we got actual audio data
+    if len(audio_bytes) < 44:
+        logging.warning(f"{source}: Kokoro TTS returned empty or tiny audio data")
+        return None
+
+    # Save the WAV data to a temp file
+    try:
+        fd, wav_path = tempfile.mkstemp(suffix=".wav", prefix="dj_kokoro_")
+        os.close(fd)
+
+        with open(wav_path, "wb") as f:
+            f.write(audio_bytes)
+
+        # Calculate duration from the WAV header
+        duration = 0.0
+        try:
+            import io as _io
+
+            with wave.open(_io.BytesIO(audio_bytes), "rb") as wf:
+                nframes = wf.getnframes()
+                rate = wf.getframerate()
+                duration = nframes / rate if rate > 0 else 0
+        except Exception:
+            pass
+
+        logging.info(
+            f"{source}: Generated TTS (kokoro) → {wav_path} "
+            f"({len(text)} chars, voice={voice}, {duration:.1f}s)"
+        )
+        return wav_path
+    except Exception as e:
+        logging.error(f"{source}: Failed to write Kokoro TTS WAV file: {e}")
+        return None
 
 
 async def _generate_tts_moss(

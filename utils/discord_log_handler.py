@@ -137,14 +137,17 @@ class DiscordLogHandler(logging.Handler):
         """
         # 1. Try bot.loop first — works on older discord.py (pre-2.0)
         loop = getattr(self.bot, "loop", None)
-        if loop is not None and not loop.is_closed():
+        if loop is not None and hasattr(loop, 'is_closed') and not loop.is_closed():
             return loop
 
         # 2. Try to get the running event loop (works on Python 3.10+
         #    when called from the thread that owns the loop)
         try:
             loop = asyncio.get_event_loop()
-            if loop is not None and not loop.is_closed():
+            # On Python 3.10+, get_event_loop() can return an internal
+            # _MissingSentinel object when no loop is set. Check for
+            # the is_closed attribute to handle this gracefully.
+            if loop is not None and hasattr(loop, 'is_closed') and not loop.is_closed():
                 return loop
         except RuntimeError:
             pass

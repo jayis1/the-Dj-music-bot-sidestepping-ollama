@@ -3197,7 +3197,6 @@ def api_youtube_stream_skip(guild_id):
 # ══════════════════════════════════════════════════════════════════════════
 
 @app.route("/obs")
-@login_required
 def obs_page():
     """OBS Studio control panel in Mission Control.
 
@@ -3211,7 +3210,6 @@ def obs_page():
 
 
 @app.route("/api/obs/status")
-@login_required
 def api_obs_status():
     """Get current OBS status: connected, streaming, recording, scenes, etc."""
     from utils.obs_bridge import get_bridge
@@ -3224,7 +3222,6 @@ def api_obs_status():
 
 
 @app.route("/api/obs/streaming/start", methods=["POST"])
-@login_required
 def api_obs_streaming_start():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3234,7 +3231,6 @@ def api_obs_streaming_start():
 
 
 @app.route("/api/obs/streaming/stop", methods=["POST"])
-@login_required
 def api_obs_streaming_stop():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3244,7 +3240,6 @@ def api_obs_streaming_stop():
 
 
 @app.route("/api/obs/streaming/toggle", methods=["POST"])
-@login_required
 def api_obs_streaming_toggle():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3254,7 +3249,6 @@ def api_obs_streaming_toggle():
 
 
 @app.route("/api/obs/recording/start", methods=["POST"])
-@login_required
 def api_obs_recording_start():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3264,7 +3258,6 @@ def api_obs_recording_start():
 
 
 @app.route("/api/obs/recording/stop", methods=["POST"])
-@login_required
 def api_obs_recording_stop():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3274,7 +3267,6 @@ def api_obs_recording_stop():
 
 
 @app.route("/api/obs/recording/toggle", methods=["POST"])
-@login_required
 def api_obs_recording_toggle():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3284,7 +3276,6 @@ def api_obs_recording_toggle():
 
 
 @app.route("/api/obs/scene", methods=["POST"])
-@login_required
 def api_obs_set_scene():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3297,7 +3288,6 @@ def api_obs_set_scene():
 
 
 @app.route("/api/obs/source/visibility", methods=["POST"])
-@login_required
 def api_obs_source_visibility():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3313,7 +3303,6 @@ def api_obs_source_visibility():
 
 
 @app.route("/api/obs/source/mute", methods=["POST"])
-@login_required
 def api_obs_source_mute():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3328,7 +3317,6 @@ def api_obs_source_mute():
 
 
 @app.route("/api/obs/source/volume", methods=["POST"])
-@login_required
 def api_obs_source_volume():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3343,7 +3331,6 @@ def api_obs_source_volume():
 
 
 @app.route("/api/obs/transition", methods=["POST"])
-@login_required
 def api_obs_set_transition():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3356,7 +3343,6 @@ def api_obs_set_transition():
 
 
 @app.route("/api/obs/studio-mode/enable", methods=["POST"])
-@login_required
 def api_obs_studio_mode_enable():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3366,7 +3352,6 @@ def api_obs_studio_mode_enable():
 
 
 @app.route("/api/obs/studio-mode/disable", methods=["POST"])
-@login_required
 def api_obs_studio_mode_disable():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3376,7 +3361,6 @@ def api_obs_studio_mode_disable():
 
 
 @app.route("/api/obs/replay-buffer/start", methods=["POST"])
-@login_required
 def api_obs_replay_buffer_start():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3386,7 +3370,6 @@ def api_obs_replay_buffer_start():
 
 
 @app.route("/api/obs/replay-buffer/stop", methods=["POST"])
-@login_required
 def api_obs_replay_buffer_stop():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3396,7 +3379,6 @@ def api_obs_replay_buffer_stop():
 
 
 @app.route("/api/obs/replay-buffer/save", methods=["POST"])
-@login_required
 def api_obs_replay_buffer_save():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()
@@ -3406,7 +3388,6 @@ def api_obs_replay_buffer_save():
 
 
 @app.route("/api/obs/reconnect", methods=["POST"])
-@login_required
 def api_obs_reconnect():
     from utils.obs_bridge import get_bridge
     bridge = get_bridge()

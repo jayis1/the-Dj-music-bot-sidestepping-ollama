@@ -183,10 +183,30 @@ class Music(commands.Cog):
         )
 
     def _dispatch_audio_play(self, guild_id: int, source, after=None):
-        """Monolithic audio injection point. Replaces vc.play() to support multiplex UDP routing."""
+        """Monolithic audio injection point. Replaces vc.play() to support multiplex UDP routing.
+
+        Before playing, checks if the voice client is already playing something.
+        If so, stops the current audio first to prevent the "Already playing audio"
+        error from Discord's VoiceClient. This can happen when sound effects, bed
+        music, TTS, and song playback overlap due to async timing races.
+        """
         vc = self._get_audio_client(guild_id)
         if not vc:
             return False
+
+        # Guard: stop any currently playing audio before starting new audio.
+        # Without this, Discord's vc.play() raises "Already playing audio" when
+        # two async paths race (e.g. TTS finishing while bed music just started,
+        # or soundboard playing while a DJ sound effect is active).
+        try:
+            if getattr(vc, "is_playing", lambda: False)():
+                logging.debug(
+                    f"_dispatch_audio_play: Stopping current audio in guild {guild_id} "
+                    f"before playing new source"
+                )
+                vc.stop()
+        except Exception as e:
+            logging.debug(f"_dispatch_audio_play: Failed to stop current audio: {e}")
 
         if self._yt_stream_active and self._yt_stream_guild == guild_id:
             if guild_id not in self._broadcasters:

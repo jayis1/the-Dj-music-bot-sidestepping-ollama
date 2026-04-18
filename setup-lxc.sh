@@ -3,39 +3,29 @@
 #  The Radio DJ Bot — Proxmox LXC (Debian 12) Setup Script
 # ════════════════════════════════════════════════════════════════════════
 #
-#  This script runs INSIDE a Debian 12 LXC container on Proxmox to set up
-#  the Radio DJ Bot stack natively (no Docker needed — LXC shares the
+#  Run INSIDE a Debian 12 LXC container on Proxmox to set up
+#  the Radio DJ Bot stack natively (no Docker — LXC shares the
 #  host kernel so GPU access is direct).
 #
 #  PREREQUISITES on the PROXMOX HOST (run before creating the LXC):
 #
 #  1. Create a Debian 12 LXC:
 #     - Template: debian-12-standard
-#     - Unprivileged: Yes (recommended)
+#     - Unprivileged: Yes
 #     - CPU: 2 cores minimum
 #     - RAM: 2048 MB minimum (4096 MB if running Ollama)
 #     - Disk: 20 GB minimum
-#     - DHCP or static IP
 #
 #  2. Pass through GPU (AMD APU/iGPU):
-#     Add to the LXC config (/etc/pve/lxc/<CTID>.conf):
-#
-#       # AMD GPU passthrough (for VA-API encoding + optional ROCm)
-#       lxc.cgroup2.devices.allow: c 226:0 rwm    # /dev/dri/card0
-#       lxc.cgroup2.devices.allow: c 226:128 rwm  # /dev/dri/renderD128
-#       lxc.cgroup2.devices.allow: c 235:0 rwm    # /dev/kfd (ROCm only)
+#     Add to /etc/pve/lxc/<CTID>.conf:
+#       lxc.cgroup2.devices.allow: c 226:0 rwm     # /dev/dri/card0
+#       lxc.cgroup2.devices.allow: c 226:128 rwm   # /dev/dri/renderD128
+#       lxc.cgroup2.devices.allow: c 235:0 rwm     # /dev/kfd (ROCm only)
 #       lxc.mount.entry: /dev/dri dev/dri none bind,optional,create=dir
 #       lxc.mount.entry: /dev/kfd dev/kfd none bind,optional,create=dir
 #
-#     Then: pct stop <CTID> && pct start <CTID>
-#
 #  3. Run this script inside the container:
-#     curl -sL https://raw.githubusercontent.com/jayis1/the-Dj-music-bot-sidestepping-ollama/main/setup-lxc.sh | bash
-#
-#     Or: Clone the repo and run directly:
-#       git clone https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama.git
-#       cd the-Dj-music-bot-sidestepping-ollama
-#       bash setup-lxc.sh
+#     bash setup-lxc.sh
 #
 # ════════════════════════════════════════════════════════════════════════
 
@@ -45,6 +35,7 @@ BOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV_DIR="$BOT_DIR/venv"
 VENV_PYTHON="$VENV_DIR/bin/python"
 VENV_PIP="$VENV_DIR/bin/pip"
+OBS_WS_CONFIG_DIR="$HOME/.config/obs-studio/plugin_config/obs-websocket"
 
 BOLD="\e[1m"
 GREEN="\e[32m"
@@ -75,13 +66,13 @@ apt-get update -qq
 info "Installing system dependencies..."
 apt-get install -y -qq \
     python3 python3-pip python3-venv \
-    ffmpeg \
-    libopus-dev libsodium23 \
+    ffmpeg libopus-dev libsodium23 \
     curl wget git screen \
     mesa-va-drivers vainfo \
-    xvfb x11vbc \
-    dbus pulseaudio pulseaudio-utils \
-    2>/dev/null || warn "Some packages may not be available (non-fatal)"
+    obs-studio xvfb dbus pulseaudio pulseaudio-utils \
+    2>/dev/null || warn "Some packages may not be available"
+
+success "System packages installed"
 
 # ══════════════════════════════════════════════════════════
 #  STEP 2: GPU detection
@@ -90,63 +81,18 @@ apt-get install -y -qq \
 echo ""
 info "─── GPU Detection ─────────────────────────────────"
 
-HAS_GPU=false
 HAS_VAAPI=false
-HAS_ROCM=false
-
-if [ -d "/dev/dri" ]; then
+if [ -d "/dev/dri" ] && [ -e "/dev/dri/renderD128" ]; then
     info "/dev/dri found — GPU device nodes present"
-    ls -la /dev/dri/ 2>/dev/null || true
-
-    # Check VA-API
-    if command -v vainfo &>/dev/null; then
-        if vainfo 2>/dev/null | grep -q "VAProfile"; then
-            HAS_VAAPI=true
-            success "VA-API: ✅ Working — hardware encoding available for YouTube Live"
-            vainfo 2>/dev/null | head -10
-        else
-            warn "VA-API: vainfo ran but no profiles found (may need firmware)"
-        fi
+    if command -v vainfo &>/dev/null && vainfo 2>/dev/null | grep -q "VAProfile"; then
+        HAS_VAAPI=true
+        success "VA-API: ✅ Working — hardware encoding available for YouTube Live"
     else
-        warn "VA-API: vainfo not installed — install: apt install vainfo"
-    fi
-
-    # Check for render node
-    if [ -e "/dev/dri/renderD128" ]; then
-        success "DRI render node: /dev/dri/renderD128 — FFmpeg h264_vaapi will work"
-        HAS_GPU=true
-    fi
-
-    # Check ROCm (for Ollama GPU inference)
-    if [ -e "/dev/kfd" ]; then
-        info "ROCm: /dev/kfd found — GPU compute available"
-        HAS_ROCM=true
-
-        # Detect GPU architecture
-        GPU_ARCH="unknown"
-        if [ -f "/sys/class/drm/card0/device/gpu_id" ]; then
-            GPU_ARCH=$(cat /sys/class/drm/card0/device/gpu_id 2>/dev/null || echo "unknown")
-        fi
-        if [ "$GPU_ARCH" = "unknown" ]; then
-            # Try from card1 if card0 is empty
-            for card in /sys/class/drm/card*/device/gpu_id; do
-                [ -f "$card" ] && GPU_ARCH=$(cat "$card" 2>/dev/null | head -1) && break
-            done
-        fi
-        info "GPU architecture: ${GPU_ARCH}"
-
-        #gfx90c check (Ryzen 5700U, 5800H, etc. — VA-API works but ROCm doesn't natively)
-        if echo "$GPU_ARCH" | grep -qi "gfx90c"; then
-            warn "gfx90c detected — VA-API encoding works, but ROCm/LLM falls back to CPU"
-            warn "Ollama will use CPU on this GPU — this is fine, it's fast enough"
-            HAS_ROCM=false  # gfx90c isn't truly ROCm-capable for compute
-        fi
-    else
-        info "ROCm: /dev/kfd not found — no GPU compute (Ollama will use CPU)"
+        warn "VA-API: No profiles found — may need firmware or mesa-va-drivers"
     fi
 else
     warn "/dev/dri not found — no GPU passthrough"
-    warn "YouTube Live will use software encoding (libx264, higher CPU usage)"
+    warn "YouTube Live will use software encoding (libx264, higher CPU)"
     warn "Add GPU passthrough in Proxmox LXC config to enable VA-API"
 fi
 
@@ -158,82 +104,115 @@ echo ""
 info "─── Ollama (AI Side Host) ─────────────────────────"
 
 if command -v ollama &>/dev/null; then
-    success "Ollama already installed: $(ollama --version 2>/dev/null || echo 'installed')"
+    success "Ollama already installed"
 else
     info "Installing Ollama..."
-    curl -fsSL https://ollama.com/install.sh | sh 2>/dev/null || {
-        warn "Ollama auto-install failed. Install manually:"
-        warn "  curl -fsSL https://ollama.com/install.sh | sh"
-        warn "  Or download from: https://ollama.com/download/linux"
-    }
+    curl -fsSL https://ollama.com/install.sh | sh 2>/dev/null || warn "Ollama install failed"
 fi
 
 if command -v ollama &>/dev/null; then
-    # Start Ollama service
     if ! pgrep -x ollama &>/dev/null; then
         info "Starting Ollama server..."
         ollama serve &
         sleep 3
     fi
-
-    # Pull recommended model
     MODEL="${OLLAMA_MODEL:-gemma3:4b}"
-    info "Pulling AI side host model: ${MODEL}"
-    info "(This downloads ~2.5 GB on first run — skip with Ctrl+C if you want a different model)"
-    ollama pull "$MODEL" 2>/dev/null || warn "Model pull failed — you can pull manually: ollama pull $MODEL"
-    success "Ollama ready with model: ${MODEL}"
-else
-    warn "Ollama not installed — AI Side Host will be disabled"
-    warn "Set OLLAMA_DJ_ENABLED=false in .env to silence warnings"
+    info "Pulling AI side host model: ${MODEL} (may take a few minutes on first run)..."
+    ollama pull "$MODEL" 2>/dev/null || warn "Model pull failed — pull manually: ollama pull $MODEL"
 fi
 
 # ══════════════════════════════════════════════════════════
-#  STEP 4: MOSS-TTS-Nano (DJ Voice)
+#  STEP 4: OBS Studio (headless, auto-configured)
 # ══════════════════════════════════════════════════════════
 
 echo ""
-info "─── MOSS-TTS-Nano (DJ Voice) ──────────────────────"
+info "─── OBS Studio (Headless) ────────────────────────"
 
-MOSS_RUNNING=false
-if curl -sf http://localhost:18083/health &>/dev/null; then
-    MOSS_RUNNING=true
-    success "MOSS-TTS-Nano server already running on port 18083"
+# Generate OBS WebSocket password
+OBS_WS_PASSWORD=""
+if [ -f "$BOT_DIR/.env" ]; then
+    OBS_WS_PASSWORD=$(grep -E "^OBS_WS_PASSWORD=" "$BOT_DIR/.env" 2>/dev/null | cut -d= -f2 | tr -d '"' | tr -d "'")
+fi
+
+if [ -z "$OBS_WS_PASSWORD" ] || [ "$OBS_WS_PASSWORD" = "your_obs_password" ]; then
+    OBS_WS_PASSWORD=$(python3 -c "import secrets; print(secrets.token_urlsafe(16))" 2>/dev/null \
+        || openssl rand -hex 16 2>/dev/null || echo "djbot-$(date +%s)")
+    info "Generated OBS WebSocket password: ${OBS_WS_PASSWORD}"
+fi
+
+# Configure obs-websocket
+mkdir -p "$OBS_WS_CONFIG_DIR"
+cat > "$OBS_WS_CONFIG_DIR/config.json" << EOF
+{
+    "server_enabled": true,
+    "server_port": 4455,
+    "server_password": "${OBS_WS_PASSWORD}",
+    "server_password_enabled": true,
+    "alerts_enabled": false
+}
+EOF
+
+OBS_GLOBAL_CONFIG="$HOME/.config/obs-studio/global.ini"
+mkdir -p "$(dirname "$OBS_GLOBAL_CONFIG")"
+cat > "$OBS_GLOBAL_CONFIG" <<EOF
+[General]
+Pre197TagsInUse=true
+[OBSWebSocket]
+ServerEnabled=true
+ServerPort=4455
+AuthRequired=true
+ServerPassword=${OBS_WS_PASSWORD}
+EOF
+success "obs-websocket configured (port 4455)"
+
+# Copy default scene collection
+OBS_SCENES_DIR="$HOME/.config/obs-studio/basic/scenes"
+OBS_PROFILES_DIR="$HOME/.config/obs-studio/basic/profiles"
+mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
+
+if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
+    cp "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" "$OBS_SCENES_DIR/Radio DJ.json"
+    success "Installed 'Radio DJ' scene collection"
+fi
+if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
+    cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
+    success "Installed 'RadioDJ' OBS profile"
+fi
+
+# Start headless OBS
+if pgrep -x obs &>/dev/null; then
+    success "OBS already running"
 else
-    # Try installing and starting
-    if [ -d "$BOT_DIR/moss-tts-server" ]; then
-        info "Installing MOSS-TTS-Nano from local source..."
-        pip install moss-tts-nano 2>/dev/null || warn "pip install failed — trying with venv later"
+    info "Starting headless OBS via xvfb-run..."
+    if ! pgrep -x dbus-daemon &>/dev/null; then
+        eval $(dbus-launch --sh-syntax 2>/dev/null) || true
+        export DBUS_SESSION_BUS_ADDRESS
+    fi
+    if ! pgrep -x pulseaudio &>/dev/null; then
+        pulseaudio --start --fail=false --daemonize=true \
+            --load="module-null-sink sink_name=radio_dj_sink sink_properties=device.description='Radio_DJ_Audio'" \
+            2>/dev/null || true
+        sleep 1
+        pactl set-default-sink radio_dj_sink 2>/dev/null || true
+    fi
+    xvfb-run -a obs --minimize-to-tray --disable-shutdown-check --collection "Radio DJ" &
+    sleep 3
+    if pgrep -x obs &>/dev/null; then
+        success "OBS Studio started headless"
     else
-        info "Installing MOSS-TTS-Nano..."
-        "$VENV_PIP" install moss-tts-nano 2>/dev/null || pip install moss-tts-nano 2>/dev/null || warn "MOSS install failed — will use Edge TTS fallback"
+        warn "OBS may not have started. Try: xvfb-run -a obs &"
     fi
 fi
 
 # ══════════════════════════════════════════════════════════
-#  STEP 5: OBS Studio (optional)
-# ══════════════════════════════════════════════════════════
-
-echo ""
-info "─── OBS Studio (Optional) ────────────────────────"
-
-if command -v obs &>/dev/null; then
-    success "OBS Studio already installed"
-else
-    info "OBS Studio is optional (for YouTube Live scene switching)"
-    info "To install: apt install obs-studio"
-    info "Or skip — the bot works fine without OBS"
-fi
-
-# ══════════════════════════════════════════════════════════
-#  STEP 6: Python virtual environment + bot setup
+#  STEP 5: Python virtual environment + bot
 # ══════════════════════════════════════════════════════════
 
 echo ""
 info "─── Bot Python Environment ────────────────────────"
 
 if [ ! -d "$VENV_DIR" ]; then
-    info "Creating Python virtual environment..."
-    python3 -m venv "$VENV_DIR" || error "Failed to create venv. Install: apt install python3-venv"
+    python3 -m venv "$VENV_DIR" || error "Failed to create venv"
     success "Virtual environment created"
 fi
 
@@ -243,13 +222,11 @@ info "Installing Python packages..."
 "$VENV_PIP" install --upgrade --pre yt-dlp -q 2>/dev/null || true
 success "Python packages installed"
 
-# Init project structure
 touch "$BOT_DIR/cogs/__init__.py" "$BOT_DIR/utils/__init__.py" 2>/dev/null || true
 mkdir -p "$BOT_DIR/yt_dlp_cache" "$BOT_DIR/sounds" "$BOT_DIR/presets" "$BOT_DIR/assets/moss_voices"
-success "Project structure OK"
 
 # ══════════════════════════════════════════════════════════
-#  STEP 7: .env configuration
+#  STEP 6: .env configuration
 # ══════════════════════════════════════════════════════════
 
 echo ""
@@ -260,89 +237,74 @@ if [ ! -f "$BOT_DIR/.env" ]; then
     warn ".env created from .env.example — you MUST set DISCORD_TOKEN"
 fi
 
-# Auto-detect and set GPU flags
+# Write OBS password to .env
+if grep -q "^OBS_WS_PASSWORD=" "$BOT_DIR/.env"; then
+    sed -i "s|^OBS_WS_PASSWORD=.*|OBS_WS_PASSWORD=${OBS_WS_PASSWORD}|" "$BOT_DIR/.env"
+else
+    echo "OBS_WS_PASSWORD=${OBS_WS_PASSWORD}" >> "$BOT_DIR/.env"
+fi
+sed -i 's/^OBS_WS_ENABLED=.*/OBS_WS_ENABLED=true/' "$BOT_DIR/.env" 2>/dev/null || echo "OBS_WS_ENABLED=true" >> "$BOT_DIR/.env"
+success "OBS config written to .env"
+
+# Auto-detect VA-API
 if [ "$HAS_VAAPI" = true ]; then
-    # Add AMD_GPU_VAAPI to .env if not already there
     if ! grep -q "^AMD_GPU_VAAPI=" "$BOT_DIR/.env"; then
-        echo "" >> "$BOT_DIR/.env"
-        echo "# Auto-detected by setup-lxc.sh" >> "$BOT_DIR/.env"
         echo "AMD_GPU_VAAPI=1" >> "$BOT_DIR/.env"
-        success "Added AMD_GPU_VAAPI=1 to .env (VA-API hardware encoding)"
     else
         sed -i 's/^AMD_GPU_VAAPI=.*/AMD_GPU_VAAPI=1/' "$BOT_DIR/.env"
-        success "Set AMD_GPU_VAAPI=1 in .env"
     fi
+    success "AMD_GPU_VAAPI=1 set in .env"
 fi
 
 # ══════════════════════════════════════════════════════════
-#  STEP 8: Systemd service (auto-start on boot)
+#  STEP 7: Systemd services
 # ══════════════════════════════════════════════════════════
 
 echo ""
-info "─── Systemd Service ──────────────────────────────"
+info "─── Systemd Services ──────────────────────────────"
 
-SERVICE_NAME="radio-dj-bot"
-SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-
-if [ -f "$SERVICE_FILE" ]; then
-    success "Systemd service already exists at ${SERVICE_FILE}"
-else
-    cat > "$SERVICE_FILE" << EOF
+# Bot service
+if [ ! -f "/etc/systemd/system/radio-dj-bot.service" ]; then
+    cat > "/etc/systemd/system/radio-dj-bot.service" << EOF
 [Unit]
 Description=The Radio DJ Bot — Discord Radio Station
-After=network-online.target pulseaudio.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
 WorkingDirectory=${BOT_DIR}
 ExecStart=${VENV_PYTHON} ${BOT_DIR}/bot.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal
 StandardError=journal
-
-# GPU access (LXC passthrough)
-DeviceAllow=/dev/dri/card0 rwm
-DeviceAllow=/dev/dri/renderD128 rwm
-DeviceAllow=/dev/kfd rwm
-
-# Environment
 EnvironmentFile=${BOT_DIR}/.env
-Environment=AMD_GPU_VAAPI=${HAS_VAAPI:+1}
 
 [Install]
 WantedBy=multi-user.target
 EOF
-
     systemctl daemon-reload
-    systemctl enable "$SERVICE_NAME" 2>/dev/null || warn "Could not enable systemd service"
-    success "Systemd service created: ${SERVICE_NAME}"
-    info "Start with:  systemctl start ${SERVICE_NAME}"
-    info "Logs:        journalctl -u ${SERVICE_NAME} -f"
+    systemctl enable radio-dj-bot 2>/dev/null || true
+    success "Bot systemd service created"
 fi
 
-# ══════════════════════════════════════════════════════════
-#  STEP 9: MOSS-TTS systemd service
-# ══════════════════════════════════════════════════════════
-
-if [ "$MOSS_RUNNING" = false ] && command -v moss-tts-nano &>/dev/null; then
-    MOSS_SERVICE="moss-tts"
-    MOSS_SERVICE_FILE="/etc/systemd/system/${MOSS_SERVICE}.service"
-
-    if [ ! -f "$MOSS_SERVICE_FILE" ]; then
-        cat > "$MOSS_SERVICE_FILE" << EOF
+# OBS headless service
+if [ ! -f "/etc/systemd/system/obs-headless.service" ]; then
+    cat > "/etc/systemd/system/obs-headless.service" << EOF
 [Unit]
-Description=MOSS-TTS-Nano Voice Cloning Server
-After=network-online.target
+Description=Headless OBS Studio for Radio DJ Bot
+After=network-online.target pulseaudio.service
 Wants=network-online.target
 
 [Service]
 Type=simple
-User=root
-WorkingDirectory=${BOT_DIR}
-ExecStart=${VENV_PYTHON} -m moss_tts_nano.serve --host 0.0.0.0 --port 18083 --device auto
+Environment=DISPLAY=:99
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/0/bus
+ExecStartPre=/bin/sh -c 'pulseaudio --start --fail=false --daemonize=true --load="module-null-sink sink_name=radio_dj_sink" 2>/dev/null || true'
+ExecStartPre=/bin/sh -c 'Xvfb :99 -screen 0 1280x720x24 -ac +extension GLX +render -noreset &'
+ExecStartPre=/bin/sleep 2
+ExecStart=xvfb-run -a obs --minimize-to-tray --disable-shutdown-check --collection "Radio DJ"
 Restart=on-failure
 RestartSec=15
 StandardOutput=journal
@@ -351,16 +313,13 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-
-        systemctl daemon-reload
-        systemctl enable "$MOSS_SERVICE" 2>/dev/null || warn "Could not enable MOSS service"
-        success "MOSS-TTS systemd service created"
-        info "Start with:  systemctl start ${MOSS_SERVICE}"
-    fi
+    systemctl daemon-reload
+    systemctl enable obs-headless 2>/dev/null || true
+    success "OBS headless systemd service created"
 fi
 
 # ══════════════════════════════════════════════════════════
-#  STEP 10: Final summary
+#  STEP 8: Final summary
 # ══════════════════════════════════════════════════════════
 
 echo ""
@@ -368,48 +327,20 @@ echo -e "${BOLD}${CYAN}═══════════════════
 echo -e "${BOLD}${GREEN}  ✅ Setup Complete!${RESET}"
 echo -e "${BOLD}${CYAN}═══════════════════════════════════════════════════════${RESET}"
 echo ""
-echo -e "  ${CYAN}Next steps:${RESET}"
-echo ""
 echo -e "  ${BOLD}1.${RESET} Set your Discord token:"
 echo -e "     nano ${BOT_DIR}/.env"
-echo -e "     ${YELLOW}(set DISCORD_TOKEN=your_token_here)${RESET}"
 echo ""
-echo -e "  ${BOLD}2.${RESET} Start the bot:"
-echo -e "     systemctl start radio-dj-bot"
+echo -e "  ${BOLD}2.${RESET} Start everything:"
+echo -e "     systemctl start obs-headless radio-dj-bot"
 echo ""
-echo -e "  ${BOLD}3.${RESET} Start MOSS TTS (if not using Docker):"
-echo -e "     systemctl start moss-tts"
-echo ""
-echo -e "  ${BOLD}4.${RESET} Check logs:"
+echo -e "  ${BOLD}3.${RESET} Check logs:"
 echo -e "     journalctl -u radio-dj-bot -f"
+echo -e "     journalctl -u obs-headless -f"
 echo ""
-echo -e "  ${BOLD}5.${RESET} Open Mission Control:"
-echo -e "     http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-server-ip'):8080"
+echo -e "  ${BOLD}4.${RESET} Open Mission Control:"
+echo -e "     http://$(hostname -I 2>/dev/null | awk '{print $1}' || echo 'your-ip'):8080"
 echo ""
-
-if [ "$HAS_VAAPI" = true ]; then
-    echo -e "  ${GREEN}🎬 VA-API hardware encoding: ENABLED${RESET}"
-    echo -e "     YouTube Live will use h264_vaapi (low CPU usage)"
-elif [ "$HAS_GPU" = true ]; then
-    echo -e "  ${YELLOW}🎬 GPU detected but VA-API not working${RESET}"
-    echo -e "     YouTube Live will use libx264 (software encoding, higher CPU)"
-    echo -e "     Install mesa-va-drivers: apt install mesa-va-drivers vainfo"
-else
-    echo -e "  ${YELLOW}🎬 No GPU detected${RESET}"
-    echo -e "     YouTube Live will use libx264 (software encoding)"
-    echo -e "     Add GPU passthrough in Proxmox LXC config for VA-API"
-fi
-
-echo ""
-echo -e "  ${CYAN}─── Service Management ───────────────────────${RESET}"
-echo -e "  Start all:   systemctl start radio-dj-bot moss-tts"
-echo -e "  Stop all:    systemctl stop radio-dj-bot moss-tts"
-echo -e "  Bot logs:    journalctl -u radio-dj-bot -f"
-echo -e "  MOSS logs:   journalctl -u moss-tts -f"
-echo -e "  Auto-start:  systemctl enable radio-dj-bot moss-tts"
-echo ""
-echo -e "  ${CYAN}─── Or run manually (foreground mode) ──────${RESET}"
+echo -e "  ${CYAN}─── Or run manually ──────────────────────────${RESET}"
 echo -e "  cd ${BOT_DIR}"
-echo -e "  bash start.sh           # Interactive setup + foreground run"
-echo -e "  bash start.sh start     # Background screen session"
+echo -e "  bash start.sh           # Full setup + foreground run"
 echo ""

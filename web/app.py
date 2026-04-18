@@ -1663,6 +1663,10 @@ def api_soundboard(guild_id):
             if not vc:
                 return False
 
+            # Stop bed music if playing — soundboard sounds interrupt it
+            if music_cog:
+                await music_cog._stop_bed_music(guild_id)
+
             if vc.is_playing():
                 vc.stop()
                 await asyncio.sleep(0.15)  # Brief pause for stop to take effect
@@ -1677,6 +1681,10 @@ def api_soundboard(guild_id):
             if music_cog:
                 music_cog._dispatch_audio_play(guild_id, source, after=None)
             else:
+                # Fallback direct play (music_cog not loaded — rare)
+                if vc.is_playing():
+                    vc.stop()
+                    await asyncio.sleep(0.1)
                 vc.play(source)
 
             return True

@@ -2,7 +2,7 @@
   <img src="assets/logo.png" alt="The Radio DJ Music Bot" width="420"/>
 </p>
 
-# 🎵 The Radio DJ Music Bot — v420.0.0 (Radio 420)
+# 🎵 The Radio DJ Music Bot — v420.0.3 (Radio 420)
 > *🎙️ THE FREQUENCY HAS CHANGED. THE REVOLUTION IS HERE.*
 >
 > *(Cue: Bass-heavy cinematic intro... a deep, low-end hum that vibrates the floor... the sharp ching of a lighter... the smell of ozone and digital fire...)*
@@ -18,7 +18,7 @@
 >
 > 🎧 **THE SOUL OF THE STATION: THE DJ EXPERIENCE**
 >
-> *"The Radio DJ Music Bot — v420.0.0 (Radio 420) doesn't just play tracks; it curates an EXISTENCE. It has a voice like velvet and thunder. It has OPINIONS. It’s sentient enough to know if it’s a rainy Tuesday morning or a Saturday night rager, and it adjusts its attitude accordingly. It introduces your songs like it’s auditioning for a Grammy on a world stage.*
+> *"The Radio DJ Music Bot — v420.0.3 (Radio 420) doesn't just play tracks; it curates an EXISTENCE. It has a voice like velvet and thunder. It has OPINIONS. It’s sentient enough to know if it’s a rainy Tuesday morning or a Saturday night rager, and it adjusts its attitude accordingly. It introduces your songs like it’s auditioning for a Grammy on a world stage.*
 >
 > *It drops airhorns that will rattle your ancestors’ teeth. It plays professional bed music under its own voice-overs like a veteran FM shock-jock. It gives shoutouts to your friends ON THE AIR, turning your private Discord server into the center of the global broadcast universe. It doesn't just 'start a stream'—it OPENS THE GATES."*
 >
@@ -55,7 +55,7 @@
 >
 > *LOCK YOUR DIALS. PROTECT YOUR SPEAKERS. PREPARE YOUR SERVERS.*
 >
-> *This is The Radio DJ Music Bot — v420.0.0.*
+> *This is The Radio DJ Music Bot — v420.0.3.*
 > *AND IT — IS — LIVE!"*
 >
 > *(Cue: Massive explosion sound effect... airhorn blast x10... heavy bass drop... fade to static...)* 🎚️🔥📻🔥🎚️
@@ -68,7 +68,7 @@ The radio dj music bot is a self-contained Discord music bot built with Python a
 
 ## 🐳 Quick Install (Docker)
 
-The absolute fastest way to get your radio station running. One command starts the bot **and** the MOSS-TTS-Nano engine!
+The absolute fastest way to get your radio station running. One command starts **4 services** automatically: the bot, MOSS-TTS-Nano, Ollama, and OBS Studio!
 
 ```bash
 # 1. Download the pre-configured starter files
@@ -85,9 +85,10 @@ docker compose up -d
 open http://localhost:8080
 ```
 
-> **MOSS-TTS-Nano** starts automatically as a sidecar container on port 18083. The bot detects it and uses it immediately — no extra config needed.
+> **MOSS-TTS-Nano** starts automatically as a sidecar container on port 18083. **Ollama** starts on port 11434. **OBS Studio** starts headlessly on port 4455 (WebSocket) with optional VNC on port 5900. The bot detects all three and uses them immediately — no extra config needed.
 
 **Pre-built image:** `ghcr.io/jayis1/the-dj-music-bot:v420.0.3`  
+**OBS image:** `ghcr.io/jayis1/the-dj-music-bot/obs-studio:v420.0.3`
 **Platforms:** `linux/amd64`, `linux/arm64`  
 **Releases:** [GitHub Releases page →](https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases)
 
@@ -122,6 +123,13 @@ open http://localhost:8080
 - **Per-guild toggle** — `?dj` on/off per server, voice changeable with `?djvoice`
 - Works with **all three TTS engines** — MOSS-TTS-Nano, VibeVoice, or Edge TTS fallback
 - **🤖 AI Side Host** — a second radio personality powered by a local LLM (Ollama) that writes its own spontaneous banter, hot takes, and shoutouts alongside the main DJ
+
+### 🎬 OBS Studio
+- Headless OBS Studio with **obs-websocket 5.x** control from Mission Control
+- **4 default scenes** for radio broadcast (Now Playing, DJ Speaking, Waiting, Overlay Only)
+- **Auto scene switching** — bot switches scenes based on playback state
+- Streaming, recording, replay buffer, virtual camera — all from the web dashboard
+- Browser source overlay — OBS can embed the Mission Control overlay page
 
 ---
 
@@ -293,6 +301,60 @@ OLLAMA_MODEL=phi3:mini
 
 ---
 
+## 🎬 OBS Studio Integration
+
+OBS Studio runs **headlessly via Xvfb** and is fully controlled from Mission Control — no monitor or physical display needed.
+
+### Default Scene Collection
+
+| Scene | When it's used |
+|---|---|
+| ️ **Now Playing** | A song is currently playing |
+| 🎙️ **DJ Speaking** | The DJ (or AI side host) is delivering a voice break |
+| ⏳ **Waiting** | The queue is empty — station is in idle |
+| 📺 **Overlay Only** | YouTube Live overlay / browser source is active |
+
+### Auto Scene Switching
+
+Set `OBS_AUTO_SCENES=true` in `.env` and the bot automatically switches scenes based on playback state:
+
+| Playback state | Scene selected |
+|---|---|
+| Song playing | ️ "Now Playing" |
+| DJ speaking | 🎙️ "DJ Speaking" |
+| Queue empty | ⏳ "Waiting" |
+| YouTube Live overlay | 📺 "Overlay Only" |
+
+### Docker
+
+OBS starts automatically with `docker compose up -d`:
+- **Port 4455** — obs-websocket 5.x for remote control
+- **Port 5900** — optional VNC for visual debugging
+
+### Bare-Metal
+
+`bash start.sh` does everything automatically:
+- Installs OBS Studio (if not present)
+- Configures obs-websocket with a generated password
+- Starts headless OBS via `xvfb-run`
+
+### Proxmox LXC
+
+`bash setup-lxc.sh` does the same as bare-metal, plus:
+- Creates systemd services for OBS and the bot
+- Designed for **Debian 12 + GPU passthrough** LXC containers
+
+### Configuration
+```env
+OBS_WS_ENABLED=true
+OBS_WS_HOST=localhost
+OBS_WS_PORT=4455
+OBS_WS_PASSWORD=          # Auto-generated by start.sh if blank
+OBS_AUTO_SCENES=false     # Set true for auto scene switching
+```
+
+---
+
 ## 🌐 Web Dashboard — Details
 
 Available at `http://your-server:8080/`
@@ -306,6 +368,7 @@ Available at `http://your-server:8080/`
 | **Soundboard** | `/soundboard` | Sound effects grid + upload |
 | **DJ Lines** | `/dj-lines` | Custom DJ line CRUD with visual `{sound:name}` badges |
 | **Settings** | `/settings` | System info, Ollama status, Restart/Shutdown |
+| **🎬 OBS Studio** | `/obs` | OBS scene control, streaming, recording, sources |
 
 ### 📋 Activity Log Panel *(new in v6.4.0)*
 Click **📋 Log** in the sidebar to open a live slide-out log panel:
@@ -499,6 +562,15 @@ OLLAMA_DJ_VOICE=en_news_male      # Separate TTS voice for the AI host
 OLLAMA_DJ_TIMEOUT=15              # Seconds before skipping if Ollama is slow
 ```
 
+### Optional — OBS Studio
+```env
+OBS_WS_ENABLED=true
+OBS_WS_HOST=localhost
+OBS_WS_PORT=4455
+OBS_WS_PASSWORD=              # Auto-generated by start.sh
+OBS_AUTO_SCENES=false         # Auto-switch scenes on playback state
+```
+
 ---
 
 ## 🚀 Installation
@@ -519,7 +591,13 @@ cd "the-Dj-music-bot-sidestepping-ollama"
 ```bash
 bash start.sh
 ```
-The wizard installs all dependencies and walks you through your `.env` config interactively.
+The wizard installs all dependencies, walks you through your `.env` config interactively, **installs and configures OBS Studio**, generates an obs-websocket password, and starts headless OBS automatically.
+
+#### Proxmox LXC (Debian 12 + GPU passthrough)
+```bash
+bash setup-lxc.sh
+```
+Sets up everything above plus creates systemd services for OBS and the bot.
 
 ### Alternative — Manual setup
 ```bash
@@ -554,6 +632,10 @@ nano .env           # Paste your DISCORD_TOKEN
 | Dashboard 500 error | Check Jinja template `{% if %}`/`{% endif %}` balance — run `./launch.sh doctor` |
 | Age-restricted videos won't play | Use `?fetch_and_set_cookies <youtube_url>` to set cookies |
 | Bot appears stuck in voice after crash | Restart bot — `on_ready` forces disconnect from all stale voice sessions |
+| OBS not connected in Mission Control | Run `bash start.sh` — it installs and starts OBS automatically. Or install manually: `sudo apt install obs-studio` then start: `xvfb-run -a obs &` |
+| OBS connection refused spam in logs | OBS is not running or WebSocket is not enabled. The bridge backs off for 30s after a failed connection. Start OBS with `bash start.sh`. |
+| "Already playing audio" errors | Fixed in v420.0.3 — the central audio dispatcher now auto-stops any currently playing source before starting new audio. If you still see this, check for custom code calling `vc.play()` directly instead of `_dispatch_audio_play()`. |
+| CSRF token validation failed | Reload the Mission Control page — the CSRF token in your session may have expired |
 
 ---
 

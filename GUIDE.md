@@ -1,12 +1,12 @@
-# MBot 6.4.0 — Comprehensive Technical Guide
+# MBot v420.0.3 — Comprehensive Technical Guide
 
-> **Last Updated:** 2026-04-16
-> **Version:** 6.4.0
+> **Last Updated:** 2026-04-18
+> **Version:** v420.0.3
 > **License:** MIT
 
 ---
 
-## What's New in 6.4.0
+## What's New in v420.0.3
 
 ### 🧡 MOSS-TTS-Nano Engine (New Default TTS)
 
@@ -221,19 +221,23 @@ TTS starts playing
 TTS finishes → _start_bed_music() → bed under sound effects → song starts → bed stops
 ```
 
-### 🔧 Stuck-State Recovery (Voice Client)
+### 🔧 Stuck-State Recovery & Audio Race Condition (Voice Client)
 
 Even with the WAV header fix, there's a possibility of a previous playback getting stuck (e.g. a corrupted file, an FFmpeg crash, or an OS-level audio issue). Before this fix, any stuck playback would cause **every subsequent `play()` call** to fail with "Already playing audio", silently skipping the entire queue with no audio output — the bot would just cycle through songs forever with no sound.
 
-**Fix:** Before every `voice_client.play()` call — both in `_dj_speak()` (TTS) and `_start_song_playback()` (songs) — the code now checks `is_playing()`. If True, it force-stops the voice client with `voice_client.stop()`, waits 300ms for the old FFmpeg process to terminate, then proceeds. This prevents the cascade failure:
+Additionally, the soundboard UI, DJ sound effects, and bed music paths could race with each other — e.g. TTS finishes while bed music is starting, or soundboard plays over a DJ sound effect — each independently calling `vc.play()` and hitting "Already playing audio".
+
+**Fix (two layers):**
+
+1. **`_dispatch_audio_play()` central guard** (v420.0.3) — The monolithic audio injection point now checks `vc.is_playing()` before every `vc.play()` call. If something is already playing, it calls `vc.stop()` first. This single guard fixes all race conditions across every audio path (soundboard, DJ sounds, bed music, TTS, song playback) — no caller needs to worry about stopping the current source manually.
+
+2. **Legacy per-call guards** (still present in `_dj_speak()` and `_start_song_playback()`) — These were the original fix that added `is_playing()` + `stop()` + 300ms sleep before individual `play()` calls. They remain as defense-in-depth but are now redundant — the central `_dispatch_audio_play()` guard handles it.
 
 ```python
-if voice_client.is_playing():
-    logging.warning("Voice client still playing — force-stopping stuck source")
-    voice_client.stop()
-    await asyncio.sleep(0.3)  # Let FFmpeg terminate
-# Now safe to play
-voice_client.play(new_source, after=callback)
+# Central guard in _dispatch_audio_play (new):
+if vc.is_playing():
+    vc.stop()
+vc.play(source, after=callback)
 ```
 
 The 404 error from Ollama when a model isn't pulled now shows an actionable message:
@@ -245,6 +249,47 @@ On 404, the handler now queries `/api/tags` to list what's actually available an
 ### 🔄 Default Model Change
 
 The default Ollama model has been changed from `llama3.2` to `gemma4:latest` across all files (`config.py`, `.env.example`, `utils/llm_dj.py`, `web/app.py`, `cogs/music.py`). The `.env.example` now lists `gemma4:latest`, `phi3:mini`, `llama3.2`, and `gemma2:2b` as recommended models.
+
+### 🎬 OBS Studio Integration (New)
+
+The bot now integrates with OBS Studio via obs-websocket 5.x for full radio station visual control from Mission Control. OBS runs headlessly and is controlled entirely from the web dashboard.
+
+- **OBS Bridge** (`utils/obs_bridge.py`) — Stateless request/response WebSocket client connecting to obs-websocket 5.x. Uses `obsws_python.ReqClient` with named methods (e.g., `client.start_stream()`, `client.set_current_program_scene()`). Connection backoff prevents log spam when OBS is down (30s cooldown after failed connection). Graceful degradation — all API calls return `{"connected": false}` when OBS is unreachable, never crash the bot.
+
+- **OBS Docker image** (`obs-studio/Dockerfile`) — Headless OBS container with Xvfb virtual display, PulseAudio null sink for virtual audio, VNC server for remote UI debugging (port 5900), and the obs-websocket 5.x plugin. Includes a default scene collection "Radio DJ" with 4 scenes: "️ Now Playing", "🎙️ DJ Speaking", "⏳ Waiting", "📺 Overlay Only". WebSocket password auto-configured from `OBS_WEBSOCKET_PASSWORD` env var. amd64 only (OBS + VNC on arm64 is impractical in Debian bookworm).
+
+- **Auto scene switching** — The bot can automatically switch OBS scenes based on playback state. Opt-in via `OBS_AUTO_SCENES=true`. Scene switches run in daemon threads (non-blocking, fire-and-forget). Mappings: song playing → "Now Playing", DJ speaking → "DJ Speaking", queue empty → "Waiting", YouTube Live overlay → "Overlay Only". Scene names configurable via `OBS_SCENE_NOW_PLAYING`, `OBS_SCENE_DJ_SPEAKING`, `OBS_SCENE_WAITING`, `OBS_SCENE_OVERLAY`.
+
+- **`start.sh` auto-setup** — The setup wizard now installs OBS Studio (`apt install obs-studio`), installs headless support packages (xvfb, dbus, pulseaudio), generates a random WebSocket password and writes it to `.env`, configures obs-websocket 5.x (writes both `config.json` and `global.ini`), copies the default "Radio DJ" scene collection and profile, and starts headless OBS via `xvfb-run -a obs`.
+
+### 🔒 CSRF Protection (New)
+
+The Mission Control web dashboard now has CSRF (Cross-Site Request Forgery) protection on all POST/PUT/DELETE/PATCH endpoints.
+
+- A random 64-char hex token is generated per session and stored in `session["_csrf_token"]`
+- The token is exposed as a `<meta name="csrf-token">` tag in `base.html`
+- A global JavaScript `fetch()` shim in `base.html` automatically injects the `X-CSRFToken` header on all mutating requests
+- A Flask `before_request` hook validates the token — exempted endpoints: login (no session yet), cookie bridge CORS endpoints, overlay API (public)
+- DJ Lines HTML forms include a hidden `_csrf_token` field
+- Returns 403 JSON for API endpoints, 403 HTML for pages
+
+### 🐛 Bug Fixes
+
+- **`login_required` not defined** — The `@login_required` decorator was used on 19 OBS API routes but never defined, crashing the entire web dashboard on import with `NameError`. Fixed by removing the redundant decorators — `require_login()` already handles auth globally via `@app.before_request`.
+
+- **`_MissingSentinel` crash on shutdown** — `asyncio.get_event_loop()` returns an internal `_MissingSentinel` object during Python teardown. `discord_log_handler.py` tried calling `.is_closed()` on it. Fixed with `hasattr(loop, 'is_closed')` guard.
+
+- **OBS Bridge API method mapping** — `_call()` used `client.call(request_type, data)` which doesn't exist on `obsws_python.ReqClient`. Replaced with `_safe_call()` using lambda-based named method dispatch: `lambda c: c.start_stream()`, `lambda c, sn=scene_name: c.set_current_program_scene(sceneName=sn)`.
+
+- **OBS Bridge connection spam** — When OBS is not running, every API call produced a full Python traceback (6+ per minute from dashboard polling). Fixed with 30-second connection backoff and `logging.getLogger("obsws_python").setLevel(logging.CRITICAL)` to suppress the library's verbose logging.
+
+- **`queue._queue` private attribute access** — 11 external references to `asyncio.Queue._queue` replaced with public API methods: `peek_queue(guild_id, max_items)`, `peek_queue_first(guild_id)`, and `queue_push_front(guild_id, item)`.
+
+- **Shallow copy of `YTDL_FORMAT_OPTIONS`** — `get_ytdl_format_options()` returned `dict.copy()` (shallow), meaning nested dicts like `http_headers` were shared references. Changed to `copy.deepcopy()` in `cogs/youtube.py`, `cogs/music.py`, `web/app.py`, and `tests/test_playlist.py`.
+
+- **OBS healthcheck in docker-compose.yml** — The old healthcheck used `curl -sf http://localhost:4455 || exit 0` which always succeeded (`|| exit 0`). WebSocket port 4455 doesn't respond to HTTP GET. Fixed with proper TCP socket check: `python3 -c "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',4455)); s.close()"` plus `pgrep -x obs`.
+
+- **"Already playing audio" race condition** — Discord's `VoiceClient.play()` raises `ClientException: Already playing audio` when called while audio is still active. This happened in multiple code paths: soundboard playing over DJ sound effects, DJ sounds starting while bed music was playing, and song playback racing with lingering TTS/sounds. The fix is in `_dispatch_audio_play()` — the central audio injection point now checks `vc.is_playing()` and calls `vc.stop()` before starting any new audio source. This single guard fixes all race conditions across the soundboard, DJ sound effects, bed music, TTS, and song playback paths. The soundboard web API also now explicitly stops bed music before playing a sound.
 
 ---
 
@@ -259,23 +304,26 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 7. [YouTube Source: cogs/youtube.py](#7-youtube-source-cogsyoutubepy)
 8. [Music Cog: cogs/music.py](#8-music-cog-cogsmusicpy)
 9. [DJ Mode: utils/dj.py](#9-dj-mode-utilsdjpy--music-cog-integration)
-10. [Admin Cog: cogs/admin.py](#10-admin-cog-cogsadminpy)
-11. [Logging Cog: cogs/logging.py](#11-logging-cog-cogsloggingpy)
-12. [Utility Modules](#12-utility-modules)
-13. [Web Dashboard: Mission Control](#13-web-dashboard-mission-control)
-14. [Soundboard System](#14-soundboard-system)
-15. [DJ Custom Lines](#15-dj-custom-lines)
-16. [Test Suite](#16-test-suite)
-17. [Launcher Scripts](#17-launcher-scripts)
-18. [Complete Command Reference](#18-complete-command-reference)
-19. [Troubleshooting & Known Issues](#19-troubleshooting--known-issues)
-20. [Development Guide](#20-development-guide)
+10. [AI Side Host: utils/llm_dj.py](#10-ai-side-host-utilsllm_djpy--the-studio-joker)
+11. [Admin Cog: cogs/admin.py](#11-admin-cog-cogsadminpy)
+12. [Logging Cog: cogs/logging.py](#12-logging-cog-cogsloggingpy)
+13. [Utility Modules](#13-utility-modules)
+14. [OBS Studio Integration](#14-obs-studio-integration)
+15. [CSRF Protection](#15-csrf-protection)
+16. [Web Dashboard: Mission Control](#16-web-dashboard-mission-control)
+17. [Soundboard System](#17-soundboard-system)
+18. [DJ Custom Lines](#18-dj-custom-lines)
+19. [Test Suite](#19-test-suite)
+20. [Launcher Scripts](#20-launcher-scripts)
+21. [Complete Command Reference](#21-complete-command-reference)
+22. [Troubleshooting & Known Issues](#22-troubleshooting--known-issues)
+23. [Development Guide](#23-development-guide)
 
 ---
 
 ## 1. Overview
 
-**MBot 6.4.0** is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. The bot is designed to run as a persistent background service on Debian-based Linux servers, managed through `screen` sessions.
+**MBot v420.0.3** is a self-contained Discord music bot built with Python and `discord.py`. It plays audio from YouTube (URLs, searches, playlists) and Suno (direct song URLs) directly into Discord voice channels. The bot is designed to run as a persistent background service on Debian-based Linux servers, managed through `screen` sessions.
 
 ### Key Features
 
@@ -319,6 +367,10 @@ The default Ollama model has been changed from `llama3.2` to `gemma4:latest` acr
 | **Logging** | File + console + Discord channel | Buffered log shipping to a Discord channel |
 | **Deployment** | Two launcher scripts | `launch.sh` (minimal) and `start.sh` (interactive wizard) |
 | **Auto-Setup** | System deps, venv, pip, .env wizard | First-run experience needs zero manual config |
+| **OBS Studio** | Visual broadcast control | obs-websocket 5.x integration — stream/record, scene switching, source controls from Mission Control |
+| **OBS Studio** | Auto scene switching | `OBS_AUTO_SCENES=true` — automatically switch OBS scenes based on playback state (Now Playing, DJ Speaking, Waiting, Overlay) |
+| **OBS Studio** | Headless OBS Docker image | `obs-studio/Dockerfile` — Xvfb + PulseAudio + VNC + obs-websocket 5.x |
+| **CSRF Protection** | Session-based CSRF tokens | 64-char hex tokens, global fetch() shim, before_request validation |
 
 ---
 
@@ -346,6 +398,7 @@ this2.0/
 │   ├── __init__.py         # Auto-generated; makes utils a Python package
 │   ├── dj.py               # Radio DJ mode — 3-engine TTS (MOSS/VibeVoice/Edge), ~480 templates, health check, sound tag support
 │   ├── llm_dj.py           # AI side host — Ollama client, studio joker personality, 8 banter categories
+│   ├── obs_bridge.py       # OBS WebSocket bridge — Mission Control → OBS control
 │   ├── custom_lines.py     # JSON persistence for custom DJ lines (CRUD operations)
 │   ├── soundboard.py       # Sound listing, path resolution, directory traversal prevention
 │   ├── lyrics.py           # Synced lyrics lookup (syncedlyrics + web scraping fallbacks)
@@ -356,7 +409,7 @@ this2.0/
 │   └── import_parser.py    # Parses bot log files (timestamped entries)
 │
 ├── web/                    # Flask Mission Control Dashboard
-│   ├── app.py              # Flask app — 25+ API endpoints, login auth, settings, template filters, soundboard/upload/delete
+│   ├── app.py              # Flask app — 40+ API endpoints, login auth, settings, template filters, soundboard/upload/delete, 19 OBS routes
 │   ├── __init__.py
 │   ├── templates/          # Jinja2 HTML templates
 │   │   ├── base.html       # Dark layout, sidebar nav, dynamic bot name, conditional auto-refresh, logout link
@@ -389,6 +442,19 @@ this2.0/
 ├── moss-tts-server/        # MOSS-TTS-Nano Docker server
 │   └── Dockerfile          # Docker build for MOSS TTS server
 │
+├── obs-studio/             # Headless OBS Studio Docker image
+│   ├── Dockerfile           # Multi-stage OBS + Xvfb + VNC + WebSocket
+│   ├── entrypoint.sh        # Xvfb → PulseAudio → OBS startup sequence
+│   ├── .dockerignore
+│   └── config/             # Default OBS config baked into the image
+│       └── obs-studio/
+│           ├── global.ini
+│           └── basic/
+│               ├── profiles/RadioDJ/  # Default OBS profile
+│               └── scenes/             # "Radio DJ" scene collection
+│
+├── setup-lxc.sh             # Proxmox LXC (Debian 12) one-shot setup script
+│
 ├── presets/                # Saved playlist JSON files (created at runtime)
 ├── tests/                  # pytest test suite
 ├── yt_dlp_cache/           # yt-dlp metadata cache directory (auto-created)
@@ -418,6 +484,7 @@ cogs/music.py
    ├── imports → utils/presets.py (save_preset, load_preset, queue_to_tracks)
    ├── imports → utils/soundboard.py (list_sounds, get_sound_path)
    ├── imports → utils/llm_dj.py (OLLAMA_DJ_AVAILABLE, generate_side_host_line, should_side_host_speak, check_ollama_available)
+   ├── imports → utils/obs_bridge.py (OBSBridge, switch_scene — auto scene switching via _obs_switch_scene)
    ├── state → ai_dj_enabled[guild_id], ai_dj_voice[guild_id] (AI side host per-guild toggle + own TTS voice)
   └── imports → config.py (emojis, prefix, CROSSFADE_DURATION, STATION_NAME, etc.)
 
@@ -431,7 +498,9 @@ web/app.py
   ├── imports → utils/soundboard.py (list_sounds, get_sound_path, SOUNDS_DIR)
   ├── imports → utils/presets.py (list_presets, save_preset, load_preset, delete_preset)
   ├── imports → utils/lyrics.py (get_lyrics)
+  ├── imports → utils/obs_bridge.py (OBSBridge — 19 OBS API routes under /api/obs/*)
   ├── @app.before_request → require_login() — session auth guard when WEB_PASSWORD is set
+  ├── @app.before_request → validate_csrf() — CSRF token validation on mutating requests
   ├── routes → /login, /logout — password authentication
   ├── routes → /settings — settings page (system info, restart/shutdown)
   ├── routes → /api/restart, /api/shutdown — restart/shutdown endpoints
@@ -446,8 +515,15 @@ utils/dj.py
        ├── _generate_tts_moss() — POST /api/generate → multipart form (text + prompt_audio OR demo_id) → base64 WAV (48 kHz stereo)
        ├── _generate_tts_vibevoice() — WebSocket /stream → PCM16 → WAV
        ├── _generate_tts_edge() — edge_tts.Communicate → MP3
-       ├── _check_moss_health() — GET /api/warmup-status (checks state==ready, cached)
-       └── generate_tts() — routes to active engine, falls back to edge-tts on failure
+        ├── _check_moss_health() — GET /api/warmup-status (checks state==ready, cached)
+        └── generate_tts() — routes to active engine, falls back to edge-tts on failure
+
+utils/obs_bridge.py
+    ├── uses → obsws_python.ReqClient (named methods, NOT generic call)
+    ├── called by → web/app.py (19 OBS API routes under /api/obs/*)
+    ├── called by → cogs/music.py (auto scene switching via _obs_switch_scene)
+    ├── stateless → connects, sends request, disconnects
+    └── gracefully degrades → returns {connected: false} when OBS is down
 ```
 
 > **Why are `youtube.py` and `logging.py` excluded from auto-loading?**
@@ -478,6 +554,7 @@ utils/dj.py
 | **screen** | — | Background session management (used by launcher scripts) |
 | **git** | — | Cloning the repository |
 | **apt-get** | — | System package manager (Debian/Ubuntu only) |
+| **OBS Studio** | 28+ (29.x on Debian 12) | Optional — visual radio broadcast control via Mission Control |
 
 ### Target OS
 
@@ -505,6 +582,7 @@ utils/dj.py
 | `pytest` | latest | Test framework |
 | `pytest-asyncio` | latest | Async test support for pytest |
 | `aioresponses` | latest | Mock aiohttp requests in tests |
+| `obsws-python` | latest | OBS Studio WebSocket client — control OBS from Mission Control |
 
 ---
 
@@ -523,12 +601,15 @@ Running `start.sh` with no arguments (or `run`) performs a **full first-time set
 1. **Installs system dependencies** — Checks for and installs (via apt-get): python3, python3-pip, python3-venv, ffmpeg, libopus-dev, screen. Uses `sudo` if available.
 2. **Creates a Python virtual environment** — `venv/` directory with its own pip.
 3. **Installs Python packages** — `pip install -r requirements.txt` + upgrades yt-dlp.
-4. **Runs the .env setup wizard** — Interactive prompts for:
+4. **Installs OBS Studio + obs-websocket 5.x** — `apt install obs-studio`, `xvfb`, `dbus`, `pulseaudio`.
+5. **Configures obs-websocket** — Generates a random WebSocket password, writes it to `.env`, copies default scene collection and profile.
+6. **Starts headless OBS Studio** — `xvfb-run -a obs --collection 'Radio DJ'`.
+7. **Runs the .env setup wizard** — Interactive prompts for:
    - Discord Bot Token (required)
    - YouTube API Key (optional, press Enter to skip)
    - Log Channel ID (optional, press Enter to skip)
-5. **Initializes project structure** — Creates `cogs/__init__.py`, `utils/__init__.py`, `yt_dlp_cache/` directory.
-6. **Starts the bot in foreground** — `exec venv/bin/python bot.py`
+8. **Initializes project structure** — Creates `cogs/__init__.py`, `utils/__init__.py`, `yt_dlp_cache/` directory.
+9. **Starts the bot in foreground** — `exec venv/bin/python bot.py`
 
 ### Method B: `launch.sh` (Minimal — No Wizard)
 
@@ -550,18 +631,29 @@ Then start:
 ./launch.sh start    # Starts in a screen session named "musicbot"
 ```
 
+### Method C: Proxmox LXC
+
+```bash
+# For Proxmox LXC containers with GPU passthrough (Debian 12)
+bash setup-lxc.sh
+```
+
+This installs everything including systemd services for auto-start on boot.
+
 ### Comparison of Launcher Scripts
 
-| Feature | `start.sh` | `launch.sh` |
-|---|---|---|
-| Interactive .env wizard | ✅ Yes | ❌ No |
-| Colored terminal output | ✅ Yes | ❌ No |
-| Auto-installs Python3 | ✅ Yes | ❌ No |
-| Auto-installs screen | ✅ Yes | ❌ No |
-| Screen session name | `mbot` | `musicbot` |
-| Default run mode | Foreground | Background (screen) |
-| `doctor` subcommand | ❌ No | ✅ Yes (runs pytest) |
-| `logs` subcommand | ✅ Yes | ❌ (use `attach` instead) |
+| Feature | `start.sh` | `launch.sh` | `setup-lxc.sh` |
+|---|---|---|---|
+| Interactive .env wizard | ✅ Yes | ❌ No | ❌ No |
+| Colored terminal output | ✅ Yes | ❌ No | ❌ No |
+| Auto-installs Python3 | ✅ Yes | ❌ No | ✅ Yes |
+| Auto-installs screen | ✅ Yes | ❌ No | ✅ Yes |
+| OBS Studio auto-setup | ✅ Yes | ❌ No | ✅ Yes |
+| systemd auto-start | ❌ No | ❌ No | ✅ Yes |
+| Screen session name | `mbot` | `musicbot` | — (systemd) |
+| Default run mode | Foreground | Background (screen) | Systemd service |
+| `doctor` subcommand | ❌ No | ✅ Yes (runs pytest) | ❌ No |
+| `logs` subcommand | ✅ Yes | ❌ (use `attach` instead) | `journalctl` |
 
 ---
 
@@ -627,6 +719,15 @@ TTS_MODE = os.environ.get("TTS_MODE", "moss").lower()
 MOSS_TTS_URL = os.environ.get("MOSS_TTS_URL", "http://localhost:18083")
 MOSS_VOICE = os.environ.get("MOSS_VOICE", "en_warm_female")
 VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
+OBS_WS_ENABLED = os.environ.get("OBS_WS_ENABLED", "true").lower() == "true"
+OBS_WS_HOST = os.environ.get("OBS_WS_HOST", "localhost")
+OBS_WS_PORT = int(os.environ.get("OBS_WS_PORT", "4455"))
+OBS_WS_PASSWORD = os.environ.get("OBS_WS_PASSWORD", "")
+OBS_AUTO_SCENES = os.environ.get("OBS_AUTO_SCENES", "false").lower() == "true"
+OBS_SCENE_NOW_PLAYING = os.environ.get("OBS_SCENE_NOW_PLAYING", "️ Now Playing")
+OBS_SCENE_DJ_SPEAKING = os.environ.get("OBS_SCENE_DJ_SPEAKING", "🎙️ DJ Speaking")
+OBS_SCENE_WAITING = os.environ.get("OBS_SCENE_WAITING", "⏳ Waiting")
+OBS_SCENE_OVERLAY = os.environ.get("OBS_SCENE_OVERLAY", "📺 Overlay Only")
 ```
 
 | Constant | Default | Purpose |
@@ -647,6 +748,15 @@ VIBEVOICE_TTS_URL = os.environ.get("VIBEVOICE_TTS_URL", "http://localhost:3000")
 | `MOSS_TTS_URL` | `http://localhost:18083` | MOSS-TTS-Nano server URL |
 | `MOSS_VOICE` | `en_warm_female` | Default MOSS voice (corresponds to `assets/moss_voices/en_warm_female.wav`) |
 | `VIBEVOICE_TTS_URL` | `http://localhost:3000` | VibeVoice-Realtime server URL |
+| `OBS_WS_ENABLED` | `true` | Enable OBS WebSocket integration |
+| `OBS_WS_HOST` | `localhost` | OBS WebSocket server hostname |
+| `OBS_WS_PORT` | `4455` | OBS WebSocket server port |
+| `OBS_WS_PASSWORD` | `""` | OBS WebSocket auth password (auto-generated by start.sh) |
+| `OBS_AUTO_SCENES` | `false` | Auto-switch OBS scenes based on playback state |
+| `OBS_SCENE_NOW_PLAYING` | `️ Now Playing` | Scene name when a song is playing |
+| `OBS_SCENE_DJ_SPEAKING` | `🎙️ DJ Speaking` | Scene name when the DJ is speaking |
+| `OBS_SCENE_WAITING` | `⏳ Waiting` | Scene name when the queue is empty |
+| `OBS_SCENE_OVERLAY` | `📺 Overlay Only` | Scene name for YouTube Live overlay |
 | `LOCAL_TTS_URL` | `""` | Backward-compatible alias for older .env files |
 
 ### DJ Mode Configuration (`config.py`)
@@ -1363,7 +1473,7 @@ The background task `_update_nowplaying_message` also calls this logic every 40 
 **Behavior:**
 1. Gets the queue for the guild.
 2. If not empty, lists all songs numbered 1 through N.
-3. Accesses the internal `_queue` attribute of `asyncio.Queue` via `list(queue._queue)` to iterate without consuming items.
+3. Accesses the queue via `peek_queue(guild_id)` (public API method) to iterate without consuming items.
 
 **Edge cases:**
 - Empty queue → "Empty Queue" embed
@@ -2325,7 +2435,231 @@ Save and load queue state as JSON files in the `presets/` directory.
 
 ---
 
-## 14. Web Dashboard: Mission Control
+### `utils/obs_bridge.py` — OBS WebSocket Bridge
+
+A **stateless** WebSocket bridge connecting to obs-websocket 5.x for full radio station visual control from Mission Control. Each API call connects, sends the request, and disconnects — no persistent WebSocket session is maintained.
+
+**OBSBridge class** — The main interface for OBS control. All methods return dicts with a `"connected"` key indicating OBS reachability.
+
+**Connection backoff:** After a failed connection attempt, the bridge waits 30 seconds (`CONNECTION_RETRY_INTERVAL`) before trying again. This prevents log spam — the dashboard polls OBS status every ~10 seconds, which would otherwise generate 6+ full Python tracebacks per minute when OBS is down.
+
+**Graceful degradation:** All methods return `{"connected": False, "error": "..."}` when OBS is unreachable. The bot never crashes due to OBS being down.
+
+**Auto scene switching:** The `switch_scene(scene_name)` method runs in a daemon thread (fire-and-forget, non-blocking). It never raises exceptions to the caller — if OBS is down, the scene switch silently fails (logged at DEBUG level). Called by `cogs/music.py` via `_obs_switch_scene()` when `OBS_AUTO_SCENES=true`.
+
+**Library interaction:** Uses `obsws_python.ReqClient` with named methods via lambda dispatch in `_safe_call()` — NOT the generic `client.call(request_type, data)` pattern which doesn't exist on `ReqClient`. Example: `lambda c: c.start_stream()`, `lambda c, sn=scene_name: c.set_current_program_scene(sceneName=sn)`.
+
+**Configuration:** `OBS_WS_HOST`, `OBS_WS_PORT`, `OBS_WS_PASSWORD`, `OBS_WS_ENABLED` (from `config.py`).
+
+**Public API methods:**
+
+| Method | Purpose |
+|---|---|
+| `get_status()` | Returns OBS connection status, current scene, streaming state, recording state |
+| `start_streaming()` / `stop_streaming()` / `toggle_streaming()` | Stream lifecycle control |
+| `start_recording()` / `stop_recording()` / `toggle_recording()` | Recording lifecycle control |
+| `set_current_scene(scene_name)` | Switch to a specific OBS scene |
+| `set_source_visibility(source_name, visible)` | Show/hide a source in the current scene |
+| `set_source_mute(source_name, muted)` | Mute/unmute an audio source |
+| `set_source_volume(source_name, volume)` | Set audio source volume (0.0–1.0) |
+| `set_current_transition(transition_name)` | Set the active scene transition |
+| `enable_studio_mode()` / `disable_studio_mode()` | Toggle OBS studio mode |
+| `start_replay_buffer()` / `stop_replay_buffer()` / `save_replay_buffer()` | Replay buffer control |
+| `start_virtual_camera()` / `stop_virtual_camera()` | Virtual camera control |
+| `take_source_screenshot(source_name)` | Capture a screenshot of a source |
+
+---
+
+## 14. OBS Studio Integration
+
+The bot integrates with OBS Studio via obs-websocket 5.x, enabling full visual radio broadcast control from Mission Control. OBS runs headlessly (no physical display needed) and is controlled entirely through the web dashboard.
+
+### OBS Bridge (`utils/obs_bridge.py`)
+
+A **stateless** WebSocket bridge that connects to obs-websocket 5.x on demand. Each API call connects, sends the request, and disconnects — no persistent WebSocket session.
+
+**Key design decisions:**
+- Uses `obsws_python.ReqClient` with **named methods** (e.g., `client.start_stream()`, `client.set_current_program_scene(sceneName=...)`), NOT the generic `client.call(request_type, data)` pattern which doesn't exist on `ReqClient`.
+- Lambda-based named method dispatch in `_safe_call()` ensures each OBS action calls the correct method with the correct parameters.
+- **Connection backoff:** After a failed connection attempt, the bridge waits 30 seconds (`CONNECTION_RETRY_INTERVAL`) before trying again. This prevents log spam when OBS is down — the dashboard polls OBS status every 10 seconds, which would otherwise generate 6+ full Python tracebacks per minute.
+- **Graceful degradation:** All methods return `{"connected": False, "error": "..."}` when OBS is unreachable. The bot **never crashes** due to OBS being down — the web dashboard shows "OBS Disconnected" status and all OBS controls are greyed out.
+- **Library logging suppression:** `logging.getLogger("obsws_python").setLevel(logging.CRITICAL)` suppresses the library's verbose connection error logging.
+
+**Public API methods:**
+
+| Method | Purpose |
+|---|---|
+| `get_status()` | Returns OBS connection status, current scene, streaming state, recording state |
+| `start_streaming()` / `stop_streaming()` / `toggle_streaming()` | Stream lifecycle control |
+| `start_recording()` / `stop_recording()` / `toggle_recording()` | Recording lifecycle control |
+| `set_current_scene(scene_name)` | Switch to a specific OBS scene |
+| `set_source_visibility(source_name, visible)` | Show/hide a source in the current scene |
+| `set_source_mute(source_name, muted)` | Mute/unmute an audio source |
+| `set_source_volume(source_name, volume)` | Set audio source volume (0.0–1.0) |
+| `set_current_transition(transition_name)` | Set the active scene transition |
+| `enable_studio_mode()` / `disable_studio_mode()` | Toggle OBS studio mode |
+| `start_replay_buffer()` / `stop_replay_buffer()` / `save_replay_buffer()` | Replay buffer control |
+| `start_virtual_camera()` / `stop_virtual_camera()` | Virtual camera control |
+| `take_source_screenshot(source_name)` | Capture a screenshot of a source |
+
+### Auto Scene Switching
+
+When `OBS_AUTO_SCENES=true`, the bot automatically switches OBS scenes based on playback state. Scene switches run in **daemon threads** (non-blocking, fire-and-forget) so they never delay song playback or DJ speech.
+
+| Playback State | Default Scene Name | Config Variable |
+|---|---|---|
+| Song playing | "️ Now Playing" | `OBS_SCENE_NOW_PLAYING` |
+| DJ speaking | "🎙️ DJ Speaking" | `OBS_SCENE_DJ_SPEAKING` |
+| Queue empty | "⏳ Waiting" | `OBS_SCENE_WAITING` |
+| YouTube Live overlay | "📺 Overlay Only" | `OBS_SCENE_OVERLAY` |
+
+The `switch_scene()` method is fire-and-forget — it runs in a daemon thread and never raises exceptions to the caller. If OBS is down, the scene switch silently fails (logged at DEBUG level).
+
+### OBS Docker Image (`obs-studio/Dockerfile`)
+
+A self-contained headless OBS container for running OBS on servers without a physical display:
+
+**Components:**
+- **Xvfb** — Virtual X display (`:99`) for headless rendering
+- **PulseAudio** — Null sink for virtual audio routing
+- **VNC server** — Remote UI debugging on port 5900 (optional, for troubleshooting scenes)
+- **obs-websocket 5.x** — Configured with password from `OBS_WEBSOCKET_PASSWORD` env var
+
+**Default scene collection ("Radio DJ"):**
+- "️ Now Playing" — Main scene with song display
+- "🎙️ DJ Speaking" — Scene shown when the DJ is talking
+- "⏳ Waiting" — Idle/waiting scene
+- "📺 Overlay Only" — YouTube Live overlay scene
+
+**Platform:** amd64 only (OBS + VNC on arm64 is impractical in Debian bookworm).
+
+**Usage with docker-compose:**
+```yaml
+obs:
+  build: ./obs-studio
+  ports:
+    - "4455:4455"   # WebSocket
+    - "5900:5900"   # VNC (optional)
+  environment:
+    - OBS_WEBSOCKET_PASSWORD=${OBS_WEBSOCKET_PASSWORD}
+  healthcheck:
+    test: ["CMD", "python3", "-c", "import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',4455)); s.close()"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+```
+
+### `start.sh` OBS Auto-Setup
+
+The `start.sh` setup wizard now automatically:
+
+1. Installs OBS Studio (`apt install obs-studio`)
+2. Installs headless support packages (`xvfb`, `dbus`, `pulseaudio`)
+3. Generates a random WebSocket password and writes it to `.env` as `OBS_WEBSOCKET_PASSWORD`
+4. Configures obs-websocket 5.x (writes both `config.json` and `global.ini`)
+5. Copies the default "Radio DJ" scene collection and profile into `~/.config/obs-studio/`
+6. Starts headless OBS via `xvfb-run -a obs --collection 'Radio DJ'`
+
+If OBS is not available (e.g., non-Debian systems), the setup gracefully skips these steps and logs a warning.
+
+### Web Dashboard OBS Controls
+
+Mission Control provides 19 OBS API endpoints under `/api/obs/*` for full visual broadcast control. When OBS is connected, the dashboard shows:
+
+- **Stream/Record controls** — Start, stop, toggle streaming and recording
+- **Scene switcher** — Dropdown to switch between OBS scenes
+- **Source controls** — Show/hide sources, mute/unmute audio, adjust volumes
+- **Scene transition** — Set the active transition type
+- **Studio mode** — Enable/disable OBS studio mode
+- **Status indicators** — Live connection status, current scene, stream/recording state
+
+When OBS is disconnected, all controls show "OBS Disconnected" and are greyed out. The dashboard polls OBS status every 10 seconds.
+
+---
+
+## 15. CSRF Protection
+
+The Mission Control web dashboard now has CSRF (Cross-Site Request Forgery) protection on all mutating endpoints (POST, PUT, DELETE, PATCH). This prevents malicious websites from making unauthorized requests to the dashboard on behalf of an authenticated user.
+
+### How It Works
+
+**1. Token Generation:**
+```python
+# In app.py — generated per session
+if "_csrf_token" not in session:
+    session["_csrf_token"] = secrets.token_hex(64)
+```
+A random 64-character hex token is generated per session and stored in `session["_csrf_token"]`.
+
+**2. Token Exposure:**
+```html
+<!-- In base.html — available to all JavaScript -->
+<meta name="csrf-token" content="{{ session.get('_csrf_token', '') }}">
+```
+The token is exposed as a `<meta>` tag in the base template, making it available to all JavaScript on every page.
+
+**3. Automatic Header Injection:**
+```javascript
+// In base.html — global fetch() shim
+const _origFetch = window.fetch;
+window.fetch = function(url, options = {}) {
+    if (options.method && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(options.method.toUpperCase())) {
+        const token = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (token) {
+            options.headers = options.headers || {};
+            options.headers['X-CSRFToken'] = token;
+        }
+    }
+    return _origFetch.apply(this, [url, options]);
+};
+```
+A global `fetch()` shim in `base.html` automatically injects the `X-CSRFToken` header on all mutating requests. This means all existing JavaScript code works without modification.
+
+**4. Server-Side Validation:**
+```python
+@app.before_request
+def validate_csrf():
+    if request.method in ('POST', 'PUT', 'DELETE', 'PATCH'):
+        token = session.get('_csrf_token')
+        header_token = request.headers.get('X-CSRFToken')
+        form_token = request.form.get('_csrf_token')
+        if not hmac.compare_digest(token or '', header_token or form_token or ''):
+            # Return 403
+```
+A Flask `before_request` hook validates the token from either the `X-CSRFToken` header (AJAX requests) or the `_csrf_token` form field (HTML form submissions).
+
+**5. Exempted Endpoints:**
+- `/login` — No session exists yet when the user logs in
+- Cookie bridge CORS endpoints — These are cross-origin API endpoints
+- Overlay API — Public endpoints accessed by OBS browser sources
+
+**6. DJ Lines Forms:**
+HTML forms on the DJ Lines page (`dj_lines.html`) include a hidden `_csrf_token` field:
+```html
+<input type="hidden" name="_csrf_token" value="{{ session.get('_csrf_token', '') }}">
+```
+
+**7. Error Responses:**
+- **API endpoints** (URLs starting with `/api/`) → `403 JSON` with `{"error": "CSRF token missing or invalid"}`
+- **Page endpoints** → `403 HTML` error page
+
+### Configuration
+
+CSRF protection is always enabled when `WEB_PASSWORD` is set (session-based auth). When the dashboard is in open-access mode (no password), CSRF is still active but provides less security since there's no session to protect.
+
+### Token Lifetime & Rotation
+
+The CSRF token is generated once per session and **never rotates** for the lifetime of that session. This is acceptable for a self-hosted dashboard because:
+
+- The dashboard is typically used by one person (the bot operator)
+- Sessions are short-lived (browser tab lifecycle)
+- The threat model is cross-site request forgery, not session hijacking
+
+**For multi-user deployments:** If you expose Mission Control to multiple users, consider rotating the token on each request or implementing a per-request nonce. Flask's `session` is cookie-based (signed, not encrypted by default), so the CSRF token is visible in the cookie. The `hmac.compare_digest` check prevents timing attacks on token comparison.
+
+---
+
+## 16. Web Dashboard: Mission Control
 
 The Flask web dashboard runs alongside the Discord bot in a background thread, providing a browser-based "Mission Control" interface for remote control.
 
@@ -2514,6 +2848,30 @@ Other pages (DJ Lines, Soundboard, Radio, Queue, Settings) **never** auto-refres
 | `/api/shutdown` | POST | Shut down the bot process (`SIGTERM`) |
 | `/api/ollama/status` | GET | Check Ollama server availability, model list, enabled status |
 
+#### OBS Studio — *New in v420.0.3*
+
+| Endpoint | Method | Purpose |
+|---|---|---|
+| `/api/obs/status` | GET | Get OBS connection status, current scene, streaming/recording state |
+| `/api/obs/streaming/start` | POST | Start OBS streaming |
+| `/api/obs/streaming/stop` | POST | Stop OBS streaming |
+| `/api/obs/streaming/toggle` | POST | Toggle OBS streaming |
+| `/api/obs/recording/start` | POST | Start OBS recording |
+| `/api/obs/recording/stop` | POST | Stop OBS recording |
+| `/api/obs/recording/toggle` | POST | Toggle OBS recording |
+| `/api/obs/scene` | POST | Set current OBS scene (expects `{"scene": "name"}`) |
+| `/api/obs/source/visibility` | POST | Set source visibility (expects `{"source": "name", "visible": true}`) |
+| `/api/obs/source/mute` | POST | Mute/unmute audio source |
+| `/api/obs/source/volume` | POST | Set audio source volume |
+| `/api/obs/transition` | POST | Set current scene transition |
+| `/api/obs/studio_mode/enable` | POST | Enable OBS studio mode |
+| `/api/obs/studio_mode/disable` | POST | Disable OBS studio mode |
+| `/api/obs/replay_buffer/start` | POST | Start replay buffer |
+| `/api/obs/replay_buffer/stop` | POST | Stop replay buffer |
+| `/api/obs/replay_buffer/save` | POST | Save replay buffer |
+| `/api/obs/virtual_camera/start` | POST | Start virtual camera |
+| `/api/obs/virtual_camera/stop` | POST | Stop virtual camera |
+
 ### Flask ↔ Discord.py Bridge
 
 Flask runs synchronous request handlers on its own threads. Discord.py requires operations on its async event loop. The bridge is `_run_async()`:
@@ -2539,7 +2897,7 @@ Discord guild IDs are 64-bit integers (snowflakes) that exceed JavaScript's `Num
 
 ---
 
-## 15. Soundboard System
+## 17. Soundboard System
 
 The soundboard lets users play sound effects in the bot's voice channel. It works both from the web dashboard and from `{sound:name}` tags in DJ lines.
 
@@ -2608,7 +2966,7 @@ The soundboard page uses a hidden `<input type="file">` with `position:absolute;
 
 ---
 
-## 16. DJ Custom Lines
+## 18. DJ Custom Lines
 
 Users can add custom DJ lines alongside the 172 built-in ones. Custom lines are persisted in `dj_custom_lines.json` and merged at runtime.
 
@@ -2655,7 +3013,7 @@ The `_pool(category)` function in `utils/dj.py` merges built-in + custom lines a
 
 ---
 
-## 17. Test Suite
+## 19. Test Suite
 
 ### `tests/test_playlist.py`
 
@@ -2701,7 +3059,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 18. Launcher Scripts
+## 20. Launcher Scripts
 
 ### `launch.sh`
 
@@ -2758,9 +3116,23 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 6. **Sudo detection** — Uses `sudo` only if available and passwordless sudo works, otherwise runs without it.
 
+7. **OBS Studio auto-setup** — Installs OBS Studio, obs-websocket 5.x, headless support packages (xvfb, dbus, pulseaudio), generates WebSocket password, configures obs-websocket, copies default scene collection and profile, and starts headless OBS via `xvfb-run -a obs --collection 'Radio DJ'`.
+
 ---
 
-## 19. Complete Command Reference
+### `setup-lxc.sh` — Proxmox LXC Setup
+
+**For:** Proxmox LXC containers with GPU passthrough (Debian 12).
+
+```bash
+bash setup-lxc.sh
+```
+
+A one-shot setup script that installs everything including systemd services for auto-start on boot. This is the recommended method for deploying the bot as a Proxmox LXC container with GPU passthrough for hardware-accelerated OBS encoding.
+
+---
+
+## 21. Complete Command Reference
 
 **Default prefix:** `?` (configurable in `config.py`)
 
@@ -2826,7 +3198,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 20. Troubleshooting & Known Issues
+## 22. Troubleshooting & Known Issues
 
 ### Common Problems
 
@@ -2874,6 +3246,18 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 8. **Speed values below 0.5 may cause FFmpeg errors** — The `atempo` FFmpeg filter only supports 0.5–2.0 per instance. While the bot's speed ladder starts at 0.25x, attempting to play at that speed may cause FFmpeg to fail. Values below 0.5 require chaining multiple `atempo` filters (e.g., `atempo=0.5,atempo=0.5` for 0.25x).
 
+### Bugs Fixed in v420.0.3
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| **`login_required` not defined — web dashboard crash** | `@login_required` decorator used on 19 OBS API routes but never defined — `NameError` on import | Removed redundant `@login_required` decorators — `require_login()` already handles auth globally via `@app.before_request` |
+| **`_MissingSentinel` crash on shutdown** | `asyncio.get_event_loop()` returns internal `_MissingSentinel` object during Python teardown; `discord_log_handler.py` called `.is_closed()` on it | Added `hasattr(loop, 'is_closed')` guard before calling `.is_closed()` |
+| **OBS Bridge API method mapping** | `_call()` used `client.call(request_type, data)` which doesn't exist on `obsws_python.ReqClient` | Replaced with `_safe_call()` using lambda-based named method dispatch: `lambda c: c.start_stream()`, `lambda c, sn=scene_name: c.set_current_program_scene(sceneName=sn)` |
+| **OBS Bridge connection spam** | When OBS not running, every API call produced full Python traceback (6+/min from dashboard polling) | 30-second connection backoff + `logging.getLogger("obsws_python").setLevel(logging.CRITICAL)` |
+| **`queue._queue` private attribute access** | 11 external references to `asyncio.Queue._queue` — fragile, breaks if internal implementation changes | Replaced with public API methods: `peek_queue()`, `peek_queue_first()`, `queue_push_front()` |
+| **Shallow copy of `YTDL_FORMAT_OPTIONS`** | `get_ytdl_format_options()` returned `dict.copy()` (shallow) — nested dicts like `http_headers` were shared references between callers | Changed to `copy.deepcopy()` in `cogs/youtube.py`, `cogs/music.py`, `web/app.py`, and `tests/test_playlist.py` |
+| **OBS healthcheck always succeeds in docker-compose** | Healthcheck used `curl -sf http://localhost:4455 \|\| exit 0` — always returned 0; WebSocket port 4455 doesn't respond to HTTP GET | Proper TCP socket check: `python3 -c "import socket; ..."` plus `pgrep -x obs` |
+
 ### Bugs Fixed in 6.4.0
 
 | Bug | Root Cause | Fix |
@@ -2899,7 +3283,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 21. Development Guide
+## 23. Development Guide
 
 ### Adding a New Cog
 

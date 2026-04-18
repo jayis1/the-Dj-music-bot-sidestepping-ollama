@@ -22,19 +22,27 @@ obsws-python ReqClient API:
   they return properly typed dataclass objects.
 
 Setup:
-  1. Install OBS Studio: https://obsproject.com
-  2. Install obs-websocket 5 plugin (bundled with OBS 28+)
-  3. In OBS: Tools → WebSocket Server Settings → Enable, set port & password
-  4. Set OBS_WS_HOST and OBS_WS_PASSWORD in .env
-  5. Open Mission Control → OBS Studio page
+  1. Install OBS Studio + obs-websocket (bundled since OBS 28)
+  2. bash start.sh — auto-installs OBS, configures WebSocket, starts headless
+  3. Open Mission Control → OBS Studio page
+
+Graceful degradation:
+  If OBS is not running or not reachable, all API calls return
+  {"connected": False, "error": "..."} — the bot never crashes.
+  A connection-backoff prevents spamming connection attempts when OBS is down.
 """
 
-import asyncio
 import logging
 import time
 import os
 
 log = logging.getLogger("obs-bridge")
+
+# ── Suppress obsws-python's verbose logging ──────────────────────────────
+# obsws_python logs "Connecting with parameters: ..." at INFO level on every
+# connection attempt, plus full tracebacks on failure. We only want our own
+# warnings, not the library's stdout spam.
+logging.getLogger("obsws_python").setLevel(logging.CRITICAL)
 
 # ── OBS WebSocket Connection ─────────────────────────────────────────────
 
@@ -64,9 +72,17 @@ class OBSBridge:
     a persistent WebSocket connection with reconnection logic, event
     subscriptions, and thread safety concerns.
 
+    Connection backoff:
+      When OBS is unreachable, we record the failure time and don't try
+      again for CONNECTION_RETRY_INTERVAL seconds. This prevents log spam
+      and performance degradation from repeated failed TCP connects.
+
     For real-time event subscriptions (e.g., scene change notifications),
     a future version could add a persistent connection with callbacks.
     """
+
+    # Don't retry connection for this many seconds after a failure
+    CONNECTION_RETRY_INTERVAL = 30
 
     def __init__(self, host: str = "localhost", port: int = 4455, password: str = "", enabled: bool = True):
         self.host = host
@@ -76,6 +92,8 @@ class OBSBridge:
         self._last_status = None
         self._last_status_time = 0
         self._status_cache_ttl = 5  # seconds
+        self._last_connect_fail = 0  # timestamp of last failed connection
+        self._connection_logged = False  # Only log "configured" once
 
         if self.enabled:
             obsws = _get_obsws()
@@ -88,22 +106,72 @@ class OBSBridge:
             if not password:
                 log.info("OBS Bridge: Disabled (no OBS_WS_PASSWORD set)")
 
+    def _should_try_connect(self):
+        """Check if enough time has passed since the last failed connection."""
+        if self._last_connect_fail == 0:
+            return True  # Never tried before
+        elapsed = time.time() - self._last_connect_fail
+        return elapsed >= self.CONNECTION_RETRY_INTERVAL
+
     def _connect(self):
-        """Create a new OBS WebSocket client connection."""
+        """Create a new OBS WebSocket client connection.
+
+        Returns None if:
+          - obsws-python is not installed
+          - OBS is not reachable (connection refused, timeout, etc.)
+          - We're in a connection-backoff period
+        """
         obsws = _get_obsws()
         if obsws is None:
             return None
+
+        # Check connection backoff — don't spam failed connects
+        if not self._should_try_connect():
+            return None
+
+        # Suppress the library's own verbose logging during connect
+        obsws_logger = logging.getLogger("obsws_python")
+        old_level = obsws_logger.level
+
         try:
+            obsws_logger.setLevel(logging.CRITICAL)
             client = obsws.ReqClient(
                 host=self.host,
                 port=self.port,
                 password=self.password,
                 timeout=5,
             )
+            # Success — reset backoff
+            self._last_connect_fail = 0
+            if not self._connection_logged:
+                log.info(f"OBS Bridge: Connected to {self.host}:{self.port}")
+                self._connection_logged = True
             return client
-        except Exception as e:
-            log.warning(f"OBS Bridge: Connection failed → {e}")
+
+        except ConnectionRefusedError:
+            # OBS is not running or WebSocket server is not listening
+            self._last_connect_fail = time.time()
+            log.warning(
+                f"OBS Bridge: Connection refused on {self.host}:{self.port} — "
+                f"OBS is not running or WebSocket is not enabled. "
+                f"Install OBS with: sudo apt install obs-studio, "
+                f"or start it with: bash start.sh. "
+                f"Retrying in {self.CONNECTION_RETRY_INTERVAL}s."
+            )
             return None
+
+        except Exception as e:
+            self._last_connect_fail = time.time()
+            # Only log the first line of the error — obsws dumps full tracebacks
+            error_brief = str(e).split('\n')[0]
+            log.warning(
+                f"OBS Bridge: Cannot connect to {self.host}:{self.port} — "
+                f"{error_brief}. Will retry in {self.CONNECTION_RETRY_INTERVAL}s."
+            )
+            return None
+
+        finally:
+            obsws_logger.setLevel(old_level)
 
     def _safe_call(self, func, **kwargs):
         """Send a request to OBS using a named method on ReqClient.
@@ -124,6 +192,9 @@ class OBSBridge:
 
         client = self._connect()
         if client is None:
+            # Check if we're in backoff
+            if self._last_connect_fail > 0:
+                return {"error": "OBS is not running or WebSocket is not enabled", "connected": False}
             return {"error": "Could not connect to OBS", "connected": False}
 
         try:
@@ -167,9 +238,13 @@ class OBSBridge:
 
             return result
 
+        except ConnectionRefusedError:
+            self._last_connect_fail = time.time()
+            return {"error": "OBS is not running", "connected": False}
+
         except Exception as e:
             error_msg = str(e)
-            log.warning(f"OBS Bridge: Request failed → {error_msg}")
+            log.debug(f"OBS Bridge: Request failed → {error_msg}")
             return {"error": error_msg, "connected": True}
         finally:
             try:
@@ -279,7 +354,7 @@ class OBSBridge:
                 pass
 
         except Exception as e:
-            log.warning(f"OBS Bridge: Status query failed → {e}")
+            log.debug(f"OBS Bridge: Status query failed → {e}")
             result["error"] = str(e)
         finally:
             try:
@@ -463,8 +538,10 @@ class OBSBridge:
     # ── Reconnect ─────────────────────────────────────────────────────────
 
     def reconnect(self) -> dict:
-        """Force a reconnection by clearing the status cache."""
+        """Force a reconnection by clearing the backoff and status cache."""
+        self._last_connect_fail = 0
         self._last_status = None
+        self._connection_logged = False
         return self.get_status()
 
     # ── Auto Scene Switching ───────────────────────────────────────────────

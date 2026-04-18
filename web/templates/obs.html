@@ -256,12 +256,32 @@ document.addEventListener('DOMContentLoaded', () => {
 async function obsApi(endpoint, method='GET', body=null) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
+    // Explicitly add CSRF token for all mutating requests (POST/PUT/DELETE/PATCH)
+    // This is more reliable than relying solely on the global fetch shim
+    if (method !== 'GET' && method !== 'HEAD') {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content || '';
+        if (csrfToken) {
+            opts.headers['X-CSRFToken'] = csrfToken;
+        }
+    }
     try {
         const resp = await fetch(endpoint, opts);
+        if (!resp.ok) {
+            // Try to parse JSON error, fall back to status text
+            let errorMsg = `HTTP ${resp.status}`;
+            try {
+                const errorData = await resp.json();
+                errorMsg = errorData.error || errorMsg;
+            } catch (parseErr) {
+                // Response body isn't JSON (e.g. HTML error page)
+                errorMsg = `Server returned ${resp.status} (${resp.statusText}). Try reloading the page.`;
+            }
+            return { error: errorMsg, ok: false, connected: false };
+        }
         return await resp.json();
     } catch (e) {
         console.error('OBS API error:', e);
-        return { error: e.message, connected: false };
+        return { error: e.message, ok: false, connected: false };
     }
 }
 
@@ -375,13 +395,8 @@ async function obsToggleStream() {
     // Not streaming — configure stream settings first, then start
     // This ensures OBS has the RTMP server + stream key before going live
     const setupRes = await obsApi('/api/obs/streaming/configure_and_start', 'POST');
-    if (setupRes.error && !setupRes.ok) {
-        // Check if it's because there's no stream key
-        if (setupRes.error.includes('stream key') || setupRes.error.includes('No stream')) {
-            showToast('⚠️ ' + setupRes.error, 'error');
-        } else {
-            showToast('⚠️ Failed to start stream: ' + setupRes.error, 'error');
-        }
+    if (setupRes.error || !setupRes.ok) {
+        showToast('⚠️ ' + (setupRes.error || 'Failed to start stream'), 'error');
     } else {
         showToast('🔴 Stream started!', 'success');
     }

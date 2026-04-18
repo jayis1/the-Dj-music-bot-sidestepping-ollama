@@ -546,33 +546,35 @@ class OBSBridge:
             server: "rtmp://a.rtmp.youtube.com/live2"
             key: your YouTube stream key
 
+        Uses obsws-python's set_stream_service_settings() which properly
+        applies the stream service type and settings via the OBS WebSocket
+        5.x protocol.
+
         Returns the result dict from OBS.
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
 
-        # Build the settings dict for the stream service
-        settings = {}
-        if service:
-            settings["streamServiceName"] = service
+        # Default to rtmp_custom if not specified
+        stream_type = service or "rtmp_custom"
+        stream_settings = {}
         if server:
-            settings["server"] = server
+            stream_settings["server"] = server
         if key:
-            settings["key"] = key
+            stream_settings["key"] = key
 
-        # Try to set stream service settings
-        # OBS WebSocket 5.x: SetStreamSettings uses send() for complex settings
+        # Use the proper obsws-python method instead of raw send()
+        # This correctly applies the stream service settings via the
+        # SetStreamServiceSettings request in OBS WebSocket 5.x
         return self._safe_call(
-            lambda c: c.send(
-                "SetStreamSettings",
-                {"type": "rtmp_custom", "settings": settings, "save": True},
-                raw=True,
+            lambda c: c.set_stream_service_settings(
+                stream_type, stream_settings
             )
         )
 
     def get_stream_settings(self) -> dict:
         """Get current OBS stream settings (server, key, service)."""
-        return self._safe_call(lambda c: c.get_stream_settings())
+        return self._safe_call(lambda c: c.get_stream_service_settings())
 
     # ── Source Creation ──────────────────────────────────────────────────
 

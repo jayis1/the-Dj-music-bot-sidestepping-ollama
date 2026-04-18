@@ -637,7 +637,7 @@ nano .env           # Paste your DISCORD_TOKEN
 | Bot appears stuck in voice after crash | Restart bot — `on_ready` forces disconnect from all stale voice sessions |
 | OBS not connected in Mission Control | Run `bash start.sh` — it installs and starts OBS automatically. Or install manually: `sudo apt install obs-studio` then start: `xvfb-run -a obs &` |
 | OBS connection refused spam in logs | OBS is not running or WebSocket is not enabled. The bridge backs off for 30s after a failed connection. Start OBS with `bash start.sh`. |
-| "Already playing audio" errors | Fixed in v420.0.3 — the central audio dispatcher now auto-stops any currently playing source before starting new audio. If you still see this, check for custom code calling `vc.play()` directly instead of `_dispatch_audio_play()`. |
+| "Already playing audio" errors | Fixed in v420.0.3 — the central audio dispatcher now auto-stops any currently playing source, waits 150ms for Discord's cleanup, then starts new audio. Bed music no longer starts simultaneously with sound effects. If you still see this, check for custom code calling `vc.play()` directly instead of `_dispatch_audio_play()`. |
 | CSRF token validation failed | Reload the Mission Control page — the CSRF token in your session may have expired |
 
 ---

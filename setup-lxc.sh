@@ -70,6 +70,7 @@ apt-get install -y -qq \
     curl wget git screen \
     mesa-va-drivers vainfo \
     obs-studio xvfb dbus pulseaudio pulseaudio-utils \
+    chromium chromium-browser \
     2>/dev/null || warn "Some packages may not be available"
 
 success "System packages installed"

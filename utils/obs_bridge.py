@@ -535,6 +535,93 @@ class OBSBridge:
             )
         )
 
+    # ── Stream Settings ────────────────────────────────────────────────────
+
+    def set_stream_settings(self, service: str = "", server: str = "", key: str = "") -> dict:
+        """Configure OBS stream settings (RTMP server + stream key).
+
+        This sets where OBS streams to when start_streaming() is called.
+        For YouTube Live, use:
+            service: "rtmp_custom" or "youtube"
+            server: "rtmp://a.rtmp.youtube.com/live2"
+            key: your YouTube stream key
+
+        Returns the result dict from OBS.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        # Build the settings dict for the stream service
+        settings = {}
+        if service:
+            settings["streamServiceName"] = service
+        if server:
+            settings["server"] = server
+        if key:
+            settings["key"] = key
+
+        # Try to set stream service settings
+        # OBS WebSocket 5.x: SetStreamSettings uses send() for complex settings
+        return self._safe_call(
+            lambda c: c.send(
+                "SetStreamSettings",
+                {"type": "rtmp_custom", "settings": settings, "save": True},
+                raw=True,
+            )
+        )
+
+    def get_stream_settings(self) -> dict:
+        """Get current OBS stream settings (server, key, service)."""
+        return self._safe_call(lambda c: c.get_stream_settings())
+
+    # ── Source Creation ──────────────────────────────────────────────────
+
+    def create_browser_source(self, source_name: str, url: str, width: int = 1280, height: int = 720) -> dict:
+        """Create a browser source in OBS pointing to a URL.
+
+        Used to add the Mission Control overlay as a browser source
+        that OBS can stream to YouTube Live.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        return self._safe_call(
+            lambda c, sn=source_name, u=url, w=width, h=height: c.create_input(
+                inputKind="browser_source",
+                inputName=sn,
+                inputSettings={
+                    "url": u,
+                    "width": w,
+                    "height": h,
+                    "css": "body { background-color: transparent; margin: 0px; padding: 0px; overflow: hidden; }",
+                    "reroute_audio": False,
+                    "shutdown": True,
+                },
+                sceneItemEnabled=True,
+            )
+        )
+
+    def create_audio_source(self, source_name: str, udp_port: int = 12345) -> dict:
+        """Create a FFmpeg audio source that reads from the PCMBroadcaster UDP pipe.
+
+        This allows OBS to capture the bot's audio output (music, TTS, SFX)
+        for streaming alongside the visual overlay.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        return self._safe_call(
+            lambda c, sn=source_name, p=udp_port: c.create_input(
+                inputKind="ffmpeg_source",
+                inputName=sn,
+                inputSettings={
+                    "input": f"udp://127.0.0.1:{p}?pkt_size=3840&buffer_size=65536&reuse=1",
+                    "is_local_file": False,
+                },
+                sceneItemEnabled=True,
+            )
+        )
+
     # ── Reconnect ─────────────────────────────────────────────────────────
 
     def reconnect(self) -> dict:

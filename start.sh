@@ -199,12 +199,16 @@ setup_obs() {
 
   # ── Install headless support packages ──────────────────
   if [ "$OBS_INSTALLED" = true ]; then
-    for pkg in xvfb dbus pulseaudio pulseaudio-utils; do
+    for pkg in xvfb dbus pulseaudio pulseaudio-utils chromium; do
       if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
-        info "Installing $pkg for headless OBS..."
+        info "Installing $pkg for headless OBS + YouTube Live overlay..."
         $SUDO apt-get install -y -qq "$pkg" 2>/dev/null || warn "$pkg install failed"
       fi
     done
+    # chromium-browser is an alternative package name on some distros
+    if ! command -v chromium &>/dev/null && ! command -v chromium-browser &>/dev/null; then
+      $SUDO apt-get install -y -qq chromium-browser 2>/dev/null || warn "chromium-browser not found either — YouTube Live overlay will not work"
+    fi
   fi
 
   # ── Generate or read OBS WebSocket password ────────────

@@ -231,6 +231,14 @@ YOUTUBE_STREAM_GIF = os.environ.get("YOUTUBE_STREAM_GIF", "")
 # Example: https://youtube.com/playlist?list=PLxxxxxxx
 YOUTUBE_STREAM_PLAYLIST = os.environ.get("YOUTUBE_STREAM_PLAYLIST", "")
 
+# ── YouTube Live: OBS Overlay ──────────────────────────────────────────
+# When streaming via OBS Studio, this URL is used as the browser source
+# for the overlay page. Defaults to localhost:8080 (bare-metal) or can
+# be set to http://bot:8080 (Docker) or any other URL.
+OBS_OVERLAY_URL = os.environ.get(
+    "OBS_OVERLAY_URL", "http://localhost:8080/overlay"
+)
+
 # ── yt-dlp Cookie Authentication ──────────────────────────────────────────
 # YouTube increasingly requires authentication to avoid "Sign in to confirm
 # you're not a bot" errors. There are two ways to provide cookies:

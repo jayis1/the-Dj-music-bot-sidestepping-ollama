@@ -186,9 +186,11 @@ class Music(commands.Cog):
         """Monolithic audio injection point. Replaces vc.play() to support multiplex UDP routing.
 
         Before playing, checks if the voice client is already playing something.
-        If so, stops the current audio first to prevent the "Already playing audio"
-        error from Discord's VoiceClient. This can happen when sound effects, bed
-        music, TTS, and song playback overlap due to async timing races.
+        If so, stops the current audio first and waits 150ms for Discord's
+        VoiceClient to process the stop, preventing "Already playing audio".
+
+        This can happen when sound effects, bed music, TTS, and song playback
+        overlap due to async timing races.
         """
         vc = self._get_audio_client(guild_id)
         if not vc:
@@ -196,8 +198,8 @@ class Music(commands.Cog):
 
         # Guard: stop any currently playing audio before starting new audio.
         # Without this, Discord's vc.play() raises "Already playing audio" when
-        # two async paths race (e.g. TTS finishing while bed music just started,
-        # or soundboard playing while a DJ sound effect is active).
+        # two async paths race (e.g. AI side host speaking while previous audio
+        # is still finishing, or soundboard playing during a DJ sound effect).
         try:
             if getattr(vc, "is_playing", lambda: False)():
                 logging.debug(
@@ -205,6 +207,10 @@ class Music(commands.Cog):
                     f"before playing new source"
                 )
                 vc.stop()
+                # Discord's VoiceClient needs a moment to process the stop
+                # and flip its internal is_playing state to False. Without
+                # this sleep, vc.play() immediately raises "Already playing audio".
+                time.sleep(0.15)
         except Exception as e:
             logging.debug(f"_dispatch_audio_play: Failed to stop current audio: {e}")
 
@@ -352,6 +358,7 @@ class Music(commands.Cog):
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
                 bitrate_audio=int(getattr(config, "YOUTUBE_AUDIO_BITRATE", 192)),
                 bitrate_video=int(getattr(config, "YOUTUBE_VIDEO_BITRATE", 3000)),
+                obs_bridge=obs_bridge,  # Pass OBS bridge for OBS-native streaming
             )
             self._yt_stream_guild = guild.id
 

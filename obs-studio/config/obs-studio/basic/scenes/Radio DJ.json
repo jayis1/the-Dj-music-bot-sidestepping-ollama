@@ -338,7 +338,7 @@
                         "height": 720,
                         "reroute_audio": false,
                         "shutdown": true,
-                        "url": "http://bot:8080/overlay",
+                        "url": "http://localhost:8080/overlay",
                         "width": 1280
                     },
                     "type": "browser_source",

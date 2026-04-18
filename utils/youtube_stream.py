@@ -62,7 +62,17 @@ TXT_DJ = "/tmp/radio_dj.txt"
 TXT_WAITING = "/tmp/radio_waiting.txt"
 
 class YouTubeLiveStreamer:
-    """Manages the Master YouTube Live RTMP connection via UDP polling."""
+    """Manages the Master YouTube Live RTMP connection via UDP polling.
+
+    When OBS Studio is available (via obs_bridge.py), streaming goes through
+    OBS instead of a separate Chromium+FFmpeg pipeline. OBS handles the visual
+    layer (scenes with browser overlay source) and audio capture, and is the
+    single streaming point to YouTube Live. This eliminates the need for
+    Xvfb + Chromium as separate dependencies.
+
+    When OBS is NOT available, falls back to the legacy Chromium+FFmpeg
+    x11grab pipeline (requires Xvfb + Chromium installed).
+    """
 
     WIDTH = 1280
     HEIGHT = 720
@@ -79,6 +89,7 @@ class YouTubeLiveStreamer:
         fps: int = 30,
         station_name: str = "MBot Radio",
         udp_port: int = 12345,
+        obs_bridge=None,
     ):
         self.stream_key = stream_key
         self.rtmp_url = rtmp_url
@@ -90,11 +101,13 @@ class YouTubeLiveStreamer:
         self.fps = fps
         self.station_name = station_name
         self.udp_port = udp_port
+        self._obs_bridge = obs_bridge  # OBSBridge instance (may be None)
 
         self._process: asyncio.subprocess.Process | None = None
         self._chromium: asyncio.subprocess.Process | None = None
         self._xvfb: asyncio.subprocess.Process | None = None
         self._running = False
+        self._using_obs = False  # True when streaming via OBS
         self._watchdog_task: asyncio.Task | None = None
         self._stderr_drain_task: asyncio.Task | None = None
         self._started_at: float = 0
@@ -120,13 +133,39 @@ class YouTubeLiveStreamer:
             pass
 
     async def start(self):
-        """Invoke the monolithic YouTube RTMP connection."""
+        """Invoke the monolithic YouTube RTMP connection.
+
+        When OBS Studio is available (via obs_bridge), streaming goes through
+        OBS — the bot configures OBS's RTMP settings and calls start_stream().
+        OBS is the single streaming point: it captures the browser overlay
+        source (the /overlay page) and streams it to YouTube Live.
+
+        When OBS is NOT available, falls back to the legacy Chromium+FFmpeg
+        x11grab pipeline (requires Xvfb + Chromium installed).
+        """
         if self._running:
             return
-            
+
         self._running = True
         self._started_at = time.time()
+
+        # ── Try OBS first ──────────────────────────────────────────
+        # If the OBS bridge is connected, use OBS as the streaming point.
+        # This eliminates the need for Xvfb + Chromium as separate processes.
+        if self._obs_bridge and self._obs_bridge.enabled:
+            log.info("YouTube Live: OBS Studio detected — using OBS as streaming backend")
+            if await self._start_obs_stream():
+                self._using_obs = True
+                self._watchdog_task = asyncio.create_task(self._watchdog_obs())
+                return
+            else:
+                log.warning(
+                    "YouTube Live: OBS streaming failed, falling back to Chromium+FFmpeg pipeline"
+                )
+
+        # ── Fallback: Chromium + FFmpeg ────────────────────────────
         log.info(f"YouTube Live: Master Engine starting → UDP port {self.udp_port}")
+        self._using_obs = False
         await self._start_master_ffmpeg()
         self._watchdog_task = asyncio.create_task(self._watchdog())
 
@@ -136,7 +175,11 @@ class YouTubeLiveStreamer:
         if self._watchdog_task:
             self._watchdog_task.cancel()
             self._watchdog_task = None
-        await self._kill_process()
+
+        if self._using_obs:
+            await self._stop_obs_stream()
+        else:
+            await self._kill_process()
         log.info("YouTube Live: Master Engine halted.")
 
     async def play_song(self, audio_url: str, title: str = "", thumbnail: str | None = None):
@@ -219,6 +262,119 @@ class YouTubeLiveStreamer:
             return assets_gif
         return None
 
+    # ── OBS Streaming Backend ───────────────────────────────────────────
+
+    async def _start_obs_stream(self) -> bool:
+        """Configure OBS for streaming and start the stream.
+
+        Sets the RTMP server + stream key in OBS, then calls start_stream().
+        OBS handles all video (scenes + browser overlay) and audio capture,
+        and is the single streaming point to YouTube Live.
+
+        Returns True if streaming started successfully, False otherwise.
+        """
+        if not self._obs_bridge:
+            return False
+
+        try:
+            # Configure OBS stream settings: RTMP server + stream key
+            rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
+            log.info(
+                f"YouTube Live/OBS: Configuring stream → {rtmp_endpoint} "
+                f"(key: {self.stream_key[:4]}...)"
+            )
+            result = self._obs_bridge.set_stream_settings(
+                service="rtmp_custom",
+                server=rtmp_endpoint,
+                key=self.stream_key,
+            )
+            if not result.get("connected"):
+                log.warning(f"YouTube Live/OBS: Failed to configure stream settings: {result}")
+                return False
+
+            log.info("YouTube Live/OBS: Stream settings configured ✅")
+
+            # Ensure the overlay browser source exists in the current scene.
+            # The "📺 Overlay Only" scene already has it, but we make sure
+            # OBS can reach the overlay page.
+            overlay_url = os.environ.get("OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+            log.info(f"YouTube Live/OBS: Overlay URL → {overlay_url}")
+
+            # Start OBS streaming
+            result = self._obs_bridge.start_streaming()
+            if not result.get("connected"):
+                log.warning(f"YouTube Live/OBS: Failed to start streaming: {result}")
+                return False
+
+            if result.get("error"):
+                log.warning(f"YouTube Live/OBS: Stream start error: {result['error']}")
+                # OBS might already be streaming — check status
+                status = self._obs_bridge.get_status()
+                if status.get("streaming"):
+                    log.info("YouTube Live/OBS: Stream is already active ✅")
+                    return True
+                return False
+
+            log.info("YouTube Live/OBS: Streaming started ✅")
+
+            # Switch to the overlay scene for YouTube Live
+            overlay_scene = os.environ.get(
+                "OBS_SCENE_OVERLAY", "📺 Overlay Only"
+            )
+            self._obs_bridge.switch_scene(overlay_scene)
+            log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
+
+            return True
+
+        except Exception as e:
+            log.error(f"YouTube Live/OBS: Exception starting stream: {e}")
+            return False
+
+    async def _stop_obs_stream(self):
+        """Stop OBS streaming."""
+        if not self._obs_bridge:
+            return
+        try:
+            result = self._obs_bridge.stop_streaming()
+            if result.get("connected"):
+                log.info("YouTube Live/OBS: Streaming stopped ✅")
+            else:
+                log.debug(f"YouTube Live/OBS: Stop streaming result: {result}")
+        except Exception as e:
+            log.error(f"YouTube Live/OBS: Exception stopping stream: {e}")
+
+    async def _watchdog_obs(self):
+        """Monitor OBS streaming status. Restart if OBS stops streaming."""
+        backoff = 0
+        try:
+            while self._running:
+                await asyncio.sleep(10)
+                if not self._obs_bridge:
+                    break
+                status = self._obs_bridge.get_status()
+                if not status.get("connected"):
+                    backoff += 1
+                    if backoff > 6:
+                        log.warning("YouTube Live/OBS: OBS disconnected for 60s, attempting reconnect...")
+                        result = await self._start_obs_stream()
+                        if result:
+                            backoff = 0
+                            log.info("YouTube Live/OBS: Reconnected ✅")
+                        else:
+                            log.error("YouTube Live/OBS: Reconnect failed")
+                elif status.get("streaming"):
+                    backoff = 0
+                else:
+                    # Connected but not streaming — OBS may have stopped
+                    backoff += 1
+                    if backoff > 3:
+                        log.warning("YouTube Live/OBS: Stream stopped, restarting...")
+                        result = await self._start_obs_stream()
+                        if result:
+                            backoff = 0
+        except asyncio.CancelledError:
+            pass
+
     _FONT_BOLD: str | None = None
     _FONT_REGULAR: str | None = None
 
@@ -257,7 +413,12 @@ class YouTubeLiveStreamer:
         
         if not xvfb_path or not chromium_path:
             log.error(f"YouTube Live: FATAL - Missing dependencies! Xvfb: {xvfb_path}, Chromium: {chromium_path}")
-            log.error("Please install them natively: 'sudo apt install xvfb chromium-browser' !!")
+            log.error(
+                "YouTube Live: Cannot start Chromium+FFmpeg pipeline. Either:\n"
+                "  1. Install dependencies: sudo apt install xvfb chromium-browser (or chromium)\n"
+                "  2. Or set up OBS Studio with obs-websocket for OBS-native streaming (recommended).\n"
+                "     OBS handles the overlay + streaming without needing Xvfb/Chromium."
+            )
             return
 
         if not self.stream_key and not self.rtmp_url:

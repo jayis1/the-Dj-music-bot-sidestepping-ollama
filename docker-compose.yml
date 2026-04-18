@@ -112,11 +112,15 @@ services:
     # build: .
     container_name: radio-dj-bot
     restart: unless-stopped
+    # The bot starts even if MOSS or Ollama are still booting — it gracefully
+    # falls back to Edge TTS if MOSS is down, and disables AI side host if
+    # Ollama is down. Using service_started instead of service_healthy prevents
+    # the bot from being killed (exit 137) when MOSS crash-loops.
     depends_on:
       moss-tts:
-        condition: service_healthy
+        condition: service_started
       ollama:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
     environment:
@@ -155,11 +159,12 @@ services:
     container_name: radio-dj-bot
     profiles: ["vaapi"]
     restart: unless-stopped
+    # Bot starts even if MOSS/Ollama are still booting — graceful fallback.
     depends_on:
       moss-tts:
-        condition: service_healthy
+        condition: service_started
       ollama:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
     environment:
@@ -280,11 +285,12 @@ services:
     container_name: radio-dj-bot
     profiles: ["amd-gpu"]
     restart: unless-stopped
+    # Bot starts even if MOSS/Ollama are still booting — graceful fallback.
     depends_on:
       moss-tts-amd:
-        condition: service_healthy
+        condition: service_started
       ollama-amd:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
     environment:
@@ -388,11 +394,12 @@ services:
     container_name: radio-dj-bot
     profiles: ["nvidia-gpu"]
     restart: unless-stopped
+    # Bot starts even if MOSS/Ollama are still booting — graceful fallback.
     depends_on:
       moss-tts-nvidia:
-        condition: service_healthy
+        condition: service_started
       ollama-nvidia:
-        condition: service_healthy
+        condition: service_started
     env_file:
       - .env
     environment:

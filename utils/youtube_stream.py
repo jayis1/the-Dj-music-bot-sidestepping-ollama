@@ -407,12 +407,34 @@ class YouTubeLiveStreamer:
             else:
                 log.info("YouTube Live/OBS: Audio source created ✅")
 
-            # ── Step 6: Switch to the overlay scene BEFORE starting stream
+            # ── Step 6: Mute OBS Desktop Audio ──────────────────────────
+            # OBS's "Desktop Audio" captures from PulseAudio's radio_dj_sink
+            # at 44.1kHz. This creates a DOUBLE-AUDIO problem (same audio
+            # arrives both via PulseAudio AND via the UDP ffmpeg source)
+            # and a SAMPLE RATE MISMATCH (44.1kHz Desktop vs 48kHz UDP).
+            # The 44.1kHz→48kHz resampling causes the "slowed down" effect.
+            # Since the bot audio already arrives via UDP, the PulseAudio
+            # Desktop Audio capture is redundant and must be muted.
+            try:
+                mute_result = self._obs_bridge.set_source_mute("Desktop Audio", muted=True)
+                if not mute_result.get("error"):
+                    log.info("YouTube Live/OBS: Muted Desktop Audio (using UDP source instead)")
+                else:
+                    # Might be named differently — try alternative names
+                    for alt_name in ["PulseAudio", "Audio Output", "DesktopAudioHandler"]:
+                        alt_result = self._obs_bridge.set_source_mute(alt_name, muted=True)
+                        if not alt_result.get("error"):
+                            log.info(f"YouTube Live/OBS: Muted '{alt_name}' (using UDP source instead)")
+                            break
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Could not mute Desktop Audio: {e}")
+
+            # ── Step 7: Switch to the overlay scene BEFORE starting stream
             # This ensures the correct content is there from frame 1
             self._obs_bridge.set_current_scene(overlay_scene)
             log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
 
-            # ── Step 7: Start OBS streaming ─────────────────────────────
+            # ── Step 8: Start OBS streaming ─────────────────────────────
             result = self._obs_bridge.start_streaming()
             if not result.get("connected"):
                 log.warning(f"YouTube Live/OBS: Failed to start streaming: {result}")

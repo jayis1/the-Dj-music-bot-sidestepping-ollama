@@ -916,10 +916,10 @@ class OBSBridge:
         # Positions for the overlay elements
         positions = {
             "State": {"x": 40, "y": 30},
-            "Station Name": {"x": 40, "y": 100},
-            "Now Playing": {"x": 40, "y": 165},
-            "DJ Speaking": {"x": 40, "y": 240},
-            "Ticker": {"x": 40, "y": 665},
+            "Station Name": {"x": 40, "y": 80},
+            "Now Playing": {"x": 40, "y": 140},
+            "DJ Speaking": {"x": 40, "y": 210},
+            "Ticker": {"x": 40, "y": 600},
         }
 
         for source_name, pos in positions.items():
@@ -1154,38 +1154,37 @@ class OBSBridge:
 
     @staticmethod
     def _init_hud_files():
-        """Create /tmp/radio_*.txt files with non-empty initial content.
+        """Write /tmp/radio_*.txt files with initial content.
+
+        Always overwrites — these are temp files that should reflect
+        the current bot state. We write them even if they already
+        exist (previous runs may have stale content).
 
         OBS text sources with from_file=True read from these files on every
-        frame. If the file doesn't exist when the source is created, the
-        source renders blank text. Writing initial content ensures the
-        overlay is visible from the first frame.
+        frame. If the file doesn't exist, the source renders blank text.
+        If the file contains an empty string, FreeType2 renders invisible
+        zero-height text.
 
-        CRITICAL: Empty string ("") renders as zero-height invisible text
-        in text_ft2_source_v2 (FreeType2). Every file MUST have at least
-        a space character " " or some visible placeholder text. Otherwise
-        the DJ Speaking and Ticker sources will be invisible until the
-        bot writes non-empty content — which might be never for the DJ
-        source until the DJ actually speaks.
+        CRITICAL: Every file must have at least a space " " or some visible
+        text. Never leave a file empty (FreeType2 renders "" as invisible).
         """
         import os
+        # Pick up the station name from the environment if available
+        station_name = os.environ.get("STATION_NAME", "MBot Radio")
         hud_files = {
-            "/tmp/radio_station.txt": "MBot Radio",
+            "/tmp/radio_station.txt": station_name,
             "/tmp/radio_state.txt": "⏳ Waiting",
             "/tmp/radio_title.txt": "Waiting for playback...",
-            # Use a space, not empty string! FreeType2 renders "" as
-            # zero-height invisible text. " " ensures the source stays
-            # visible (allocated space) even when no DJ is speaking.
+            # Space, not empty — FreeType2 renders "" as invisible
             "/tmp/radio_dj.txt": " ",
             "/tmp/radio_waiting.txt": "Initializing...",
         }
         for path, default_text in hud_files.items():
-            if not os.path.exists(path):
-                try:
-                    with open(path, "w") as f:
-                        f.write(default_text)
-                except Exception:
-                    pass
+            try:
+                with open(path, "w") as f:
+                    f.write(default_text)
+            except Exception:
+                pass
 
     # ── Reconnect ─────────────────────────────────────────────────────────
 

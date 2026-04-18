@@ -545,6 +545,21 @@ def run_web_server():
             bridge = get_bridge()
             if bridge and bridge.enabled:
                 bridge.ensure_scenes_exist()
+
+            # Mute OBS's Desktop Audio (PulseAudio capture).
+            # The bot sends audio via UDP (ffmpeg_source "Bot Audio (UDP)")
+            # at 48kHz. OBS's Desktop Audio also captures from PulseAudio
+            # at 44.1kHz, causing a double-audio + sample-rate mismatch
+            # that makes the stream audio sound "slowed down".
+            # Muting Desktop Audio ensures only the clean UDP path is used.
+            bridge = get_bridge()
+            if bridge and bridge.enabled:
+                try:
+                    result = bridge.set_source_mute("Desktop Audio", muted=True)
+                    if not result.get("error"):
+                        logging.info("OBS: Muted Desktop Audio (bot audio comes via UDP, not PulseAudio)")
+                except Exception:
+                    pass
         except Exception as e:
             logging.warning(f"OBS Bridge initialization failed: {e}")
 

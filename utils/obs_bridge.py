@@ -756,7 +756,7 @@ class OBSBridge:
 
         results["background"] = self._safe_call(_create_bg)
 
-        # ── 2. Station name text source ────────────────────────────
+        # ── 2. Station name text source (reads from file) ─────────
         def _create_station(c, _scene=scene_name):
             try:
                 existing = c.get_input_settings(name="Station Name")
@@ -769,9 +769,10 @@ class OBSBridge:
                 inputKind=_TEXT_INPUT_KIND,
                 inputName="Station Name",
                 inputSettings=_text_settings(
-                    "MBOT RADIO", "DejaVu Sans", "Bold", 42,
+                    " ", "DejaVu Sans", "Bold", 42,
                     color=4294967295,  # White
                     align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_station.txt",
                 ),
                 sceneItemEnabled=True,
             )
@@ -921,9 +922,9 @@ class OBSBridge:
             created with wrong settings on a previous run, it reloads broken
           - A fresh create_input() guarantees the correct FFmpeg context
 
-        After remove_input(), we sleep briefly (0.5s) to avoid race
-        condition error 601 ("A source already exists") — OBS needs a
-        moment to fully release the source name.
+        After remove_input(), OBS may take 1-2 seconds to fully release
+        the source name. We retry create_input() with exponential backoff
+        (up to 3 attempts) to handle the race condition (error 601).
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -950,26 +951,41 @@ class OBSBridge:
                     c.remove_input(name=_sn)
                 except Exception as e:
                     log.warning(f"OBS Bridge: Failed to remove '{_sn}': {e}")
-                # Give OBS time to fully release the source name.
-                # Without this delay, create_input() fails with error 601
-                # "A source already exists" (race condition).
-                time.sleep(0.5)
 
-            return c.create_input(
-                sceneName=_scene,
-                inputKind="ffmpeg_source",
-                inputName=_sn,
-                inputSettings={
-                    "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
-                    "is_local_file": False,
-                    # CRITICAL: Raw PCM format specification — OBS cannot
-                    # auto-detect the format of a raw UDP stream. Without these,
-                    # OBS logs "MP: Failed to open media" and the source is silent.
-                    "input_format": "s16le",
-                    "ffmpeg_options": "ar=48000 ac=2",
-                },
-                sceneItemEnabled=True,
-            )
+            input_settings = {
+                "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
+                "is_local_file": False,
+                # CRITICAL: Raw PCM format specification — OBS cannot
+                # auto-detect the format of a raw UDP stream. Without these,
+                # OBS logs "MP: Failed to open media" and the source is silent.
+                "input_format": "s16le",
+                "ffmpeg_options": "ar=48000 ac=2",
+            }
+
+            # Retry create_input() with backoff — OBS takes 1-2s to release
+            # the source name after remove_input(). Error 601 means "A source
+            # already exists by that input name" — just wait and retry.
+            max_retries = 3
+            for attempt in range(max_retries):
+                if attempt > 0:
+                    delay = min(2.0, 0.5 * (2 ** (attempt - 1)))  # 0.5s, 1s, 2s
+                    log.debug(f"OBS Bridge: Retrying audio source creation in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(delay)
+                try:
+                    return c.create_input(
+                        sceneName=_scene,
+                        inputKind="ffmpeg_source",
+                        inputName=_sn,
+                        inputSettings=input_settings,
+                        sceneItemEnabled=True,
+                    )
+                except Exception as e:
+                    if "601" in str(e) or "already exists" in str(e).lower():
+                        if attempt < max_retries - 1:
+                            log.debug(f"OBS Bridge: Source name still held by OBS, retrying ({attempt + 1}/{max_retries})")
+                            continue
+                    # Not a 601 error, or we're out of retries — raise it
+                    raise
 
         return self._safe_call(_create)
 
@@ -1107,6 +1123,7 @@ class OBSBridge:
         """
         import os
         hud_files = {
+            "/tmp/radio_station.txt": "MBot Radio",
             "/tmp/radio_title.txt": "Waiting for playback...",
             # Use a space, not empty string! FreeType2 renders "" as
             # zero-height invisible text. " " ensures the source stays

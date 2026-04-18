@@ -57,6 +57,7 @@ if _VAAPI_ENABLED:
         )
 
 # Overlays for FFmpeg dynamic HUD reloads
+TXT_STATION = "/tmp/radio_station.txt"
 TXT_TITLE = "/tmp/radio_title.txt"
 TXT_DJ = "/tmp/radio_dj.txt"
 TXT_WAITING = "/tmp/radio_waiting.txt"
@@ -115,7 +116,7 @@ class YouTubeLiveStreamer:
         self._use_vaapi = _VAAPI_ENABLED
         self._stream_starting = False  # Guard against concurrent start attempts
         
-        self.update_hud(waiting="Booting Mainframes...")
+        self.update_hud(station=self.station_name, waiting="Booting Mainframes...")
 
         # Warn immediately if stream key is missing — the #1 cause of
         # "preparing stream" / TLS / "Connection reset by peer" errors
@@ -130,7 +131,7 @@ class YouTubeLiveStreamer:
     def is_running(self) -> bool:
         return self._running
 
-    def update_hud(self, title="", dj="", waiting=""):
+    def update_hud(self, station="", title="", dj="", waiting=""):
         """Dynamically overwrite FFmpeg GUI layout texts instantly on disk.
 
         CRITICAL: Never write an empty string to /tmp/radio_*.txt files!
@@ -140,6 +141,10 @@ class YouTubeLiveStreamer:
         and stays visible for future updates.
         """
         try:
+            # Station name: empty = keep whatever's there
+            if station:
+                with open(TXT_STATION, "w") as f:
+                    f.write(self._safe_text(station, 40))
             # Title: empty = keep whatever's there (don't blank the title)
             if title:
                 with open(TXT_TITLE, "w") as f:

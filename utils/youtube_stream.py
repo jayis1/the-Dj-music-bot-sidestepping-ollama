@@ -9,9 +9,52 @@ completely eliminating FFmpeg TCP handshake tearing and latency drops natively.
 import asyncio
 import logging
 import os
+import shutil
 import time
 
 log = logging.getLogger("youtube-stream")
+
+# ── VA-API Hardware Encoding Support ──────────────────────────────────────
+# If AMD_GPU_VAAPI=1 is set in the environment AND /dev/dri/renderD128 exists,
+# the streamer will use FFmpeg's h264_vaapi encoder instead of libx264.
+# This dramatically reduces CPU usage on AMD GPU systems.
+#
+# Works on ALL AMD GPUs including integrated/Ryzen APUs (gfx90c etc.)
+# where ROCm/LLM inference falls back to CPU — VA-API encoding is separate
+# from ROCm and uses the Mesa kernel driver which supports nearly all GPUs.
+#
+# To enable in Docker: set AMD_GPU_VAAPI=1 in environment and pass
+# /dev/dri as a device mapping (see docker-compose.yml --profile amd-gpu).
+#
+# To check your GPU: vainfo (install: sudo apt install vainfo)
+_VAAPI_ENABLED = os.environ.get("AMD_GPU_VAAPI", "").strip().lower() in ("1", "true", "yes")
+
+if _VAAPI_ENABLED:
+    _DRI_DEVICE = "/dev/dri/renderD128"
+    if not os.path.exists(_DRI_DEVICE):
+        log.warning(
+            f"YouTube Live: AMD_GPU_VAAPI=1 but {_DRI_DEVICE} not found. "
+            "Falling back to software (libx264) encoding. "
+            "Make sure /dev/dri is passed to the container."
+        )
+        _VAAPI_ENABLED = False
+    else:
+        # Try to detect the GPU architecture for informational logging
+        _gfx_info = "unknown"
+        try:
+            import glob as _glob
+            for _path in _glob.glob("/sys/class/drm/card*/device/gpu_id"):
+                with open(_path) as _f:
+                    _gfx_info = _f.read().strip()
+                    break
+        except Exception:
+            pass
+        log.info(
+            f"YouTube Live: VA-API hardware encoding ENABLED "
+            f"(device: {_DRI_DEVICE}, gpu: {_gfx_info}). "
+            f"Using h264_vaapi instead of libx264 — "
+            f"dramatically lower CPU usage for streaming."
+        )
 
 # Overlays for FFmpeg dynamic HUD reloads
 TXT_TITLE = "/tmp/radio_title.txt"
@@ -56,6 +99,7 @@ class YouTubeLiveStreamer:
         self._stderr_drain_task: asyncio.Task | None = None
         self._started_at: float = 0
         self._last_error: str = ""
+        self._use_vaapi = _VAAPI_ENABLED
         
         self.update_hud(waiting="Booting Mainframes...")
 
@@ -275,12 +319,26 @@ class YouTubeLiveStreamer:
         # 2. Spawn headless Chromium to render the beautiful Flask overlay
         env = os.environ.copy()
         env["DISPLAY"] = ":99"
-        try:
-            self._chromium = await asyncio.create_subprocess_exec(
-                chromium_path, 
+        # If VA-API is enabled, allow Chromium to use GPU rendering
+        if self._use_vaapi:
+            # Disable --disable-gpu so Chromium can use GPU compositing
+            chromium_flags = [
+                "--kiosk", "--no-sandbox", "--disable-dev-shm-usage",
+                "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
+                f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",
+                # Enable GPU compositing for better overlay rendering
+                "--enable-gpu", "--enable-unsafe-swiftshader",
+            ]
+        else:
+            chromium_flags = [
                 "--kiosk", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
                 "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
                 f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",
+            ]
+        try:
+            self._chromium = await asyncio.create_subprocess_exec(
+                chromium_path,
+                *chromium_flags,
                 "http://127.0.0.1:8080/overlay",
                 env=env,
                 stdout=asyncio.subprocess.DEVNULL,
@@ -291,8 +349,49 @@ class YouTubeLiveStreamer:
             log.error(f"YouTube Live: Failed to launch Chromium: {e}")
 
         # 3. Launch FFmpeg x11grab + audio capture
+        # Build video encoding command based on hardware acceleration
+        if self._use_vaapi:
+            # ── AMD GPU VA-API hardware encoding ──────────────────────────
+            # Uses h264_vaapi for dramatically lower CPU usage on AMD GPUs.
+            # Requires /dev/dri/renderD128 passed through to the container
+            # and AMD_GPU_VAAPI=1 in the environment.
+            log.info("YouTube Live: Using VA-API (h264_vaapi) hardware encoding")
+            vaapi_init = [
+                "-vaapi_device", "/dev/dri/renderD128",
+            ]
+            video_encode = [
+                # Upload x11grab frames to VA-API surface
+                "-vf", "setpts=PTS-STARTPTS,format=nv12,hwupload",
+                "-c:v", "h264_vaapi",
+                "-b:v", f"{self.bitrate_video}k",
+                "-maxrate", f"{self.bitrate_video}k",
+                "-minrate", f"{self.bitrate_video}k",
+                "-bufsize", f"{self.bitrate_video * 2}k",
+                "-g", str(self.fps * 2),
+                "-keyint_min", str(self.fps * 2),
+                "-sc_threshold", "0",
+                "-r", str(self.fps),
+            ]
+        else:
+            # ── CPU software encoding (libx264) ────────────────────────────
+            # Default path — works everywhere, no GPU needed.
+            log.info("YouTube Live: Using software encoding (libx264)")
+            vaapi_init = []
+            video_encode = [
+                "-vf", "setpts=PTS-STARTPTS",
+                "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
+                "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k",
+                "-minrate", f"{self.bitrate_video}k",
+                "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p",
+                "-g", str(self.fps * 2), "-keyint_min", str(self.fps * 2),
+                "-sc_threshold", "0",
+                "-nal-hrd", "cbr",
+                "-r", str(self.fps),
+            ]
+
         cmd = [
             "ffmpeg",
+            *vaapi_init,
             "-thread_queue_size", "4096",
             "-f", "x11grab", "-video_size", f"{self.WIDTH}x{self.HEIGHT}",
             "-framerate", str(self.fps),
@@ -303,15 +402,9 @@ class YouTubeLiveStreamer:
             "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000",
             # Normalize ALL timestamps perfectly to 0.0s to align audio with screen 
             "-map", "0:v", "-map", "1:a",
-            "-vf", "setpts=PTS-STARTPTS",
+            *video_encode,
+            # Audio codec (always AAC — no GPU acceleration needed for audio)
             "-af", "asetpts=PTS-STARTPTS",
-            # Streaming Codecs
-            "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-            "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k", "-minrate", f"{self.bitrate_video}k", 
-            "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p", 
-            "-g", str(self.fps * 2), "-keyint_min", str(self.fps * 2), "-sc_threshold", "0",
-            "-nal-hrd", "cbr",
-            "-r", str(self.fps),
             "-c:a", "aac", "-b:a", f"{self.bitrate_audio}k", "-ar", "48000",
             "-max_muxing_queue_size", "9999",
             "-f", "flv", "-flvflags", "no_duration_filesize",

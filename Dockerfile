@@ -51,6 +51,9 @@ LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 # Runtime system dependencies only (no build tools)
+# mesa-va-drivers: VA-API hardware encoding for AMD/Intel GPUs (YouTube Live)
+# mesa-vulkan-drivers: Vulkan support for Chromium GPU compositing
+# i965-va-driver: Intel VA-API (for Intel iGPU systems)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     xvfb \
@@ -58,6 +61,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libopus-dev \
     libsodium23 \
     curl \
+    mesa-va-drivers \
+    mesa-vulkan-drivers \
+    i965-va-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for security

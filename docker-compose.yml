@@ -11,8 +11,37 @@
 #   - moss-tts:   MOSS-TTS-Nano voice cloning server (CPU, 0.1B params)
 #   - ollama:     AI side host LLM server (auto-pulls model on first start)
 #
+# GPU acceleration (optional — pick ONE profile):
+#   CPU only:                docker compose up -d
+#   AMD/Intel APU/iGPU:      docker compose --profile vaapi up -d       ← Ryzen 5700U, etc.
+#   AMD GPU (full ROCm):     docker compose --profile amd-gpu up -d     ← RX 7900, RX 6800, etc.
+#   NVIDIA GPU:              docker compose --profile nvidia-gpu up -d   ← RTX 3070, etc.
+#
 # The MOSS-TTS-Nano server runs on CPU by default (no GPU needed).
 # Ollama runs the AI side host — disable with OLLAMA_DJ_ENABLED=false in .env.
+#
+# ── AMD GPU Compatibility (ROCm 7.2) ────────────────────────────────────────
+#
+# The amd-gpu profile uses Ollama's ROCm image which ships ROCm 7.x.
+# Supported AMD GPUs (ROCm 7.2 official):
+#   ✅ AMD Instinct MI300X/MI250X/MI210/MI100  (data center)
+#   ✅ RX 9070 XT, RX 9070 GRE, RX 9070        (RDNA4, gfx1201)
+#   ✅ RX 9060 XT, RX 9060                      (RDNA4, gfx1200)
+#   ✅ RX 7900 XTX, RX 7900 XT, RX 7900 GRE    (RDNA3, gfx1100)
+#   ✅ RX 7800 XT, RX 7700 XT, RX 7700          (RDNA3, gfx1101)
+#   ✅ RX 7600 XT, RX 7600                      (RDNA3, gfx1102)
+#   ✅ Radeon PRO W7900/W7800/W7700/W6800       (RDNA3/RDNA2)
+#   ✅ RX 6800 XT/6800/6700 XT/6700/6600 XT/6600 (RDNA2, gfx1030)
+#
+# Community-enabled (works but not officially supported):
+#   ⚠️  RX 5700 XT/5700/5600 XT/5500 XT        (RDNA1, gfx1010/1011/1012)
+#       → May need HSA_OVERRIDE_GFX_VERSION=10.1.0
+#
+# If your GPU is RDNA1 (RX 5000 series), set in your .env:
+#   HSA_OVERRIDE_GFX_VERSION=10.1.0
+#
+# If your GPU is RDNA2 (RX 6000 series), set in your .env:
+#   HSA_OVERRIDE_GFX_VERSION=10.3.0
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -41,16 +70,6 @@ services:
   # The AI side host writes its own DJ banter, shoutouts, and commentary.
   # It uses Ollama to run a local LLM — no API keys or cloud needed.
   # Set OLLAMA_DJ_ENABLED=true in .env to activate.
-  #
-  # GPU acceleration:
-  #   For NVIDIA GPUs, add the following to the ollama service:
-  #     deploy:
-  #       resources:
-  #         reservations:
-  #           devices:
-  #             - driver: nvidia
-  #               count: all
-  #               capabilities: [gpu]
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -118,6 +137,305 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
+
+  # ── Bot with VA-API (for AMD/Intel APUs and iGPUs) ─────────────────────
+  # Same as the base bot but with /dev/dri passthrough for hardware encoding.
+  # Use this if you have an AMD APU (Ryzen 5700U, 5800H, etc.) or any system
+  # with an integrated GPU that supports VA-API but NOT full ROCm.
+  #
+  # This gives you hardware-accelerated YouTube Live streaming while keeping
+  # Ollama and MOSS-TTS on CPU (which is fine — they're fast on CPU).
+  #
+  # Ollama and MOSS continue to run in CPU-only mode (the default services
+  # above). Only the bot container gets GPU access for encoding.
+  #
+  # Enable: docker compose --profile vaapi up -d
+  bot-vaapi:
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
+    container_name: radio-dj-bot
+    profiles: ["vaapi"]
+    restart: unless-stopped
+    depends_on:
+      moss-tts:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - MOSS_TTS_URL=http://moss-tts:18083
+      - TTS_MODE=moss
+      - OLLAMA_HOST=http://ollama:11434
+      - AMD_GPU_VAAPI=1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./sounds:/app/sounds
+      - ./presets:/app/presets
+      - ./assets/moss_voices:/app/assets/moss_voices
+      - ./yt_dlp_cache:/app/yt_dlp_cache
+    devices:
+      - /dev/dri
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ════════════════════════════════════════════════════════════════════════
+  # GPU ACCELERATION PROFILES
+  # ════════════════════════════════════════════════════════════════════════
+  # Enable with: docker compose --profile amd-gpu up -d
+  #            or docker compose --profile nvidia-gpu up -d
+  #
+  # These override the base services with GPU device mappings.
+  # Only ONE profile should be active at a time.
+  # ════════════════════════════════════════════════════════════════════════
+
+  # ── AMD GPU (ROCm 7.2 compatible) ────────────────────────────────────
+  #
+  # Supported GPUs (ROCm 7.2 official):
+  #   ✅ RX 9070 XT / 9070 GRE / 9070 / 9060 XT / 9060   (RDNA4)
+  #   ✅ RX 7900 XTX / 7900 XT / 7900 GRE / 7800 XT / 7700 XT  (RDNA3)
+  #   ✅ RX 7600 XT / 7600                                    (RDNA3)
+  #   ✅ RX 6800 XT / 6800 / 6700 XT / 6700 / 6600 XT / 6600 (RDNA2)
+  #   ✅ Radeon PRO W7900 / W7800 / W7700 / W6800 / V710      (RDNA3/2)
+  #   ✅ AMD Instinct MI300X / MI250X / MI210 / MI100         (CDNA)
+  #
+  # Community-enabled (works but not official — may need HSA_OVERRIDE):
+  #   ⚠️  RX 5700 XT / 5700 / 5600 XT / 5500 XT  (RDNA1)
+  #       → Set HSA_OVERRIDE_GFX_VERSION=10.1.0 in .env
+  #
+  # If your GPU isn't detected, check:
+  #   1. lsmod | grep amdgpu           (kernel module loaded?)
+  #   2. ls -la /dev/kfd /dev/dri/     (device nodes exist?)
+  #   3. sudo chmod 777 /dev/dri/renderD128 /dev/kfd   (permissions?)
+  #   4. vainfo                         (VA-API working?)
+  #
+  # GPU architecture → HSA_OVERRIDE_GFX_VERSION cheat sheet:
+  #   RDNA4  (RX 9070/9060):      not needed (gfx1200/1201 native)
+  #   RDNA3  (RX 7900/7800/7700):  not needed (gfx1100/1101 native)
+  #   RDNA3.5 (integrated):         HSA_OVERRIDE_GFX_VERSION=11.5.0
+  #   RDNA2  (RX 6800/6700/6600):  HSA_OVERRIDE_GFX_VERSION=10.3.0
+  #   RDNA1  (RX 5700/5600/5500):  HSA_OVERRIDE_GFX_VERSION=10.1.0
+  #
+  # Enable: docker compose --profile amd-gpu up -d
+  #
+  # What it does:
+  #   - Ollama uses the ROCm image for AMD GPU inference (~5-10x faster)
+  #   - MOSS-TTS-Nano gets /dev/kfd and /dev/dri for GPU TTS
+  #   - FFmpeg encoding for YouTube Live uses VA-API hardware encoding
+  #   - HSA_OVERRIDE_GFX_VERSION is configurable via .env
+
+  ollama-amd:
+    image: ollama/ollama:rocm
+    container_name: ollama
+    profiles: ["amd-gpu"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    environment:
+      # HSA_OVERRIDE_GFX_VERSION: Needed for RDNA1/RDNA2/RDNA3.5 GPUs.
+      # Not needed for RDNA3 (gfx1100/1101) or RDNA4 (gfx1200/1201).
+      # Set this in your .env file to match your GPU architecture.
+      # See the cheat sheet above for the correct value.
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  moss-tts-amd:
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
+    container_name: moss-tts
+    profiles: ["amd-gpu"]
+    restart: unless-stopped
+    ports:
+      - "18083:18083"
+    volumes:
+      - ./assets/moss_voices:/app/assets/moss_voices
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-}
+      - PYTORCH_HIP_VISIBLE_DEVICES=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  bot-amd:
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
+    container_name: radio-dj-bot
+    profiles: ["amd-gpu"]
+    restart: unless-stopped
+    depends_on:
+      moss-tts-amd:
+        condition: service_healthy
+      ollama-amd:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - MOSS_TTS_URL=http://moss-tts:18083
+      - TTS_MODE=moss
+      - OLLAMA_HOST=http://ollama:11434
+      - AMD_GPU_VAAPI=1
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./sounds:/app/sounds
+      - ./presets:/app/presets
+      - ./assets/moss_voices:/app/assets/moss_voices
+      - ./yt_dlp_cache:/app/yt_dlp_cache
+    devices:
+      - /dev/dri
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  ollama-puller-amd:
+    image: ollama/ollama:rocm
+    container_name: ollama-puller
+    profiles: ["amd-gpu"]
+    depends_on:
+      ollama-amd:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "🤖 Pulling AI side host model: ${OLLAMA_MODEL:-gemma3:4b}..."
+        ollama pull ${OLLAMA_MODEL:-gemma3:4b}
+        echo "✅ Model pulled successfully!"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
+  # ── NVIDIA GPU (CUDA) ────────────────────────────────────────────────
+  # Requires: NVIDIA GPU + nvidia-container-toolkit installed on host.
+  #           https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
+  #
+  # Enable:   docker compose --profile nvidia-gpu up -d
+  #
+  # What it does:
+  #   - Ollama uses the CUDA image for NVIDIA GPU inference (~5-10x faster)
+  #   - MOSS-TTS-Nano gets NVIDIA GPU access for faster TTS generation
+
+  ollama-nvidia:
+    image: ollama/ollama:latest
+    container_name: ollama
+    profiles: ["nvidia-gpu"]
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  moss-tts-nvidia:
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
+    container_name: moss-tts
+    profiles: ["nvidia-gpu"]
+    restart: unless-stopped
+    ports:
+      - "18083:18083"
+    volumes:
+      - ./assets/moss_voices:/app/assets/moss_voices
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:18083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  bot-nvidia:
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
+    container_name: radio-dj-bot
+    profiles: ["nvidia-gpu"]
+    restart: unless-stopped
+    depends_on:
+      moss-tts-nvidia:
+        condition: service_healthy
+      ollama-nvidia:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - MOSS_TTS_URL=http://moss-tts:18083
+      - TTS_MODE=moss
+      - OLLAMA_HOST=http://ollama:11434
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./sounds:/app/sounds
+      - ./presets:/app/presets
+      - ./assets/moss_voices:/app/assets/moss_voices
+      - ./yt_dlp_cache:/app/yt_dlp_cache
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  ollama-puller-nvidia:
+    image: ollama/ollama:latest
+    container_name: ollama-puller
+    profiles: ["nvidia-gpu"]
+    depends_on:
+      ollama-nvidia:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "🤖 Pulling AI side host model: ${OLLAMA_MODEL:-gemma3:4b}..."
+        ollama pull ${OLLAMA_MODEL:-gemma3:4b}
+        echo "✅ Model pulled successfully!"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
 
 volumes:
   ollama_data:

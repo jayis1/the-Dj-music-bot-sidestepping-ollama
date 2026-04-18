@@ -250,8 +250,27 @@ async function obsRefreshStatus() {
 }
 
 async function obsToggleStream() {
-    await obsApi('/api/obs/streaming/toggle', 'POST');
-    setTimeout(obsRefreshStatus, 1000);
+    const status = await obsApi('/api/obs/status');
+    if (status.streaming) {
+        // Currently streaming — just stop
+        await obsApi('/api/obs/streaming/stop', 'POST');
+        setTimeout(obsRefreshStatus, 1000);
+        return;
+    }
+    // Not streaming — configure stream settings first, then start
+    // This ensures OBS has the RTMP server + stream key before going live
+    const setupRes = await obsApi('/api/obs/streaming/configure_and_start', 'POST');
+    if (setupRes.error && !setupRes.ok) {
+        // Check if it's because there's no stream key
+        if (setupRes.error.includes('stream key') || setupRes.error.includes('No stream')) {
+            showToast('⚠️ ' + setupRes.error, 'error');
+        } else {
+            showToast('⚠️ Failed to start stream: ' + setupRes.error, 'error');
+        }
+    } else {
+        showToast('🔴 Stream started!', 'success');
+    }
+    setTimeout(obsRefreshStatus, 1500);
 }
 
 async function obsToggleRecord() {
@@ -323,7 +342,14 @@ async function checkStreamKeyStatus() {
         const data = await res.json();
         if (data.key_set) {
             statusDot.style.background = '#22c55e';
-            statusText.textContent = '✅ Stream key configured' + (data.key_hint ? ` (${data.key_hint})` : '');
+            let msg = '✅ Stream key configured';
+            if (data.key_hint) msg += ` (${data.key_hint})`;
+            if (data.obs_connected && data.obs_key_set) {
+                msg += ' & pushed to OBS';
+            } else if (data.obs_connected && !data.obs_key_set) {
+                msg += ' — ⚠️ Not yet in OBS, click Save to push';
+            }
+            statusText.textContent = msg;
             if (keyInput && !keyInput.value) {
                 keyInput.placeholder = '•••••••• (key already saved)';
             }
@@ -365,10 +391,32 @@ async function saveStreamKey() {
             keyInput.value = '';
             keyInput.placeholder = '•••••••• (key saved)';
             keyInput.type = 'password';
-            if (msgDiv) {
-                msgDiv.style.display = 'block';
-                msgDiv.innerHTML = '<div style="padding:8px 12px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; color:#22c55e; font-size:13px;">✅ Stream key saved! The bot will use it for YouTube Live streaming.</div>';
-                setTimeout(() => { msgDiv.style.display = 'none'; }, 5000);
+
+            // Push the stream key to OBS WebSocket so OBS has it configured
+            try {
+                const obsRes = await fetch('/api/obs/streaming/configure', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+                    body: JSON.stringify({ stream_key: streamKey })
+                });
+                const obsData = await obsRes.json();
+                if (obsData.ok) {
+                    if (msgDiv) {
+                        msgDiv.style.display = 'block';
+                        msgDiv.innerHTML = '<div style="padding:8px 12px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; color:#22c55e; font-size:13px;">✅ Stream key saved and pushed to OBS!</div>';
+                    }
+                } else {
+                    if (msgDiv) {
+                        msgDiv.style.display = 'block';
+                        msgDiv.innerHTML = '<div style="padding:8px 12px; background:rgba(234,179,8,0.1); border:1px solid rgba(234,179,8,0.3); border-radius:6px; color:#eab308; font-size:13px;">✅ Key saved to .env, but OBS not connected — key will be pushed to OBS when it connects.</div>';
+                    }
+                }
+            } catch (e) {
+                // OBS not available — that's OK, key will be pushed when OBS connects
+                if (msgDiv) {
+                    msgDiv.style.display = 'block';
+                    msgDiv.innerHTML = '<div style="padding:8px 12px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; color:#22c55e; font-size:13px;">✅ Stream key saved! It will be pushed to OBS when OBS connects.</div>';
+                }
             }
             checkStreamKeyStatus();
         } else {

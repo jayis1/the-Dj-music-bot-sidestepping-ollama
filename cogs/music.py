@@ -2564,23 +2564,23 @@ class Music(commands.Cog):
         # If a TTS file for this transition was pre-generated while the
         # previous song was playing, use it instantly (zero latency!).
         # Files live permanently in assets/part2/ and are NOT deleted.
+        # Both main DJ and AI Side Host can use pregenerated files.
         pregen_entry = None
-        if not is_ai:
-            try:
-                pregen = self._get_pregenerator()
-                prev_title = ""
-                current = self.current_song.get(guild_id)
-                if current:
-                    prev_title = getattr(current, "title", "")
-                # The "upcoming" title is whatever _dj_speak is speaking about
-                # which is typically contained in the text passed in
-                pregen_entry = pregen.lookup(
-                    guild_id,
-                    text[:100],  # Use first 100 chars of text as a key hint
-                    prev_title=prev_title,
-                )
-            except Exception:
-                pregen_entry = None
+        try:
+            pregen = self._get_pregenerator()
+            prev_title = ""
+            current = self.current_song.get(guild_id)
+            if current:
+                prev_title = getattr(current, "title", "")
+            # The "upcoming" title is whatever _dj_speak is speaking about
+            # which is typically contained in the text passed in
+            pregen_entry = pregen.lookup(
+                guild_id,
+                text[:100],  # Use first 100 chars of text as a key hint
+                prev_title=prev_title,
+            )
+        except Exception:
+            pregen_entry = None
 
         if (
             pregen_entry
@@ -2610,25 +2610,23 @@ class Music(commands.Cog):
             voice = voice or self.dj_voice.get(guild_id, config.DJ_VOICE)
 
             # ── TTS engine routing ──
-            # Main DJ uses the configured TTS engine (MOSS → edge-tts fallback).
-            # AI Side Host always uses edge-tts (cloud-based, different voice from the DJ)
-            # to create a clear distinction between the two hosts.
+            # Both the main DJ and AI Side Host use the configured TTS engine
+            # (kokoro → moss → edge-tts fallback chain). The AI Side Host gets a
+            # different voice from OLLAMA_DJ_VOICE config to sound distinct from
+            # the main DJ. Pregeneration caches TTS files for zero-latency playback.
             if is_ai:
-                tts_engine = "edge-tts"
-                # The AI side host needs a distinct MALE voice in edge-tts.
-                # Config voice (en_news_male) is a MOSS name — use edge-tts equivalent instead.
-                AI_SIDE_HOST_EDGE_VOICE = (
-                    "en-US-GuyNeural"  # Deep male voice, distinct from DJ
-                )
-                voice = AI_SIDE_HOST_EDGE_VOICE
+                tts_engine = TTS_MODE  # Use the configured engine (kokoro/moss/edge-tts)
+                # The AI side host voice should already be set from the caller,
+                # which uses OLLAMA_DJ_VOICE config (per-engine defaults).
+                # If somehow unset, resolve it for the active engine.
+                if not voice or voice == config.DJ_VOICE:
+                    voice = config.OLLAMA_DJ_VOICE
                 logging.info(
                     f"AI Side Host: Speaking in guild {guild_id} with voice '{voice}' "
-                    f"(source=AI Side Host, engine=edge-tts)"
+                    f"(source=AI Side Host, engine={tts_engine})"
                 )
             else:
-                tts_engine = (
-                    TTS_MODE  # Use configured engine (MOSS → edge-tts fallback)
-                )
+                tts_engine = TTS_MODE  # Use configured engine
                 logging.info(
                     f"DJ: Speaking in guild {guild_id} with voice '{voice}' "
                     f"(source=DJ, engine={tts_engine}, "

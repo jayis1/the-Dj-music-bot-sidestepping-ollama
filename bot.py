@@ -485,6 +485,24 @@ def run_web_server():
                 enabled=config.OBS_WS_ENABLED,
             )
             logging.info("OBS Bridge initialized")
+
+            # Push stream settings (RTMP server + stream key) to OBS at startup
+            # so OBS is ready to stream when the user clicks Start Streaming.
+            stream_key = getattr(config, "YOUTUBE_STREAM_KEY", "")
+            rtmp_server = getattr(config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2")
+            if stream_key:
+                from utils.obs_bridge import get_bridge
+                bridge = get_bridge()
+                if bridge and bridge.enabled:
+                    result = bridge.set_stream_settings(
+                        service="rtmp_custom",
+                        server=rtmp_server,
+                        key=stream_key,
+                    )
+                    if result.get("error") and not result.get("connected"):
+                        logging.warning(f"OBS: Failed to push stream settings at startup: {result}")
+                    else:
+                        logging.info(f"OBS: Stream settings pushed (RTMP: {rtmp_server}, key: ...{stream_key[-4:]})")
         except Exception as e:
             logging.warning(f"OBS Bridge initialization failed: {e}")
 

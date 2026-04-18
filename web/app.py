@@ -3050,14 +3050,35 @@ def api_save_stream_key():
 @app.route("/api/obs/stream_key_status")
 def api_stream_key_status():
     """Check if a YouTube stream key is configured (for OBS page display).
-    
-    Only reveals the last 4 characters as a hint to avoid exposing the full key.
+
+    Checks both the .env config and OBS's actual stream settings.
     """
     key = getattr(config, "YOUTUBE_STREAM_KEY", "")
+    rtmp_server = getattr(config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2")
+
+    result = {
+        "key_set": bool(key),
+        "server": rtmp_server,
+    }
+
     if key:
-        key_hint = f"...{key[-4:]}" if len(key) >= 4 else "***"
-        return jsonify({"key_set": True, "key_hint": key_hint})
-    return jsonify({"key_set": False, "key_hint": None})
+        result["key_hint"] = f"...{key[-4:]}" if len(key) >= 4 else "***"
+
+    # Also check what OBS actually has configured
+    try:
+        from utils.obs_bridge import get_bridge
+        bridge = get_bridge()
+        if bridge and bridge.enabled and bridge.get_status().get("connected"):
+            obs_settings = bridge.get_stream_settings()
+            result["obs_key_set"] = bool(obs_settings.get("key"))
+            result["obs_server"] = obs_settings.get("server", "")
+            result["obs_connected"] = True
+        else:
+            result["obs_connected"] = False
+    except Exception:
+        result["obs_connected"] = False
+
+    return jsonify(result)
 
 
 @app.route("/api/<int:guild_id>/youtube_stream/toggle", methods=["POST"])
@@ -3333,6 +3354,131 @@ def api_obs_streaming_toggle():
     if not bridge or not bridge.enabled:
         return jsonify({"ok": False, "error": "OBS not configured"})
     return jsonify(bridge.toggle_streaming())
+
+
+@app.route("/api/obs/streaming/configure", methods=["POST"])
+def api_obs_streaming_configure():
+    """Push stream settings (RTMP server + stream key) to OBS.
+
+    This configures OBS so it knows WHERE to stream before you hit Start.
+    Called after saving a stream key, or when OBS first connects.
+    """
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not connected"})
+
+    data = request.json or {}
+    stream_key = data.get("stream_key", "").strip() or getattr(config, "YOUTUBE_STREAM_KEY", "")
+    rtmp_server = data.get("rtmp_server", "") or getattr(
+        config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+    )
+    # Include backup RTMP server
+    rtmp_backup = getattr(config, "YOUTUBE_STREAM_BACKUP_URL", "rtmp://b.rtmp.youtube.com/live2?backup=1")
+
+    if not stream_key:
+        return jsonify({"ok": False, "error": "No stream key configured. Set it on the OBS page or in .env."})
+
+    # Push stream settings to OBS
+    result = bridge.set_stream_settings(
+        service="rtmp_custom",
+        server=rtmp_server,
+        key=stream_key,
+    )
+
+    if result.get("error") and not result.get("connected"):
+        return jsonify({"ok": False, "error": f"Failed to configure OBS: {result.get('error', 'unknown error')}"})
+
+    return jsonify({
+        "ok": True,
+        "message": f"Stream settings pushed to OBS (RTMP: {rtmp_server}, key: ...{stream_key[-4:]})",
+        "server": rtmp_server,
+        "key_hint": f"...{stream_key[-4:]}" if len(stream_key) >= 4 else "***",
+    })
+
+
+@app.route("/api/obs/streaming/configure_and_start", methods=["POST"])
+def api_obs_streaming_configure_and_start():
+    """Configure OBS stream settings (RTMP + key) and then start streaming.
+
+    This is the correct way to start a YouTube Live stream through OBS:
+    1. Push the RTMP server URL + stream key to OBS
+    2. Ensure audio source (UDP PCM from bot) exists
+    3. Ensure overlay browser source exists
+    4. Switch to the overlay scene
+    5. Start OBS streaming
+    """
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured. Enable OBS_WS_ENABLED and set OBS_WS_PASSWORD in .env."})
+
+    # Check if OBS is connected
+    status = bridge.get_status()
+    if not status.get("connected"):
+        return jsonify({"ok": False, "error": "OBS is not connected. Make sure OBS Studio is running with WebSocket server enabled."})
+
+    # If already streaming, just return success
+    if status.get("streaming"):
+        return jsonify({"ok": True, "message": "OBS is already streaming.", "already_streaming": True})
+
+    # Step 1: Get stream key from .env or request body
+    data = request.json or {}
+    stream_key = data.get("stream_key", "").strip() or getattr(config, "YOUTUBE_STREAM_KEY", "")
+    rtmp_server = getattr(config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2")
+
+    if not stream_key:
+        return jsonify({
+            "ok": False,
+            "error": "No stream key configured. Use the '📺 YouTube Live Stream Key' section above to save your stream key, or set YOUTUBE_STREAM_KEY in .env.",
+        })
+
+    # Step 2: Push stream settings to OBS
+    log.info(f"OBS Mission Control: Configuring stream → {rtmp_server} (key: ...{stream_key[-4:]})")
+    result = bridge.set_stream_settings(
+        service="rtmp_custom",
+        server=rtmp_server,
+        key=stream_key,
+    )
+    if result.get("error") and not result.get("connected"):
+        return jsonify({"ok": False, "error": f"Failed to configure OBS stream settings: {result.get('error', 'unknown')}"})
+
+    # Step 3: Ensure overlay browser source exists in the "📺 Overlay Only" scene
+    overlay_url = getattr(config, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+
+    # Try to create the browser source (no-op if it already exists)
+    bridge.create_browser_source(
+        source_name="Browser Overlay (Bot)",
+        url=overlay_url,
+        width=1280,
+        height=720,
+    )
+
+    # Step 4: Ensure FFmpeg audio source exists for bot audio (UDP PCM on port 12345)
+    bridge.create_audio_source(
+        source_name="Bot Audio (UDP)",
+        udp_port=12345,
+    )
+
+    # Step 5: Switch to the overlay scene
+    overlay_scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
+    bridge.set_current_scene(overlay_scene)
+
+    # Step 6: Start OBS streaming
+    start_result = bridge.start_streaming()
+    if start_result.get("error"):
+        # OBS might already be streaming
+        recheck = bridge.get_status()
+        if recheck.get("streaming"):
+            return jsonify({"ok": True, "message": "OBS is already streaming.", "already_streaming": True})
+        return jsonify({"ok": False, "error": f"Failed to start OBS streaming: {start_result.get('error', 'unknown')}"})
+
+    return jsonify({
+        "ok": True,
+        "message": f"🔴 OBS streaming started to YouTube Live (RTMP: {rtmp_server})",
+        "server": rtmp_server,
+        "key_hint": f"...{stream_key[-4:]}" if len(stream_key) >= 4 else "***",
+    })
 
 
 @app.route("/api/obs/recording/start", methods=["POST"])

@@ -1,16 +1,18 @@
 """
 utils/pregen.py — Pre-Generate DJ Lines & TTS for Queue
 
-While a long song plays, this module pre-generates the main DJ intro/outro
-TTS audio files for upcoming songs in the queue. Files are saved to
-assets/part2/ with numbered filenames and are NEVER deleted — they persist
-across restarts so the DJ always has lines ready.
+While a long song plays, this module pre-generates DJ intro/outro TTS audio
+files for upcoming songs in the queue. Files are saved to assets/part2/ with
+numbered filenames and are NEVER deleted — they persist across restarts so
+the DJ always has lines ready.
 
-Only the main DJ (MOSS-TTS) lines are pre-generated.
-The AI side host TTS is NOT pre-generated — it stays live/on-demand.
+Both the main DJ and the AI Side Host lines are pre-generated (when the AI
+host is enabled). The main DJ uses template-based lines (generate_intro/
+generate_outro), while the AI host uses the LLM to generate commentary.
 
 File naming convention:
-    dj_{guild_id}_{index}_{title_hash}.wav
+    dj_{guild_id}_{index}_{title_hash}.wav       — Main DJ
+    ai_{guild_id}_{index}_{title_hash}.wav       — AI Side Host
 
 Index numbers correspond to queue position (0 = next song, 1 = after that, etc.)
 """
@@ -44,8 +46,10 @@ class PregenEntry:
     """
 
     dj_text: str = ""  # The DJ line text (clean, no {sound:} tags)
-    dj_tts_path: str = ""  # Path to the TTS audio file (permanent)
+    dj_tts_path: str = ""  # Path to the DJ TTS audio file (permanent)
     dj_sound_ids: list = field(default_factory=list)  # {sound:name} tags extracted
+    ai_text: str = ""  # The AI side host line text (clean)
+    ai_tts_path: str = ""  # Path to the AI side host TTS audio file (permanent)
     title: str = ""  # Song title this entry is for
     prev_title: str = ""  # Previous song title (for transitions)
     queue_index: int = 0  # Position in queue (0 = next song)
@@ -72,6 +76,21 @@ def _pregen_path(guild_id: int, index: int, title_hash: str) -> str:
 def _pregen_meta_path(guild_id: int, index: int, title_hash: str) -> str:
     """Full path to a pregen metadata JSON file."""
     return os.path.join(PREGEN_DIR, f"dj_{guild_id}_{index}_{title_hash}.json")
+
+
+def _ai_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
+    """Build a numbered AI host pregen filename: ai_{guild}_{index}_{hash}.wav"""
+    return f"ai_{guild_id}_{index}_{title_hash}.wav"
+
+
+def _ai_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to an AI host pregen file in assets/part2/."""
+    return os.path.join(PREGEN_DIR, _ai_pregen_filename(guild_id, index, title_hash))
+
+
+def _ai_pregen_meta_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to an AI host pregen metadata JSON file."""
+    return os.path.join(PREGEN_DIR, f"ai_{guild_id}_{index}_{title_hash}.json")
 
 
 def ensure_pregen_dir() -> None:
@@ -138,6 +157,8 @@ class DjPregenerator:
                     dj_text=data.get("dj_text", ""),
                     dj_tts_path=data.get("dj_tts_path", ""),
                     dj_sound_ids=data.get("dj_sound_ids", []),
+                    ai_text=data.get("ai_text", ""),
+                    ai_tts_path=data.get("ai_tts_path", ""),
                     title=data.get("title", ""),
                     prev_title=data.get("prev_title", ""),
                     queue_index=data.get("queue_index", 0),
@@ -172,6 +193,8 @@ class DjPregenerator:
                         "dj_text": entry.dj_text,
                         "dj_tts_path": entry.dj_tts_path,
                         "dj_sound_ids": entry.dj_sound_ids,
+                        "ai_text": entry.ai_text,
+                        "ai_tts_path": entry.ai_tts_path,
                         "title": entry.title,
                         "prev_title": entry.prev_title,
                         "queue_index": entry.queue_index,
@@ -222,10 +245,9 @@ class DjPregenerator:
     ) -> None:
         """Pre-generate DJ lines + TTS for the next songs in the queue.
 
-        ONLY generates main DJ (MOSS-TTS) lines — the AI side host
-        stays live/on-demand. Files are saved permanently to assets/part2/.
-        Each file is numbered by queue position so the DJ always has
-        the right line ready for the right song.
+        Generates both main DJ lines and AI Side Host lines (when enabled).
+        Files are saved permanently to assets/part2/ so they persist
+        across bot restarts.
         """
         # Cancel any existing pregeneration task for this guild
         existing = self._tasks.get(guild_id)
@@ -295,6 +317,7 @@ class DjPregenerator:
 
                     # Check if a pregen file already exists on disk
                     pregen_path = _pregen_path(guild_id, i, title_hash)
+                    ai_pregen_path = _ai_pregen_path(guild_id, i, title_hash)
                     if os.path.isfile(pregen_path):
                         # File exists! Just load it — no TTS generation needed
                         logging.info(
@@ -316,10 +339,29 @@ class DjPregenerator:
 
                         clean_text, sound_ids = extract_sound_tags(dj_text)
 
+                        # Check if AI host pregen also exists on disk
+                        ai_text = ""
+                        ai_tts_path = ""
+                        if os.path.isfile(ai_pregen_path):
+                            ai_text = clean_text  # Use DJ text as fallback
+                            ai_tts_path = ai_pregen_path
+                            # Try to load AI text from metadata
+                            ai_meta_path = _ai_pregen_meta_path(guild_id, i, title_hash)
+                            if os.path.isfile(ai_meta_path):
+                                try:
+                                    import json as _json
+                                    with open(ai_meta_path, "r") as _f:
+                                        _ai_data = _json.load(_f)
+                                    ai_text = _ai_data.get("ai_text", ai_text)
+                                except Exception:
+                                    pass
+
                         entry = PregenEntry(
                             dj_text=clean_text,
                             dj_tts_path=pregen_path,
                             dj_sound_ids=sound_ids,
+                            ai_text=ai_text,
+                            ai_tts_path=ai_tts_path,
                             title=title,
                             prev_title=prev_title,
                             queue_index=i,
@@ -399,6 +441,55 @@ class DjPregenerator:
                             guild_id=guild_id,
                         )
 
+                        # ── Pregenerate AI Side Host line (if enabled) ──
+                        # The AI host uses the LLM to generate commentary about
+                        # the song/transition, then synthesizes TTS with a
+                        # different voice from the main DJ.
+                        ai_text = ""
+                        ai_tts_path = ""
+                        try:
+                            from utils.llm_dj import generate_side_host_line, OLLAMA_DJ_AVAILABLE
+                            ai_enabled = music.ai_dj_enabled.get(guild_id, False)
+                            if ai_enabled and OLLAMA_DJ_AVAILABLE:
+                                ai_line = await generate_side_host_line(
+                                    guild_id,
+                                    dj_line=clean_text,
+                                    song_title=title,
+                                    prev_song=prev_title or current_title or "",
+                                )
+                                if ai_line:
+                                    ai_clean, _ = extract_sound_tags(ai_line)
+                                    ai_voice = music.ai_dj_voice.get(
+                                        guild_id, config.OLLAMA_DJ_VOICE
+                                    )
+                                    ai_tts_result = await generate_tts(
+                                        ai_clean,
+                                        voice=ai_voice,
+                                        source="Pregen-AI",
+                                    )
+                                    if ai_tts_result:
+                                        # Move AI TTS to permanent path
+                                        ai_perm = _ai_pregen_path(guild_id, i, title_hash)
+                                        try:
+                                            import shutil
+                                            shutil.copy2(ai_tts_result, ai_perm)
+                                            from utils.dj import cleanup_tts_file
+                                            cleanup_tts_file(ai_tts_result)
+                                            ai_tts_path = ai_perm
+                                        except Exception:
+                                            ai_tts_path = ai_tts_result
+                                        ai_text = ai_clean
+                                        entry.ai_text = ai_text
+                                        entry.ai_tts_path = ai_tts_path
+                                        logging.info(
+                                            f"Pregen: #{i} AI host line cached for "
+                                            f"'{title}' in guild {guild_id}"
+                                        )
+                        except Exception as ai_e:
+                            logging.debug(
+                                f"Pregen: AI side host skipped for #{i} '{title}': {ai_e}"
+                            )
+
                         # Store in memory cache
                         if guild_id not in self._cache:
                             self._cache[guild_id] = {}
@@ -411,6 +502,7 @@ class DjPregenerator:
                             f"Pregen: #{i} Cached DJ line for '{title}' "
                             f"in guild {guild_id} "
                             f"(sounds: {sound_ids})"
+                            f"{' + AI host' if ai_text else ''}"
                         )
 
                     except Exception as e:

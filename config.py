@@ -200,9 +200,10 @@ TRUSTED_PROXY_COUNT = int(os.environ.get("TRUSTED_PROXY_COUNT", "1"))
 NOWPLAYING_CHANNEL_ID = int(os.environ.get("NOWPLAYING_CHANNEL_ID", 0) or 0)
 
 # ── YouTube Live Streaming ──────────────────────────────────────────────
-# Stream the bot's audio to a YouTube Live event via RTMP.
-# Get your stream key from YouTube Studio → Go Live → Stream Key.
-# The bot streams audio + a static image card with song titles.
+# Stream the bot's audio to YouTube Live via RTMP or OBS Studio.
+# Two modes: mirror (shadows Discord audio) or curated (Shadow DJ).
+# No autonomous 24/7 mode — streams are started manually from Mission Control
+# or via ?golive/?stoplive Discord commands.
 
 YOUTUBE_STREAM_ENABLED = (
     os.environ.get("YOUTUBE_STREAM_ENABLED", "false").lower() == "true"
@@ -225,9 +226,10 @@ YOUTUBE_STREAM_IMAGE = os.environ.get(
 # Set to "" to disable the GIF overlay.
 YOUTUBE_STREAM_GIF = os.environ.get("YOUTUBE_STREAM_GIF", "")
 
-# Default playlist URL for YouTube Live autonomous (24/7) mode.
-# When starting autonomous streaming without specifying a playlist,
-# this URL is used. Can be a YouTube playlist URL or a search query.
+# Default playlist URL for YouTube Live curated (Shadow DJ) mode.
+# When starting curated streaming from the web dashboard without
+# specifying a playlist, this URL is used for initial queue filling.
+# Can be a YouTube playlist URL or a search query.
 # Example: https://youtube.com/playlist?list=PLxxxxxxx
 YOUTUBE_STREAM_PLAYLIST = os.environ.get("YOUTUBE_STREAM_PLAYLIST", "")
 

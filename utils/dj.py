@@ -1237,20 +1237,36 @@ def _pool(category: str) -> list[str]:
 
 
 def extract_sound_tags(text: str) -> tuple[str, list[str]]:
-    """
-    Extract {sound:name} tags from a DJ line.
+    """Extract {sound:name} tags from a DJ line.
+
+    Handles multiple formats that LLMs might produce:
+    - {sound:airhorn} — standard format
+    - [sound:airhorn] — square brackets (common LLM variation)
+    - (sound:airhorn) — parentheses
+    - <sound:airhorn> — angle brackets (rare)
+
+    Also handles spaces and the sound name with/without .mp3 extension.
+
     Returns (cleaned_text, [sound_ids]).
     e.g. "In the mix! {sound:airhorn} {sound:combo_hit}" → ("In the mix!", ["airhorn", "combo_hit"])
     """
-    tags = re.findall(r"\{sound:([^}]+)\}", text)
-    cleaned = re.sub(r"\s*\{sound:[^}]+\}\s*", " ", text).strip()
+    # Match all bracket types: {sound:name}, [sound:name], (sound:name), <sound:name>
+    # Allow optional spaces around the colon: {sound: name}, {sound :name}
+    pattern = r"[{(\<\[]\s*sound\s*:\s*([^})\>\]]+)\s*[})\>\]]"
+    tags = re.findall(pattern, text, re.IGNORECASE)
+
+    # Remove all sound tag patterns from the text
+    cleaned = re.sub(r"\s*[{(\<\[]\s*sound\s*:\s*[^})\>\]]+\s*[})\>\]]\s*", " ", text).strip()
+
     # Build the sound_id with the right extension
     from utils.soundboard import list_sounds
 
     available = {s["id"]: s["id"] for s in list_sounds()}
     resolved = []
     for tag in tags:
-        # Try exact match first (e.g. "airhorn" matches "airhorn.wav")
+        tag = tag.strip()
+        # Strip .mp3/.wav extension if the LLM included it
+        tag = re.sub(r"\.(mp3|wav|ogg)$", "", tag, flags=re.IGNORECASE)
         for sid in available:
             base = os.path.splitext(sid)[0]
             if base.lower() == tag.lower():

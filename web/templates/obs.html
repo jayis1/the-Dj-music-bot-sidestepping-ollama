@@ -43,6 +43,34 @@
     </p>
 </div>
 
+<!-- YouTube Live Stream Key Configuration -->
+<div class="card" style="margin-bottom:20px; padding:20px;">
+    <h3 style="margin:0 0 12px;">📺 YouTube Live Stream Key</h3>
+    <p style="color:var(--text-secondary); font-size:13px; margin:0 0 16px; line-height:1.6;">
+        Configure your YouTube Live stream key here. When OBS is connected, streaming goes through OBS natively. 
+        Without OBS, the bot streams directly via RTMP.
+    </p>
+    <div style="margin-bottom:12px;">
+        <label style="font-size:12px; color:var(--text-secondary); display:block; margin-bottom:6px;">
+            Stream Key (from <a href="https://studio.youtube.com/channel/UC/livestream" target="_blank" style="color:var(--accent);">YouTube Studio → Go Live</a>)
+        </label>
+        <div style="display:flex; gap:8px; align-items:stretch;">
+            <input type="password" id="yt-stream-key" placeholder="xxxx-xxxx-xxxx-xxxx" 
+                   style="flex:1; min-width:0; background:var(--surface-2); border:1px solid var(--border); color:var(--text-primary); padding:10px 14px; border-radius:8px; font-size:14px; font-family:monospace;">
+            <button onclick="toggleStreamKeyVisibility()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border); color:var(--text-secondary); min-width:40px;" title="Show/hide key">👁️</button>
+            <button onclick="saveStreamKey()" class="btn" style="background:var(--accent); color:#000; font-weight:600; white-space:nowrap;">💾 Save Key</button>
+        </div>
+    </div>
+    <div style="display:flex; gap:16px; font-size:12px; color:var(--text-secondary);">
+        <div style="display:flex; align-items:center; gap:4px;">
+            <span id="yt-key-status" style="width:8px; height:8px; border-radius:50%; background:#666; display:inline-block;"></span>
+            <span id="yt-key-status-text">Checking...</span>
+        </div>
+        <div>RTMP Server: <code style="background:var(--surface-2); padding:2px 6px; border-radius:4px; font-size:11px;">rtmp://a.rtmp.youtube.com/live2</code></div>
+    </div>
+    <div style="margin-top:12px; display:none;" id="yt-key-saved-msg"></div>
+</div>
+
 <!-- Main Controls (visible when connected) -->
 <div id="obs-controls" style="display:none;">
 
@@ -280,5 +308,86 @@ async function obsReconnect() {
     await obsApi('/api/obs/reconnect', 'POST');
     setTimeout(obsRefreshStatus, 2000);
 }
+
+// ── YouTube Live Stream Key Management ──────────────────────────────
+
+async function checkStreamKeyStatus() {
+    const statusDot = document.getElementById('yt-key-status');
+    const statusText = document.getElementById('yt-key-status-text');
+    const keyInput = document.getElementById('yt-stream-key');
+    if (!statusDot || !statusText) return;
+
+    try {
+        const res = await fetch('/api/obs/stream_key_status');
+        const data = await res.json();
+        if (data.key_set) {
+            statusDot.style.background = '#22c55e';
+            statusText.textContent = '✅ Stream key configured' + (data.key_hint ? ` (${data.key_hint})` : '');
+            if (keyInput && !keyInput.value) {
+                keyInput.placeholder = '•••••••• (key already saved)';
+            }
+        } else {
+            statusDot.style.background = '#ef4444';
+            statusText.textContent = '❌ No stream key set — required for YouTube Live';
+            if (keyInput) keyInput.placeholder = 'Enter your YouTube stream key';
+        }
+    } catch (e) {
+        statusDot.style.background = '#666';
+        statusText.textContent = 'Could not check key status';
+    }
+}
+
+function toggleStreamKeyVisibility() {
+    const input = document.getElementById('yt-stream-key');
+    if (input) input.type = input.type === 'password' ? 'text' : 'password';
+}
+
+async function saveStreamKey() {
+    const keyInput = document.getElementById('yt-stream-key');
+    const streamKey = keyInput ? keyInput.value.trim() : '';
+    if (!streamKey) {
+        keyInput.style.borderColor = '#ef4444';
+        keyInput.placeholder = 'Please enter a stream key';
+        setTimeout(() => { keyInput.style.borderColor = ''; }, 2000);
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/save_stream_key', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || '' },
+            body: JSON.stringify({ stream_key: streamKey })
+        });
+        const data = await res.json();
+        const msgDiv = document.getElementById('yt-key-saved-msg');
+        if (data.ok) {
+            keyInput.value = '';
+            keyInput.placeholder = '•••••••• (key saved)';
+            keyInput.type = 'password';
+            if (msgDiv) {
+                msgDiv.style.display = 'block';
+                msgDiv.innerHTML = '<div style="padding:8px 12px; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:6px; color:#22c55e; font-size:13px;">✅ Stream key saved! The bot will use it for YouTube Live streaming.</div>';
+                setTimeout(() => { msgDiv.style.display = 'none'; }, 5000);
+            }
+            checkStreamKeyStatus();
+        } else {
+            if (msgDiv) {
+                msgDiv.style.display = 'block';
+                msgDiv.innerHTML = `<div style="padding:8px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; color:#ef4444; font-size:13px;">❌ ${data.error || 'Failed to save key'}</div>`;
+            }
+        }
+    } catch (e) {
+        const msgDiv = document.getElementById('yt-key-saved-msg');
+        if (msgDiv) {
+            msgDiv.style.display = 'block';
+            msgDiv.innerHTML = '<div style="padding:8px 12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); border-radius:6px; color:#ef4444; font-size:13px;">❌ Network error saving key</div>';
+        }
+    }
+}
+
+// Check stream key status on page load
+document.addEventListener('DOMContentLoaded', function() {
+    checkStreamKeyStatus();
+});
 </script>
 {% endblock %}

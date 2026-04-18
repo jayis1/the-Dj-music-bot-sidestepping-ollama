@@ -335,53 +335,113 @@ async def _create_model_api(host: str, base_model: str, system_prompt: str) -> b
 # ── Sound Tag Definitions (for the system prompt) ────────────────────
 
 SOUND_NAMES = [
+    # ── Core DJ Sounds (most reliable, short, great for AI) ──
     "airhorn",
     "air_raid",
-    "applause",
-    "button_press",
-    "club_hit",
+    "another_one",
+    "combo_hit",
     "cool_dj_drop",
     "django",
-    "dj_drop",
     "dj_rewind",
     "dj_scratch",
+    "dj_stop",
     "dj_turn_it_up",
     "im_your_dj",
-    "in_the_mix",
     "mega_airhorn",
     "mustard_drop",
     "rave_cheer",
     "record_scratch",
     "sick_scratch",
     "uyuuui",
-    "another_one",
-    "combo_hit",
-    "dj_stop",
+    # ── New DJ sounds (from expanded templates) ──
+    "bone_crack",
+    "censor_beep_1",
+    "cinematic_suspense_riser",
+    "daddys_home",
+    "ding_sound_effect_2",
+    "discord_notification",
+    "discord_call_sound",
+    "galaxy_meme",
+    "heavy_sniper_sound",
+    "hub_intro_sound",
+    "huh_cat",
+    "is_that_d_good_yes_king",
+    "loud_explosion",
+    "magic_fairy",
+    "meow_1",
+    "metal_pipe_clang",
+    "mlg_airhorn",
+    "news_intro_maximilien__1801238420_2",
+    "pistol_shot",
+    "pluh",
+    "rehehehe",
+    "rizz_sound_effect",
+    "spongebob_fail",
+    "taco_bell_bong_sfx",
+    "the_rock_shut_up",
+    "the_weeknd_rizzz",
+    "undertakers_bell_2UwFCIe",
+    "vine_boom",
+    "windows_10_error_sound",
+    "yeah_boiii_i_i_i",
+    "yippeeeeeeeeeeeeee",
+    "300_spartan_chant_aoo_aoo_aoo",
+    "among_us_role_reveal_sound",
 ]
 
 SOUND_DESCRIPTIONS = {
+    # ── Core DJ Sounds ──
     "airhorn": "loud airhorn blast",
     "air_raid": "siren/alarm sound",
-    "applause": "crowd clapping",
-    "button_press": "short UI click",
-    "club_hit": "bass drop",
+    "another_one": "'another one' drop",
+    "combo_hit": "combo punch effect",
     "cool_dj_drop": "smooth station ID drop",
     "django": "dramatic DJ tag",
-    "dj_drop": "DJ branding sound",
     "dj_rewind": "rewind whoosh",
     "dj_scratch": "turntable scratch",
+    "dj_stop": "brake/stop effect",
     "dj_turn_it_up": "energetic turn-it-up sound",
     "im_your_dj": "'I'm your DJ' spoken tag",
-    "in_the_mix": "transition swoosh",
     "mega_airhorn": "extra loud airhorn",
     "mustard_drop": "punchy bass drop",
     "rave_cheer": "crowd going wild",
     "record_scratch": "vinyl scratch",
     "sick_scratch": "sharp scratch",
     "uyuuui": "unique DJ sound",
-    "another_one": "'another one' drop",
-    "combo_hit": "combo punch effect",
-    "dj_stop": "brake/stop effect",
+    # ── New DJ sounds ──
+    "bone_crack": "bone crunch effect",
+    "censor_beep_1": "censorship beep",
+    "cinematic_suspense_riser": "dramatic tension riser",
+    "daddys_home": "'daddy's home' announcement",
+    "ding_sound_effect_2": "ding notification",
+    "discord_notification": "Discord notification ping",
+    "discord_call_sound": "Discord call ringtone",
+    "galaxy_meme": "galaxy brain meme sound",
+    "heavy_sniper_sound": "heavy sniper shot",
+    "hub_intro_sound": "hub/station intro",
+    "huh_cat": "huh cat meme",
+    "is_that_d_good_yes_king": "is that good — yes king",
+    "loud_explosion": "loud explosion",
+    "magic_fairy": "magic fairy sparkle",
+    "meow_1": "cat meow",
+    "metal_pipe_clang": "metal pipe falling clang",
+    "mlg_airhorn": "MLG airhorn",
+    "news_intro_maximilien__1801238420_2": "news broadcast intro",
+    "pistol_shot": "pistol gunshot",
+    "pluh": "pluh sound",
+    "rehehehe": "rehehehe laugh",
+    "rizz_sound_effect": "rizz meme sound",
+    "spongebob_fail": "SpongeBob fail sound",
+    "taco_bell_bong_sfx": "Taco Bell bong",
+    "the_rock_shut_up": "The Rock 'shut up'",
+    "the_weeknd_rizzz": "smooth rizz sound",
+    "undertakers_bell_2UwFCIe": "Undertaker's bell toll",
+    "vine_boom": "Vine boom bass",
+    "windows_10_error_sound": "Windows error sound",
+    "yeah_boiii_i_i_i": "yeah boiii",
+    "yippeeeeeeeeeeeeee": "yippee celebration",
+    "300_spartan_chant_aoo_aoo_aoo": "Spartan chant aoo aoo aoo",
+    "among_us_role_reveal_sound": "Among Us role reveal",
 }
 
 SOUND_LIST_FOR_PROMPT = ", ".join(
@@ -483,7 +543,11 @@ def _build_system_prompt(station_name: str) -> str:
         f"STRICT RULES:\n"
         f"- Maximum 140 characters. Short and punchy — this is radio, not a podcast. One line, one thought.\n"
         f"- Use contractions (we're, let's, that's, I'm).\n"
-        f"- You can include sound effect tags anywhere in your line: {{sound:name}}\n"
+        f"- IMPORTANT: Sound effects use the EXACT format {{sound:name}} with curly braces.\n"
+        f"  Examples: {{sound:airhorn}} {{sound:dj_scratch}} {{sound:rave_cheer}}\n"
+        f"  Do NOT speak the word 'sound' or describe the effect — just use the tag.\n"
+        f"  WRONG: 'sound airhorn' or 'plays airhorn' or '[sound:airhorn]'\n"
+        f"  RIGHT: 'That was fire! {{sound:airhorn}}'\n"
         f"  Use them to add energy — airhorns for hype, scratches for transitions, "
         f"applause for hot takes. Use as many as fit naturally.\n"
         f"  Available sounds: {SOUND_LIST_FOR_PROMPT}\n"
@@ -697,9 +761,48 @@ def _clean_ai_line(raw: str) -> str:
     # 1. Strip surrounding quotes the model might add
     line = raw.strip().strip('"').strip("'").strip()
 
-    # 2. Validate {sound:name} tags — keep only valid ones
+    # 2. Catch plain-text sound references that the LLM spoke instead of tagging.
+    #    LLMs sometimes write "plays airhorn" or "sound effect airhorn" or
+    #    "*plays airhorn*" instead of using the {sound:name} format.
+    #    Convert these to proper tags before extraction.
+    #    IMPORTANT: Do NOT match sound names that are already inside {sound:...}
+    #    tags — those will be handled by extract_sound_tags in step 3.
     from utils.dj import extract_sound_tags
+    from utils.soundboard import list_sounds as _list_sounds
 
+    try:
+        available_sounds = {s["id"]: os.path.splitext(s["id"])[0] for s in _list_sounds()}
+    except Exception:
+        available_sounds = {}
+
+    if available_sounds:
+        # Sort by length (longest first) to avoid partial matches
+        # e.g. "mega_airhorn" before "airhorn"
+        sorted_ids = sorted(available_sounds.keys(), key=lambda x: -len(available_sounds[x]))
+
+        for sid in sorted_ids:
+            base = available_sounds[sid]
+            # Pattern: "plays airhorn", "*plays airhorn*", "sound effect: airhorn",
+            # "(airhorn)", "*airhorn*", "sound:airhorn" (not inside any bracket), etc.
+            # These patterns intentionally do NOT match {sound:}, [sound:], (sound:) format.
+            # The lookbehind prevents matching inside bracket-style tags:
+            # (?<![{[(<]) means "not preceded by {, [, (, <"
+            bracket_lookbehind = r'(?<![{[(<])'
+            patterns = [
+                rf'\bplays\s+{re.escape(base)}\b',
+                rf'\*plays\s+{re.escape(base)}\*',
+                rf'\bsound\s+effect[:\s]+{re.escape(base)}\b',
+                bracket_lookbehind + rf'sound:{re.escape(base)}\b(?![_a-z])',  # sound:airhorn but not inside brackets
+                rf'\bsound\s+{re.escape(base)}\b',                 # sound airhorn (space, no colon)
+                rf'\({re.escape(base)}\)',
+                rf'\*{re.escape(base)}\*',
+            ]
+            for pattern in patterns:
+                if re.search(pattern, line, re.IGNORECASE):
+                    line = re.sub(pattern, f"{{sound:{base}}}", line, flags=re.IGNORECASE)
+                    break  # Only replace once per sound
+
+    # 3. Extract and validate {sound:name} tags (now handles {}, [], (), <>)
     clean_text, sound_ids = extract_sound_tags(line)
     if sound_ids:
         tag_str = " ".join(f"{{sound:{sid}}}" for sid in sound_ids)
@@ -707,7 +810,7 @@ def _clean_ai_line(raw: str) -> str:
     else:
         line = clean_text
 
-    # 3. Enforce max length
+    # 4. Enforce max length
     if len(line) > 140:
         # Truncate at last sentence boundary if possible
         for sep in [". ", "! ", "? "]:
@@ -718,7 +821,7 @@ def _clean_ai_line(raw: str) -> str:
         else:
             line = line[:140]
 
-    # 4. Too short = probably garbage
+    # 5. Too short = probably garbage
     if len(line) < 5:
         return ""
 

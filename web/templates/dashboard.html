@@ -815,7 +815,7 @@ async function toggleYoutubeLive(btn, guildId) {
         const res = await fetch(`/api/${guildId}/youtube_stream/toggle`, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({action: 'start', mode: 'autonomous', stream_key: ''}) 
+            body: JSON.stringify({action: 'start', mode: 'mirror'})
         });
         const data = await res.json();
         if (data.ok) {

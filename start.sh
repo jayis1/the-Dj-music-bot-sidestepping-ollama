@@ -290,11 +290,44 @@ EOF
   OBS_PROFILES_DIR="$HOME/.config/obs-studio/basic/profiles"
   mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
 
-  if [ ! -f "$OBS_SCENES_DIR/Radio DJ.json" ] && [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
+  if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" "$OBS_SCENES_DIR/Radio DJ.json"
+    # Adapt scene collection to current platform (Linux needs text_freetype2_v2,
+    # Windows needs text_gdiplus_v2 — OBS error 605 uses the wrong kind).
+    if command -v python3 &>/dev/null; then
+      python3 - "$OBS_SCENES_DIR/Radio DJ.json" <<'PYEOF'
+import json, sys, platform
+fp = sys.argv[1]
+with open(fp) as f: data = json.load(f)
+is_linux = platform.system() == "Linux"
+want = "text_freetype2_v2" if is_linux else "text_gdiplus_v2"
+changed = False
+for scene in data.get("Items", {}).values():
+    for src in scene.get("sources", []):
+        if src.get("type") in ("text_freetype2_v2", "text_gdiplus_v2") and src["type"] != want:
+            src["type"] = want
+            # GDI+ has extra keys not valid in FreeType2; clean them up
+            if is_linux:
+                for k in ("bk_color","bk_opacity","chatlog","chatlog_lines",
+                          "color1","color2","custom_font","ext","gradient",
+                          "gradient_color","gradient_dir","gradient_opacity",
+                          "opacity","vertical"):
+                    src.get("settings", {}).pop(k, None)
+                # Rename color1 → color if no color key
+                s = src.get("settings", {})
+                if "color" not in s and "color1" in s:
+                    s["color"] = s.pop("color1")
+            changed = True
+if changed:
+    with open(fp, "w") as f: json.dump(data, f, indent=4)
+    print("Scene collection adapted for", "Linux (FreeType2)" if is_linux else "Windows (GDI+)")
+else:
+    print("Scene collection already compatible")
+PYEOF
+    fi
     success "Installed 'Radio DJ' scene collection (4 scenes)"
   fi
-  if [ ! -f "$OBS_PROFILES_DIR/RadioDJ/basic.ini" ] && [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
+  if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
     success "Installed 'RadioDJ' OBS profile"
   fi

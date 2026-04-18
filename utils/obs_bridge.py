@@ -48,8 +48,46 @@ Graceful degradation:
 import logging
 import time
 import os
+import sys
 
 log = logging.getLogger("obs-bridge")
+
+# ── Platform-aware OBS source kinds ──────────────────────────────────────
+# OBS on Windows uses text_gdiplus_v2 for text; Linux/macOS use text_freetype2_v2.
+# Using the wrong kind returns obs-websocket error 605 "input kind not supported".
+_IS_LINUX = sys.platform == "linux"
+_TEXT_INPUT_KIND = "text_freetype2_v2" if _IS_LINUX else "text_gdiplus_v2"
+
+
+def _text_settings(text, font_face, font_style, font_size, color,
+                    align=0, valign=0, read_from_file=False, file_path=""):
+    """Build platform-appropriate text source settings.
+
+    FreeType2 (Linux/macOS) uses a single 'color' field; GDI+ (Windows)
+    uses 'color1'/'color2' for gradient support. Both accept numeric
+    align (0=left,1=center,2=right) and valign (0=top,1=center,2=bottom).
+    """
+    font = {"face": font_face, "style": font_style, "size": font_size}
+    base = {
+        "text": text,
+        "font": font,
+        "align": align,
+        "valign": valign,
+        "read_from_file": read_from_file,
+    }
+    if read_from_file and file_path:
+        base["file"] = file_path
+
+    if _IS_LINUX:
+        base["color"] = color
+    else:
+        # GDI+ uses color1/color2 for gradient (same color = solid)
+        base["color1"] = color
+        base["color2"] = color
+        base["opacity"] = 100
+        base["gradient"] = False
+
+    return base
 
 # ── Suppress obsws-python's verbose logging ──────────────────────────────
 # obsws_python logs "Connecting with parameters: ..." at INFO level on every
@@ -670,8 +708,9 @@ class OBSBridge:
         This is the cross-platform alternative to browser_source — it works
         on Debian 12 where obs-browser is not available. It creates:
           1. A dark color_source_v3 as the background
-          2. Multiple text_gdiplus_v2 sources that read from /tmp/radio_*.txt
-             files (written by youtube_stream.py update_hud())
+          2. Multiple text sources (text_freetype2_v2 on Linux, text_gdiplus_v2
+             on Windows) that read from /tmp/radio_*.txt files (written by
+             youtube_stream.py update_hud())
 
         The text sources auto-update by reading from the .txt files on each
         frame render, so they stay in sync with the bot's playback state.
@@ -719,20 +758,13 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_freetype2_v2",
+                inputKind=_TEXT_INPUT_KIND,
                 inputName="Station Name",
-                inputSettings={
-                    "text": "MBOT RADIO",
-                    "font": {
-                        "face": "DejaVu Sans",
-                        "style": "Bold",
-                        "size": 42,
-                    },
-                    "color": 4294967295,
-                    "align": 0,
-                    "valign": 0,
-                    "read_from_file": False,
-                },
+                inputSettings=_text_settings(
+                    "MBOT RADIO", "DejaVu Sans", "Bold", 42,
+                    color=4294967295,  # White
+                    align=0, valign=0,
+                ),
                 sceneItemEnabled=True,
             )
 
@@ -748,21 +780,14 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_freetype2_v2",
+                inputKind=_TEXT_INPUT_KIND,
                 inputName="Now Playing",
-                inputSettings={
-                    "text": "Waiting for playback...",
-                    "font": {
-                        "face": "DejaVu Sans",
-                        "style": "Bold",
-                        "size": 56,
-                    },
-                    "color": 4294967264,
-                    "align": 0,
-                    "valign": 0,
-                    "read_from_file": True,
-                    "file": "/tmp/radio_title.txt",
-                },
+                inputSettings=_text_settings(
+                    "Waiting for playback...", "DejaVu Sans", "Bold", 56,
+                    color=4294967264,  # Gold
+                    align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_title.txt",
+                ),
                 sceneItemEnabled=True,
             )
 
@@ -778,21 +803,14 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_freetype2_v2",
+                inputKind=_TEXT_INPUT_KIND,
                 inputName="DJ Speaking",
-                inputSettings={
-                    "text": "",
-                    "font": {
-                        "face": "DejaVu Sans",
-                        "style": "Regular",
-                        "size": 36,
-                    },
-                    "color": 4278255872,
-                    "align": 0,
-                    "valign": 0,
-                    "read_from_file": True,
-                    "file": "/tmp/radio_dj.txt",
-                },
+                inputSettings=_text_settings(
+                    "", "DejaVu Sans", "Regular", 36,
+                    color=4278255872,  # Cyan-green
+                    align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_dj.txt",
+                ),
                 sceneItemEnabled=True,
             )
 
@@ -808,21 +826,14 @@ class OBSBridge:
                 pass
             return c.create_input(
                 sceneName=_scene,
-                inputKind="text_freetype2_v2",
+                inputKind=_TEXT_INPUT_KIND,
                 inputName="Ticker",
-                inputSettings={
-                    "text": "Initializing...",
-                    "font": {
-                        "face": "DejaVu Sans",
-                        "style": "Regular",
-                        "size": 24,
-                    },
-                    "color": 4294967295,
-                    "align": 1,
-                    "valign": 2,
-                    "read_from_file": True,
-                    "file": "/tmp/radio_waiting.txt",
-                },
+                inputSettings=_text_settings(
+                    "Initializing...", "DejaVu Sans", "Regular", 24,
+                    color=4294967295,  # White
+                    align=1, valign=2,
+                    read_from_file=True, file_path="/tmp/radio_waiting.txt",
+                ),
                 sceneItemEnabled=True,
             )
 

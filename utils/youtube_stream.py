@@ -58,6 +58,7 @@ if _VAAPI_ENABLED:
 
 # Overlays for FFmpeg dynamic HUD reloads
 TXT_STATION = "/tmp/radio_station.txt"
+TXT_STATE = "/tmp/radio_state.txt"
 TXT_TITLE = "/tmp/radio_title.txt"
 TXT_DJ = "/tmp/radio_dj.txt"
 TXT_WAITING = "/tmp/radio_waiting.txt"
@@ -131,7 +132,7 @@ class YouTubeLiveStreamer:
     def is_running(self) -> bool:
         return self._running
 
-    def update_hud(self, station="", title="", dj="", waiting=""):
+    def update_hud(self, station="", state="", title="", dj="", waiting=""):
         """Dynamically overwrite FFmpeg GUI layout texts instantly on disk.
 
         CRITICAL: Never write an empty string to /tmp/radio_*.txt files!
@@ -145,6 +146,10 @@ class YouTubeLiveStreamer:
             if station:
                 with open(TXT_STATION, "w") as f:
                     f.write(self._safe_text(station, 40))
+            # State indicator: empty = keep whatever's there
+            if state:
+                with open(TXT_STATE, "w") as f:
+                    f.write(self._safe_text(state, 40))
             # Title: empty = keep whatever's there (don't blank the title)
             if title:
                 with open(TXT_TITLE, "w") as f:
@@ -720,7 +725,7 @@ class YouTubeLiveStreamer:
             # Audio source from the PCMBroadcaster master node
             "-thread_queue_size", "4096",
             "-f", "s16le", "-ar", "48000", "-ac", "2",
-            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=65536&reuse=1&timeout=15000000",
+            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1&timeout=15000000",
             # Normalize ALL timestamps perfectly to 0.0s to align audio with screen 
             "-map", "0:v", "-map", "1:a",
             *video_encode,

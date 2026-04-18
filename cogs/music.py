@@ -276,22 +276,41 @@ class Music(commands.Cog):
         t.start()
 
     async def _obs_scene_now_playing(self):
-        """Switch OBS to the Now Playing scene. Called when a song starts."""
-        scene = getattr(config, "OBS_SCENE_NOW_PLAYING", "️ Now Playing")
-        self._obs_switch_scene(scene)
+        """Show 'Now Playing' state on the OBS overlay.
+
+        Instead of switching to a separate scene (which loses all overlay
+        sources), we update the state indicator text to show 🎵 Now Playing.
+        This keeps Station Name, Now Playing title, DJ text, and Ticker
+        visible at all times on the single Overlay Only scene.
+        """
+        if self._yt_stream_active and self._yt_streamer:
+            self._yt_streamer.update_hud(state="🎵 Now Playing")
 
     async def _obs_scene_dj_speaking(self):
-        """Switch OBS to the DJ Speaking scene. Called when DJ TTS starts."""
-        scene = getattr(config, "OBS_SCENE_DJ_SPEAKING", "🎙️ DJ Speaking")
-        self._obs_switch_scene(scene)
+        """Show 'DJ Speaking' state on the OBS overlay.
+
+        Instead of switching to a separate scene (which loses all overlay
+        sources), we update the state indicator text to show 🎙️ DJ Speaking.
+        """
+        if self._yt_stream_active and self._yt_streamer:
+            self._yt_streamer.update_hud(state="🎙️ DJ Speaking")
 
     async def _obs_scene_waiting(self):
-        """Switch OBS to the Waiting scene. Called when queue is empty."""
-        scene = getattr(config, "OBS_SCENE_WAITING", "⏳ Waiting")
-        self._obs_switch_scene(scene)
+        """Show 'Waiting' state on the OBS overlay.
+
+        Instead of switching to a separate scene (which loses all overlay
+        sources), we update the state indicator text to show ⏳ Waiting.
+        """
+        if self._yt_stream_active and self._yt_streamer:
+            self._yt_streamer.update_hud(state="⏳ Waiting")
 
     async def _obs_scene_overlay(self):
-        """Switch OBS to the Overlay Only scene. Called during YouTube Live overlay."""
+        """Switch to the Overlay Only scene for YouTube Live streaming.
+
+        This is the ONE scene that has all the overlay sources (Station Name,
+        Now Playing, DJ Speaking, Ticker, State, Bot Audio). All dynamic
+        content is shown via text sources that read from /tmp/radio_*.txt.
+        """
         scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
         self._obs_switch_scene(scene)
 

@@ -723,6 +723,13 @@ class OBSBridge:
         The text sources auto-update by reading from the .txt files on each
         frame render, so they stay in sync with the bot's playback state.
 
+        IMPORTANT: All dynamic content (station name, title, DJ text, ticker)
+        lives on this ONE scene. We do NOT switch to separate scenes for
+        "Now Playing" / "DJ Speaking" / "Waiting" — instead, a "State"
+        text source shows the current state (🎵 / 🎙️ / ⏳). This ensures
+        the viewer always sees the full overlay with station name, title,
+        and ticker, regardless of what the bot is doing.
+
         Args:
             scene_name: Scene to add sources to (empty = current scene)
         """
@@ -756,7 +763,33 @@ class OBSBridge:
 
         results["background"] = self._safe_call(_create_bg)
 
-        # ── 2. Station name text source (reads from file) ─────────
+        # ── 2. State indicator text source (reads from file) ────────
+        # Shows 🎵 Now Playing / 🎙️ DJ Speaking / ⏳ Waiting
+        # This REPLACES scene switching — we always stay on ONE scene
+        # and update the state indicator instead.
+        def _create_state(c, _scene=scene_name):
+            try:
+                existing = c.get_input_settings(name="State")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind=_TEXT_INPUT_KIND,
+                inputName="State",
+                inputSettings=_text_settings(
+                    " ", "DejaVu Sans", "Bold", 28,
+                    color=4294967295,  # White
+                    align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_state.txt",
+                ),
+                sceneItemEnabled=True,
+            )
+
+        results["state_text"] = self._safe_call(_create_state)
+
+        # ── 3. Station name text source (reads from file) ─────────
         def _create_station(c, _scene=scene_name):
             try:
                 existing = c.get_input_settings(name="Station Name")
@@ -779,7 +812,7 @@ class OBSBridge:
 
         results["station_text"] = self._safe_call(_create_station)
 
-        # ── 3. Now Playing title text source (reads from file) ─────
+        # ── 4. Now Playing title text source (reads from file) ─────
         def _create_title(c, _scene=scene_name):
             try:
                 existing = c.get_input_settings(name="Now Playing")
@@ -802,7 +835,7 @@ class OBSBridge:
 
         results["title_text"] = self._safe_call(_create_title)
 
-        # ── 4. DJ/Speaking text source (reads from file) ───────────
+        # ── 5. DJ/Speaking text source (reads from file) ───────────
         def _create_dj(c, _scene=scene_name):
             try:
                 existing = c.get_input_settings(name="DJ Speaking")
@@ -825,7 +858,7 @@ class OBSBridge:
 
         results["dj_text"] = self._safe_call(_create_dj)
 
-        # ── 5. Waiting/ticker text source (reads from file) ────────
+        # ── 6. Waiting/ticker text source (reads from file) ────────
         def _create_waiting(c, _scene=scene_name):
             try:
                 existing = c.get_input_settings(name="Ticker")
@@ -840,7 +873,7 @@ class OBSBridge:
                 inputSettings=_text_settings(
                     "Initializing...", "DejaVu Sans", "Regular", 24,
                     color=4294967295,  # White
-                    align=1, valign=2,
+                    align=0, valign=0,
                     read_from_file=True, file_path="/tmp/radio_waiting.txt",
                 ),
                 sceneItemEnabled=True,
@@ -848,7 +881,7 @@ class OBSBridge:
 
         results["ticker_text"] = self._safe_call(_create_waiting)
 
-        # ── 6. Position scene items ────────────────────────────────
+        # ── 7. Position scene items ────────────────────────────────
         # Set transform (position, size) for each text source so they
         # appear in the right places on the 1280x720 canvas.
         self._position_overlay_items(scene_name)
@@ -866,13 +899,27 @@ class OBSBridge:
 
         Uses set_scene_item_transform to position each source.
         OBS scene item positions are in pixels from top-left.
+
+        Layout (1280x720):
+          ┌──────────────────────────────────────────┐
+          │  (40,30)  [State]           🎵 Now Playing │  ← top bar
+          │  (40,80)  ████████████████████████████████ │  ← divider line (none)
+          │                                          │
+          │  (40,100)  Station Name                  │  ← large, bold, white
+          │  (40,165)  Now Playing title              │  ← large, gold
+          │  (40,240)  DJ Speaking text               │  ← medium, cyan-green
+          │                                          │
+          │                                          │
+          │  (40,665)  Ticker                         │  ← bottom bar, small
+          └──────────────────────────────────────────┘
         """
         # Positions for the overlay elements
         positions = {
-            "Station Name": {"x": 450, "y": 150},
-            "Now Playing": {"x": 450, "y": 210},
-            "DJ Speaking": {"x": 450, "y": 280},
-            "Ticker": {"x": 0, "y": 670},
+            "State": {"x": 40, "y": 30},
+            "Station Name": {"x": 40, "y": 100},
+            "Now Playing": {"x": 40, "y": 165},
+            "DJ Speaking": {"x": 40, "y": 240},
+            "Ticker": {"x": 40, "y": 665},
         }
 
         for source_name, pos in positions.items():
@@ -953,7 +1000,7 @@ class OBSBridge:
                     log.warning(f"OBS Bridge: Failed to remove '{_sn}': {e}")
 
             input_settings = {
-                "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
+                "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
                 "is_local_file": False,
                 # CRITICAL: Raw PCM format specification — OBS cannot
                 # auto-detect the format of a raw UDP stream. Without these,
@@ -1124,6 +1171,7 @@ class OBSBridge:
         import os
         hud_files = {
             "/tmp/radio_station.txt": "MBot Radio",
+            "/tmp/radio_state.txt": "⏳ Waiting",
             "/tmp/radio_title.txt": "Waiting for playback...",
             # Use a space, not empty string! FreeType2 renders "" as
             # zero-height invisible text. " " ensures the source stays

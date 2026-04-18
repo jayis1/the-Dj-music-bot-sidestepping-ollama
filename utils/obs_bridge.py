@@ -903,7 +903,10 @@ class OBSBridge:
         OBS's FFmpeg source cannot auto-detect the format of a raw PCM stream,
         so we must explicitly specify:
           - input_format: "s16le" (signed 16-bit little-endian)
-          - FFmpeg options: "-ar 48000 -ac 2" (48kHz, 2 channels)
+          - ffmpeg_options: "ar=48000 ac=2" (48kHz, 2 channels)
+        NOTE: ffmpeg_options uses av_dict_parse_string() format (key=value),
+        NOT CLI flag format (-ar 48000 -ac 2). OBS logs "Failed to parse
+        FFmpeg options: Invalid argument" if you use the flag format.
         Without these, OBS logs "MP: Failed to open media" and the source
         stays silent.
         """
@@ -928,7 +931,7 @@ class OBSBridge:
                                 "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
                                 "is_local_file": False,
                                 "input_format": "s16le",
-                                "ffmpeg_options": "-ar 48000 -ac 2",
+                                "ffmpeg_options": "ar=48000 ac=2",
                             },
                             overlay=False,
                         )
@@ -948,7 +951,7 @@ class OBSBridge:
                     # auto-detect the format of a raw UDP stream. Without these,
                     # OBS logs "MP: Failed to open media" and the source is silent.
                     "input_format": "s16le",
-                    "ffmpeg_options": "-ar 48000 -ac 2",
+                    "ffmpeg_options": "ar=48000 ac=2",
                 },
                 sceneItemEnabled=True,
             )

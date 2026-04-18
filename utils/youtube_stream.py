@@ -53,6 +53,7 @@ class YouTubeLiveStreamer:
         self._xvfb: asyncio.subprocess.Process | None = None
         self._running = False
         self._watchdog_task: asyncio.Task | None = None
+        self._stderr_drain_task: asyncio.Task | None = None
         self._started_at: float = 0
         self._last_error: str = ""
         
@@ -135,7 +136,28 @@ class YouTubeLiveStreamer:
     # ── FFmpeg Core Engine ──────────────────────────────────────────
 
     def _safe_text(self, text: str, max_len: int = 60) -> str:
-        return text.replace("'", "\\'").replace(":", "\\:").replace("%", "%%")[:max_len]
+        """Escape text for FFmpeg drawtext filter.
+
+        The drawtext filter treats these characters specially:
+        ' : % { } \\  and newline.
+        We must escape all of them to avoid breaking the stream overlay.
+        """
+        # Escape backslash first (so later escapes aren't double-escaped)
+        text = text.replace("\\", "\\\\")
+        # Escape single quotes (drawtext uses ' for string delimiters)
+        text = text.replace("'", "\\'")
+        # Escape colons (drawtext uses : for key=value separators)
+        text = text.replace(":", "\\:")
+        # Escape percent (drawtext uses % for timecode expansion)
+        text = text.replace("%", "%%")
+        # Escape braces (drawtext uses {} for expression evaluation)
+        text = text.replace("{", "\\{")
+        text = text.replace("}", "\\}")
+        # Remove newlines (they break the filter string entirely)
+        text = text.replace("\n", " ").replace("\r", " ")
+        # Escape semicolons (drawtext uses ; as command separator)
+        text = text.replace(";", "\\;")
+        return text[:max_len]
 
     def _resolve_image(self) -> str | None:
         if self.stream_image and os.path.isfile(self.stream_image):
@@ -202,24 +224,40 @@ class YouTubeLiveStreamer:
         
         # Cleanup previously running headless processes upon restarts
         if self._chromium:
-            try: self._chromium.kill()
-            except: pass
+            try:
+                self._chromium.kill()
+            except Exception:
+                pass
         if self._xvfb:
-            try: self._xvfb.kill()
-            except: pass
+            try:
+                self._xvfb.kill()
+            except Exception:
+                pass
         if self._process:
-            try: self._process.kill()
-            except: pass
-            
-        try: os.remove("/tmp/.X99-lock")
-        except: pass
-        try: os.remove("/tmp/.X11-unix/X99")
-        except: pass
-        
-        # Kill stray Xvfb processes occupying :99
+            try:
+                self._process.kill()
+            except Exception:
+                pass
+                
         try:
-            os.system("pkill -f 'Xvfb :99'")
-        except: pass
+            os.remove("/tmp/.X99-lock")
+        except Exception:
+            pass
+        try:
+            os.remove("/tmp/.X11-unix/X99")
+        except Exception:
+            pass
+        
+        # Kill only the Xvfb process WE started (by PID), not all Xvfb
+        # instances on the system. Using pkill -f would kill unrelated
+        # processes which is dangerous in shared environments.
+        if self._xvfb is not None and hasattr(self._xvfb, "pid"):
+            try:
+                import signal as _signal
+                os.kill(self._xvfb.pid, _signal.SIGTERM)
+                log.info(f"YouTube Live: Sent SIGTERM to stale Xvfb (PID {self._xvfb.pid})")
+            except (ProcessLookupError, PermissionError, OSError):
+                pass  # Process already gone or not ours
         log.info(f"YouTube Live: Spawning Headless ({xvfb_path}) overlay capture...")
         
         # 1. Spawn Xvfb virtual frame buffer
@@ -295,8 +333,35 @@ class YouTubeLiveStreamer:
                 stdout=asyncio.subprocess.DEVNULL,
                 stderr=asyncio.subprocess.PIPE,
             )
+            # Start a background task to continuously drain stderr.
+            # If stderr is set to PIPE but never read, the kernel buffer fills
+            # up and FFmpeg blocks on stderr writes, freezing the stream.
+            if self._process.stderr:
+                self._stderr_drain_task = asyncio.create_task(self._drain_stderr())
         except Exception as e:
             log.error(f"YouTube Live: FFmpeg invoke failed: {e}")
+
+    async def _drain_stderr(self):
+        """Continuously read and discard FFmpeg's stderr output.
+
+        This prevents the stderr pipe buffer from filling up and blocking
+        FFmpeg's output thread, which would freeze the entire stream.
+        Logged at DEBUG level so it's available for diagnostics but
+        doesn't spam the main log.
+        """
+        if not self._process or not self._process.stderr:
+            return
+        try:
+            while self._running:
+                line = await self._process.stderr.readline()
+                if not line:
+                    # EOF — FFmpeg closed stderr (likely exiting)
+                    break
+                log.debug(f"YouTube Live/FFmpeg: {line.decode(errors='replace').rstrip()}")
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
 
     async def _watchdog(self):
         """Monitors Master FFmpeg stream survival."""
@@ -310,7 +375,7 @@ class YouTubeLiveStreamer:
                     if self._process.stderr:
                         try:
                             err = await self._process.stderr.read()
-                        except:
+                        except Exception:
                             pass
                     self._last_error = f"Exited code {self._process.returncode}"
                     log.error(f"YouTube Live: Master FFmpeg crashed: {self._last_error} | {err[-500:]}")
@@ -329,11 +394,20 @@ class YouTubeLiveStreamer:
 
     async def _kill_process(self):
         """Native shutdown logic for Master Node + Chromium layer."""
+        # Cancel the stderr drain task first
+        if self._stderr_drain_task and not self._stderr_drain_task.done():
+            self._stderr_drain_task.cancel()
+            try:
+                await self._stderr_drain_task
+            except asyncio.CancelledError:
+                pass
+            self._stderr_drain_task = None
+
         if self._process and self._process.returncode is None:
             try:
                 if self._process.stdin:
                     self._process.stdin.write(b"q")
-                    self._process.stdin.flush()
+                    await self._process.stdin.drain()
                     try:
                         await asyncio.wait_for(self._process.wait(), timeout=3)
                     except asyncio.TimeoutError:
@@ -353,14 +427,14 @@ class YouTubeLiveStreamer:
         self._process = None
         
         # Aggressively cleanup Xvfb and Chromium headless instances too
-        if hasattr(self, '_chromium') and self._chromium and self._chromium.returncode is None:
+        if hasattr(self, '_chromium') and self._chromium and getattr(self._chromium, 'returncode', None) is None:
             try:
                 self._chromium.kill()
             except Exception:
                 pass
             self._chromium = None
             
-        if hasattr(self, '_xvfb') and self._xvfb and self._xvfb.returncode is None:
+        if hasattr(self, '_xvfb') and self._xvfb and getattr(self._xvfb, 'returncode', None) is None:
             try:
                 self._xvfb.kill()
             except Exception:

@@ -17,6 +17,11 @@ class PCMBroadcaster(discord.AudioSource):
     If Discord is empty/disconnected, the internal `_autonomous_clock` automatically
     takes over and ensures the UDP pipe is fed perfectly seamlessly to maintain
     the headless YouTube Live broadcast!
+
+    Thread safety:
+        _source and _after_callback are protected by _source_lock.
+        _is_discord_clocking uses an Event-based protocol so the autonomous
+        clock thread and the Discord voice thread coordinate without races.
     """
 
     def __init__(self, port=12345):
@@ -29,11 +34,17 @@ class PCMBroadcaster(discord.AudioSource):
         self._source_lock = threading.Lock()
 
         self._running = True
-        self._is_discord_clocking = False
+        # Replaced bare bool with proper event-based coordination.
+        # _discord_clock_event is set by read() when Discord is driving playback,
+        # and cleared by the autonomous clock so it knows to yield.
+        self._discord_clock_event = threading.Event()
 
         self._after_callback = None
         self._guild_id = None
         self._bot = None
+
+        # _stop_event allows clean, responsive shutdown of the autonomous clock.
+        self._stop_event = threading.Event()
 
         self._thread = threading.Thread(target=self._autonomous_clock, daemon=True)
         self._thread.start()
@@ -85,8 +96,12 @@ class PCMBroadcaster(discord.AudioSource):
                 log.error(f"Broadcaster: Failed to trigger after-callback: {e}")
 
     def read(self) -> bytes:
-        """Called automatically by Discord VoiceClient. Drives the clock native to the server."""
-        self._is_discord_clocking = True
+        """Called automatically by Discord VoiceClient. Drives the clock native to the server.
+
+        Signals the autonomous clock to stand down via _discord_clock_event
+        so there is no race between the two clock threads.
+        """
+        self._discord_clock_event.set()
         data = b""
         source = None
 
@@ -120,6 +135,7 @@ class PCMBroadcaster(discord.AudioSource):
     def stop(self):
         """Terminates the autonomous broadcast lock."""
         self._running = False
+        self._stop_event.set()  # Wake the autonomous clock so it exits cleanly
         with self._source_lock:
             if self._source and hasattr(self._source, "cleanup"):
                 try:
@@ -129,13 +145,28 @@ class PCMBroadcaster(discord.AudioSource):
                 self._source = None
 
     def _autonomous_clock(self):
-        """The headless 24/7 pulse. Only activates when Discord drops its connection."""
+        """The headless 24/7 pulse. Only activates when Discord drops its connection.
+
+        Uses _discord_clock_event for thread-safe coordination with read():
+        - When Discord is actively calling read(), the event is set and the
+          autonomous clock idles (yielding CPU via a short timeout).
+        - When Discord disconnects, the event stays clear and the autonomous
+          clock takes over, feeding silence or audio to the UDP pipe at 20ms intervals.
+        """
         silence = b"\x00" * 3840
         next_time = time.perf_counter()
         while self._running:
-            if self._is_discord_clocking:
-                time.sleep(0.1)
-                self._is_discord_clocking = False
+            # If Discord is driving playback, yield and wait.
+            # Use a 100ms timeout so we re-check _running and the event state regularly.
+            if self._discord_clock_event.is_set():
+                # Discord is clocking — wait for it to stop or for shutdown.
+                # Clear the event first so we don't spin, then wait briefly.
+                self._discord_clock_event.clear()
+                # Sleep a short interval and re-check.
+                # _stop_event.wait() gives us clean shutdown responsiveness.
+                stopped = self._stop_event.wait(timeout=0.1)
+                if stopped or not self._running:
+                    return
                 next_time = time.perf_counter()
                 continue
 
@@ -170,7 +201,11 @@ class PCMBroadcaster(discord.AudioSource):
             next_time += 0.02
             delay = next_time - time.perf_counter()
             if delay > 0:
-                time.sleep(delay)
+                # Use _stop_event.wait() instead of time.sleep() for
+                # responsive shutdown — wakes immediately on stop().
+                stopped = self._stop_event.wait(timeout=delay)
+                if stopped:
+                    return
             else:
                 next_time = time.perf_counter()
 

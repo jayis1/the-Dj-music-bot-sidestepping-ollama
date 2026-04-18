@@ -1,12 +1,15 @@
-# Secrets — never bake into image
+# ── Secrets — never bake into image ──────────────────────────────────────
 .env
+.env.*
+!.env.example
 
-# Git
+# ── Git ──────────────────────────────────────────────────────────────────
 .git
 .gitignore
 .gitattributes
+.github
 
-# Python cache
+# ── Python cache ─────────────────────────────────────────────────────────
 __pycache__
 *.pyc
 *.pyo
@@ -15,25 +18,52 @@ __pycache__
 *.egg-info
 dist/
 build/
+venv
+.venv
 
-# Logs
+# ── Logs ──────────────────────────────────────────────────────────────────
 bot_activity.log
 *.log
 
-# Runtime data (mounted as volumes)
+# ── Runtime data (mounted as volumes) ────────────────────────────────────
 yt_dlp_cache/
 
-# Dev tools
+# ── Dev tools ────────────────────────────────────────────────────────────
 .ruff_cache
 .ruff.toml
 tests/
 pytest.ini
 .pytest_cache
 
-# Docs (not needed in image)
+# ── IDE ──────────────────────────────────────────────────────────────────
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# ── Docs (not needed in image) ──────────────────────────────────────────
 README.md
 GUIDE.md
+LICENSE
+CHANGELOG.md
 
-# OS
+# ── OS files ─────────────────────────────────────────────────────────────
 .DS_Store
 Thumbs.db
+
+# ── Docker files (not needed inside the image) ───────────────────────────
+docker-compose*.yml
+Dockerfile
+.dockerignore
+
+# ── MOSS TTS server (built separately as its own image) ─────────────────
+moss-tts-server/
+
+# ── Browser extension (not needed in container) ──────────────────────────
+extension/
+
+# ── Temporary/persistent data (should be mounted as volumes) ──────────────
+youtube_cookie.txt
+*.tmp
+*.bak

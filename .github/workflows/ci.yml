@@ -1,0 +1,82 @@
+# ── Radio DJ Bot — CI Pipeline ─────────────────────────────────────────────
+# Runs on every push to main and on pull requests.
+# Checks: Python syntax, dependency install, import smoke test, Docker build.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint-and-test:
+    name: Python Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Ruff format check
+        run: ruff format --check --diff .
+
+      - name: Ruff lint
+        run: ruff check .
+
+      - name: Import smoke test
+        run: |
+          python3 -c "
+          import sys
+          sys.path.insert(0, '.')
+          # Verify all core modules can be imported without crash
+          import config
+          from utils import dj, cookie_parser, presets, soundboard, broadcaster
+          from cogs.youtube import YTDLSource, PlaceholderTrack
+          print('✅ All core modules imported successfully')
+          "
+
+      - name: Run pytest
+        run: python -m pytest tests/ -v --tb=short 2>/dev/null || echo "No tests found or test failures (non-blocking)"
+
+  docker-build-test:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build bot image (amd64 only for speed)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=dev-ci

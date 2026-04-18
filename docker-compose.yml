@@ -1,19 +1,25 @@
 # ── Radio DJ Music Bot — Docker Compose ──────────────────────────────────────
-# Starts the bot + MOSS-TTS-Nano server together.
+# Starts the bot + MOSS-TTS-Nano + Ollama together.
 #
 # Quick start:
 #   1. cp .env.example .env && nano .env   (set DISCORD_TOKEN at minimum)
 #   2. docker compose up -d
 #   3. Open http://your-server:8080 for Mission Control
 #
-# The MOSS-TTS-Nano server runs on CPU by default (0.1B params, no GPU needed).
+# Services:
+#   - bot:        The Radio DJ Discord bot + web dashboard
+#   - moss-tts:   MOSS-TTS-Nano voice cloning server (CPU, 0.1B params)
+#   - ollama:     AI side host LLM server (auto-pulls model on first start)
+#
+# The MOSS-TTS-Nano server runs on CPU by default (no GPU needed).
+# Ollama runs the AI side host — disable with OLLAMA_DJ_ENABLED=false in .env.
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
 
   # ── MOSS-TTS-Nano server ──────────────────────────────────────────────
   moss-tts:
-    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
     # Uncomment to build locally instead:
     # build:
     #   context: ./moss-tts-server
@@ -31,9 +37,58 @@ services:
       retries: 5
       start_period: 60s
 
+  # ── Ollama (AI Side Host) ─────────────────────────────────────────────
+  # The AI side host writes its own DJ banter, shoutouts, and commentary.
+  # It uses Ollama to run a local LLM — no API keys or cloud needed.
+  # Set OLLAMA_DJ_ENABLED=true in .env to activate.
+  #
+  # GPU acceleration:
+  #   For NVIDIA GPUs, add the following to the ollama service:
+  #     deploy:
+  #       resources:
+  #         reservations:
+  #           devices:
+  #             - driver: nvidia
+  #               count: all
+  #               capabilities: [gpu]
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ── Ollama model puller ───────────────────────────────────────────────
+  # This one-shot container waits for Ollama to be ready, then pulls the
+  # base model for the AI side host. It exits after pulling.
+  # Change OLLAMA_MODEL in .env if you want a different model.
+  ollama-puller:
+    image: ollama/ollama:latest
+    container_name: ollama-puller
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "🤖 Pulling AI side host model: ${OLLAMA_MODEL:-gemma3:4b}..."
+        ollama pull ${OLLAMA_MODEL:-gemma3:4b}
+        echo "✅ Model pulled successfully!"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+
   # ── Radio DJ Bot ───────────────────────────────────────────────────────────
   bot:
-    image: ghcr.io/jayis1/the-dj-music-bot:latest
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
     # Uncomment to build locally instead:
     # build: .
     container_name: radio-dj-bot
@@ -41,22 +96,31 @@ services:
     depends_on:
       moss-tts:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     env_file:
       - .env
     environment:
-      # Point the bot at the MOSS container (override .env if set differently)
+      # Container-aware overrides — these point the bot at the Docker services
       - MOSS_TTS_URL=http://moss-tts:18083
       - TTS_MODE=moss
+      - OLLAMA_HOST=http://ollama:11434
     ports:
       - "8080:8080"       # Mission Control web dashboard
     volumes:
-      - ./sounds:/app/sounds           # Soundboard files (persisted)
-      - ./presets:/app/presets         # Auto-DJ presets (persisted)
-      - ./assets/moss_voices:/app/assets/moss_voices  # MOSS voice prompt files
-      - ./yt_dlp_cache:/app/yt_dlp_cache
+      - ./sounds:/app/sounds                        # Soundboard files (persisted)
+      - ./presets:/app/presets                       # Auto-DJ presets (persisted)
+      - ./assets/moss_voices:/app/assets/moss_voices # MOSS voice prompt files
+      - ./yt_dlp_cache:/app/yt_dlp_cache             # yt-dlp download cache
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 20s
+
+volumes:
+  ollama_data:
+    # Persists Ollama models across container restarts so you don't
+    # have to re-download multi-GB model files every time.
+    name: radio-dj-ollama

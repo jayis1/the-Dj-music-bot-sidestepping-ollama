@@ -3,6 +3,9 @@
 # It is recommended to use environment variables for sensitive data.
 # However, you can hardcode the values here for simplicity.
 import os
+import warnings
+
+BOT_VERSION = "v420.0.3"
 
 try:
     from dotenv import load_dotenv
@@ -135,7 +138,16 @@ OLLAMA_CUSTOM_MODEL = os.environ.get("OLLAMA_CUSTOM_MODEL", "mbot-sidehost")
 # How often the side host chimes in (0.0–1.0).
 # 0.25 = ~25% chance after each template DJ line.
 # 0.5 = ~50% chance. 1.0 = always speaks (alongside the main DJ).
-OLLAMA_DJ_CHANCE = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
+# Values outside [0.0, 1.0] are clamped to the valid range.
+_OLLAMA_DJ_CHANCE_RAW = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
+OLLAMA_DJ_CHANCE = max(0.0, min(1.0, _OLLAMA_DJ_CHANCE_RAW))
+if _OLLAMA_DJ_CHANCE_RAW != OLLAMA_DJ_CHANCE:
+    import warnings
+    warnings.warn(
+        f"OLLAMA_DJ_CHANCE={_OLLAMA_DJ_CHANCE_RAW} is out of range [0.0, 1.0], "
+        f"clamped to {OLLAMA_DJ_CHANCE}",
+        stacklevel=2,
+    )
 
 # TTS voice for the AI side host (separate from the main DJ voice).
 # This makes the two hosts sound like different people.

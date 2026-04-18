@@ -1,10 +1,18 @@
 # ── Radio DJ Bot — Docker Build & GitHub Release ─────────────────────────────
 #
 # Triggers:
-#   - Push a version tag:  git tag v6.3.0 && git push --tags
-#   - This builds + pushes the Docker image to ghcr.io and creates a GitHub Release
+#   - Push a version tag:  git tag v6.4.0 && git push --tags
+#   - This builds + pushes Docker images to ghcr.io and creates a GitHub Release
 #
-# Image published: ghcr.io/jayis1/the-dj-music-bot:<version> + :latest
+# Images published:
+#   ghcr.io/jayis1/the-dj-music-bot:<version>      (bot)
+#   ghcr.io/jayis1/the-dj-music-bot:latest          (bot)
+#   ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:<version>
+#   ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
+#
+# Note on Ollama: Ollama is NOT a custom image — it uses the official
+# ollama/ollama image directly in docker-compose.yml. The model is
+# auto-pulled at startup by the ollama-puller sidecar container.
 # ─────────────────────────────────────────────────────────────────────────────
 
 name: Docker Build & Release
@@ -34,13 +42,17 @@ jobs:
       # 2. Extract version tag (strips the leading 'v')
       - name: Get version
         id: version
-        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
 
       # 3. Set up Docker Buildx (multi-arch builds)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. Log in to GitHub Container Registry
+      # 4. Set up QEMU for cross-platform emulation
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # 5. Log in to GitHub Container Registry
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -48,8 +60,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # 5. Extract Docker metadata (tags + labels)
-      - name: Docker metadata
+      # 6. Extract Docker metadata (tags + labels) for the bot image
+      - name: Docker metadata — bot
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -59,8 +71,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      # 6. Build and push image (linux/amd64 + linux/arm64)
-      - name: Build & push Docker image
+      # 7. Build and push bot image (linux/amd64 + linux/arm64)
+      - name: Build & push bot image
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -70,9 +82,13 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.version.outputs.VERSION }}
 
-      # 6.5 Extract Docker metadata for MOSS-TTS-Nano
-      - name: Docker metadata MOSS
+      # 8. Extract Docker metadata for MOSS-TTS-Nano
+      - name: Docker metadata — MOSS TTS
         id: meta-moss
         uses: docker/metadata-action@v5
         with:
@@ -82,8 +98,8 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
 
-      # 6.6 Build and push MOSS-TTS-Nano image
-      - name: Build & push MOSS image
+      # 9. Build and push MOSS-TTS-Nano image (amd64 only — MOSS doesn't support arm64)
+      - name: Build & push MOSS TTS image
         uses: docker/build-push-action@v5
         with:
           context: ./moss-tts-server
@@ -94,7 +110,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 7. Create GitHub Release with docker-compose.yml + .env.example as assets
+      # 10. Create GitHub Release with docker-compose.yml + .env.example as assets
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -115,17 +131,35 @@ jobs:
             # 2. Insert your Discord token!
             nano .env
 
-            # 3. Start the bot + MOSS-TTS-Nano automatically!
+            # 3. Start the bot + MOSS TTS + Ollama automatically!
             docker compose up -d
 
             # 4. Open the Mission Control Dashboard
             open http://localhost:8080
             ```
 
-            ## 📦 Docker Image
+            ## 🤖 AI Side Host (Ollama)
+
+            The docker-compose.yml now includes an Ollama container for the AI side host.
+            To enable it, set these in your `.env`:
+
+            ```bash
+            OLLAMA_DJ_ENABLED=true
+            OLLAMA_MODEL=gemma3:4b
+            ```
+
+            The model is pulled automatically on first start (~2.5 GB download).
+            See `.env.example` for more AI side host options.
+
+            ## 📦 Docker Images
+
             ```
             ghcr.io/jayis1/the-dj-music-bot:${{ steps.version.outputs.VERSION }}
             ghcr.io/jayis1/the-dj-music-bot:latest
+            ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:${{ steps.version.outputs.VERSION }}
+            ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
             ```
+
+            Ollama uses the official image: `ollama/ollama:latest` (no custom build needed).
 
             See [README](https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama#readme) for full documentation.

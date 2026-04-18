@@ -1,0 +1,243 @@
+2026-04-18 00:59:44,598:INFO:root: Created yt-dlp cache directory: yt_dlp_cache
+2026-04-18 00:59:44,599:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 00:59:44,599:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 00:59:44,752:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 00:59:44,775:INFO:root: Web dashboard starting on http://0.0.0.0:8080
+2026-04-18 00:59:44,822:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 00:59:44,822:INFO:root:   yt-dlp version: 2026.03.17
+2026-04-18 00:59:44,824:ERROR:root:   yt-dlp age: ❌ 32 DAYS OLD — yt-dlp almost certainly CANNOT play YouTube right now. YouTube changes their cipher frequently and you will see 'Requested format is not available' or 'Sign in to confirm' errors. UPGRADE NOW: pip install -U yt-dlp
+2026-04-18 00:59:44,824:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 00:59:45,499:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 00:59:45,500:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 00:59:45,500:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 00:59:45,500:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 00:59:45,500:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 00:59:45,500:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 00:59:45,500:INFO:root:   Web Dashboard: http://0.0.0.0:8080
+2026-04-18 00:59:45,500:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 00:59:45,500:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 00:59:45,504:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 00:59:45,615:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 00:59:45,649:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 00:59:45,649:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 00:59:45,652:INFO:root: Successfully loaded extension: music.py
+2026-04-18 00:59:45,652:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 00:59:45,652:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:02:37,781:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:02:37,813:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:02:37,813:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:02:37,970:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:02:37,990:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:02:38,055:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:02:38,055:INFO:root:   yt-dlp version: 2026.03.17
+2026-04-18 01:02:38,056:ERROR:root:   yt-dlp age: ❌ 32 DAYS OLD — yt-dlp almost certainly CANNOT play YouTube right now. YouTube changes their cipher frequently and you will see 'Requested format is not available' or 'Sign in to confirm' errors. UPGRADE NOW: pip install -U yt-dlp
+2026-04-18 01:02:38,056:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:02:39,252:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:02:39,252:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:02:39,252:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:02:39,252:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:02:39,252:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:02:39,252:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:02:39,252:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:02:39,252:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:02:39,252:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:02:39,253:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:02:39,313:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:02:39,332:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:02:39,332:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:02:39,336:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:02:39,336:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:02:39,336:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:02:45,602:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+2026-04-18 01:02:45,602:ERROR:web.app: Exception on /api/overlay [GET]
+Traceback (most recent call last):
+  File "/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /venv/lib/python3.14/site-packages/flask/app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /venv/lib/python3.14/site-packages/flask/app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /venv/lib/python3.14/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /venv/lib/python3.14/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /web/app.py", line 2275, in api_overlay_state
+    voice = music._get_audio_client(gid)
+  File "/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /cogs/music.py", line 185, in _get_audio_client
+    from utils.broadcaster import PCMBroadcasterWrapper
+ImportError: cannot import name 'PCMBroadcasterWrapper' from 'utils.broadcaster' (/home/jais/Desktop/Projects/step 2/The 420 Radio DJ /utils/broadcaster.py)
+2026-04-18 01:09:23,561:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:09:23,562:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:09:23,562:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:09:23,670:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:09:23,687:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:09:23,734:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:09:23,735:INFO:root:   yt-dlp version: 2026.03.17
+2026-04-18 01:09:23,736:ERROR:root:   yt-dlp age: ❌ 32 DAYS OLD — yt-dlp almost certainly CANNOT play YouTube right now. YouTube changes their cipher frequently and you will see 'Requested format is not available' or 'Sign in to confirm' errors. UPGRADE NOW: pip install -U yt-dlp
+2026-04-18 01:09:23,736:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:09:24,326:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:09:24,326:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:09:24,326:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:09:24,326:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:09:24,326:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:09:24,326:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:09:24,326:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:09:24,326:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:09:24,326:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:09:24,328:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:09:24,399:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:09:24,416:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:09:24,416:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:09:24,419:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:09:24,419:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:09:24,419:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:09:33,335:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+2026-04-18 01:10:02,446:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:10:02,446:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:10:02,447:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:10:02,557:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:10:02,576:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:10:02,623:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:10:02,624:INFO:root:   yt-dlp version: 2026.03.17
+2026-04-18 01:10:02,624:ERROR:root:   yt-dlp age: ❌ 32 DAYS OLD — yt-dlp almost certainly CANNOT play YouTube right now. YouTube changes their cipher frequently and you will see 'Requested format is not available' or 'Sign in to confirm' errors. UPGRADE NOW: pip install -U yt-dlp
+2026-04-18 01:10:02,624:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:10:03,354:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:10:03,354:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:10:03,354:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:10:03,354:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:10:03,354:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:10:03,354:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:10:03,354:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:10:03,354:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:10:03,354:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:10:03,355:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:10:03,418:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:10:03,432:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:10:03,433:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:10:03,436:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:10:03,436:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:10:03,436:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:10:14,220:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+2026-04-18 01:11:35,781:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:11:35,781:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:11:35,781:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:11:35,908:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:11:35,925:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:11:35,970:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:11:35,970:INFO:root:   yt-dlp version: 2026.03.17
+2026-04-18 01:11:35,971:ERROR:root:   yt-dlp age: ❌ 32 DAYS OLD — yt-dlp almost certainly CANNOT play YouTube right now. YouTube changes their cipher frequently and you will see 'Requested format is not available' or 'Sign in to confirm' errors. UPGRADE NOW: pip install -U yt-dlp
+2026-04-18 01:11:35,971:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:11:36,654:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:11:36,655:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:11:36,655:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:11:36,655:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:11:36,655:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:11:36,655:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:11:36,655:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:11:36,655:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:11:36,655:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:11:36,657:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:11:36,719:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:11:36,734:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:11:36,734:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:11:36,737:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:11:36,737:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:11:36,737:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:11:50,512:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+2026-04-18 01:11:52,625:WARNING:root: _resolve_with_fallback: format 'bestaudio*/best' not available, trying next (attempt 1/6)
+2026-04-18 01:11:54,539:WARNING:root: _resolve_with_fallback: format 'bestaudio/best' not available, trying next (attempt 2/6)
+2026-04-18 01:11:56,335:WARNING:root: _resolve_with_fallback: format 'bestaudio[abr>0]/best' not available, trying next (attempt 3/6)
+2026-04-18 01:11:58,101:WARNING:root: _resolve_with_fallback: format 'ba/b' not available, trying next (attempt 4/6)
+2026-04-18 01:11:59,853:WARNING:root: _resolve_with_fallback: format 'best' not available, trying next (attempt 5/6)
+2026-04-18 01:12:01,970:WARNING:root: _resolve_with_fallback: format 'worstaudio/worst' not available, trying next (attempt 6/6)
+2026-04-18 01:12:01,970:ERROR:root: _resolve_with_fallback: All 6 format strings failed for https://www.youtube.com/watch?v=dQw4w9WgXcQ. Last error: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:12:01,970:ERROR:root: Dashboard: async call failed: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:07,050:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:17:07,050:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:17:07,050:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:17:07,146:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:17:07,164:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:17:07,207:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:17:07,207:INFO:root:   yt-dlp version: 2026.04.10.235301
+2026-04-18 01:17:07,208:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:17:07,933:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:17:07,933:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:17:07,933:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:17:07,933:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:17:07,933:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:17:07,933:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:17:07,933:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:17:07,933:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:17:07,933:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:17:07,934:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:17:07,995:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:17:08,010:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:17:08,010:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:17:08,013:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:17:08,013:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:17:08,013:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:17:20,856:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+2026-04-18 01:17:22,743:WARNING:root: _resolve_with_fallback: format 'bestaudio*/best' not available, trying next (attempt 1/6)
+2026-04-18 01:17:24,851:WARNING:root: _resolve_with_fallback: format 'bestaudio/best' not available, trying next (attempt 2/6)
+2026-04-18 01:17:26,583:WARNING:root: _resolve_with_fallback: format 'bestaudio[abr>0]/best' not available, trying next (attempt 3/6)
+2026-04-18 01:17:28,372:WARNING:root: _resolve_with_fallback: format 'ba/b' not available, trying next (attempt 4/6)
+2026-04-18 01:17:30,158:WARNING:root: _resolve_with_fallback: format 'best' not available, trying next (attempt 5/6)
+2026-04-18 01:17:31,919:WARNING:root: _resolve_with_fallback: format 'worstaudio/worst' not available, trying next (attempt 6/6)
+2026-04-18 01:17:31,919:ERROR:root: _resolve_with_fallback: All 6 format strings failed for https://www.youtube.com/watch?v=dQw4w9WgXcQ. Last error: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:31,919:ERROR:root: Dashboard: async call failed: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:25:32,903:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:25:32,903:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:25:32,904:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:25:33,000:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:25:33,018:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:25:33,061:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:25:33,061:INFO:root:   yt-dlp version: 2026.04.10.235301
+2026-04-18 01:25:33,062:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:25:33,784:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:25:33,784:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:25:33,784:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:25:33,784:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:25:33,784:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:25:33,784:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:25:33,784:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:25:33,784:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:25:33,784:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:25:33,786:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:25:33,866:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:25:33,881:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:25:33,881:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:25:33,884:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:25:33,884:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:25:33,884:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:25:47,198:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:25:47,198:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:25:47,198:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:25:47,290:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:25:47,309:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+2026-04-18 01:25:47,354:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:25:47,354:INFO:root:   yt-dlp version: 2026.04.10.235301
+2026-04-18 01:25:47,355:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:25:48,192:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:25:48,192:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:25:48,192:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:25:48,192:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:25:48,192:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:25:48,192:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:25:48,192:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:25:48,192:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:25:48,192:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:25:48,193:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:25:48,248:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:25:48,261:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:25:48,261:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:25:48,264:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:25:48,264:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:25:48,264:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:26:00,967:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+2026-04-18 01:26:02,850:WARNING:root: _resolve_with_fallback: format 'bestaudio*/best' not available, trying next (attempt 1/6)
+2026-04-18 01:26:04,795:WARNING:root: _resolve_with_fallback: format 'bestaudio/best' not available, trying next (attempt 2/6)
+2026-04-18 01:26:06,851:WARNING:root: _resolve_with_fallback: format 'bestaudio[abr>0]/best' not available, trying next (attempt 3/6)
+2026-04-18 01:26:08,846:WARNING:root: _resolve_with_fallback: format 'ba/b' not available, trying next (attempt 4/6)
+2026-04-18 01:26:10,732:WARNING:root: _resolve_with_fallback: format 'best' not available, trying next (attempt 5/6)
+2026-04-18 01:26:12,685:WARNING:root: _resolve_with_fallback: format 'worstaudio/worst' not available, trying next (attempt 6/6)
+2026-04-18 01:26:12,685:ERROR:root: _resolve_with_fallback: All 6 format strings failed for https://www.youtube.com/watch?v=dQw4w9WgXcQ. Last error: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:26:12,686:ERROR:root: Dashboard: async call failed: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats

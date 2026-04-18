@@ -1,0 +1,41 @@
+2026-04-18 01:17:07,050:INFO:root: yt-dlp cache directory already exists: yt_dlp_cache
+2026-04-18 01:17:07,050:INFO:root: ─── Startup Config ───────────────────────────────────────
+2026-04-18 01:17:07,050:WARNING:root:   YouTube Data API key: ⚠️ NOT SET — YouTube search (?search, ?play <keywords>) will not work. Set YOUTUBE_API_KEY in .env. (Direct URL playback still works without it.)
+2026-04-18 01:17:07,146:INFO:root: AI Side Host: Enabled (base=gemma4:latest, custom=mbot-sidehost, host=http://localhost:11434)
+2026-04-18 01:17:07,164:INFO:root: Web dashboard starting on http://0.0.0.0:8081
+ * Serving Flask app 'web.app'
+ * Debug mode: off
+2026-04-18 01:17:07,207:WARNING:root:   yt-dlp cookies: ⚠️ NOT CONFIGURED — youtube_cookie.txt not found and no browser set. YouTube may block playback. Set YTDDL_COOKIES_FROM_BROWSER or export cookies from Mission Control → Settings → Cookie Auth.
+2026-04-18 01:17:07,207:INFO:root:   yt-dlp version: 2026.04.10.235301
+2026-04-18 01:17:07,208:INFO:root:   yt-dlp: Testing YouTube extraction...
+2026-04-18 01:17:07,933:INFO:root:   yt-dlp: ✅ YouTube extraction works
+2026-04-18 01:17:07,933:INFO:root:   TTS Engine: 🖥️ MOSS-TTS-Nano → http://172.16.1.125:18083
+2026-04-18 01:17:07,933:INFO:root:   DJ default voice: en_warm_female
+2026-04-18 01:17:07,933:INFO:root:   AI Side Host: ✅ Enabled → http://localhost:11434
+2026-04-18 01:17:07,933:INFO:root:   AI model: mbot-sidehost (base: gemma4:latest)
+2026-04-18 01:17:07,933:INFO:root:   YouTube Live: ⚪ Disabled
+2026-04-18 01:17:07,933:INFO:root:   Web Dashboard: http://0.0.0.0:8081
+2026-04-18 01:17:07,933:WARNING:root:   Web Dashboard auth: ⚠️ No password — dashboard is open to everyone
+2026-04-18 01:17:07,933:INFO:root: ─────────────────────────────────────────────────────────
+2026-04-18 01:17:07,934:INFO:root: Successfully loaded extension: admin.py
+2026-04-18 01:17:07,995:WARNING:root: yt-dlp: Cookie file 'youtube_cookie.txt' not found. Running without cookies — YouTube may block requests.
+2026-04-18 01:17:08,010:INFO:root: DJ: Using MOSS-TTS-Nano server at http://172.16.1.125:18083
+2026-04-18 01:17:08,010:INFO:root: DJ: MOSS voice prompts directory: /home/jais/Desktop/Projects/step 2/The 420 Radio DJ /assets/moss_voices
+2026-04-18 01:17:08,013:INFO:root: Successfully loaded extension: music.py
+2026-04-18 01:17:08,013:WARNING:root: ⚠️ Invalid or missing Discord Token.
+2026-04-18 01:17:08,013:WARNING:root: 📻 Running in Pure Headless Radio Mode (No Discord connection).
+2026-04-18 01:17:20,856:INFO:broadcaster: PCMBroadcaster initialized: Streaming all audio outputs seamlessly to ('127.0.0.1', 12345)
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:22,743:WARNING:root: _resolve_with_fallback: format 'bestaudio*/best' not available, trying next (attempt 1/6)
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:24,851:WARNING:root: _resolve_with_fallback: format 'bestaudio/best' not available, trying next (attempt 2/6)
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:26,583:WARNING:root: _resolve_with_fallback: format 'bestaudio[abr>0]/best' not available, trying next (attempt 3/6)
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:28,372:WARNING:root: _resolve_with_fallback: format 'ba/b' not available, trying next (attempt 4/6)
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:30,158:WARNING:root: _resolve_with_fallback: format 'best' not available, trying next (attempt 5/6)
+ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:31,919:WARNING:root: _resolve_with_fallback: format 'worstaudio/worst' not available, trying next (attempt 6/6)
+2026-04-18 01:17:31,919:ERROR:root: _resolve_with_fallback: All 6 format strings failed for https://www.youtube.com/watch?v=dQw4w9WgXcQ. Last error: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats
+2026-04-18 01:17:31,919:ERROR:root: Dashboard: async call failed: ERROR: [youtube] dQw4w9WgXcQ: Requested format is not available. Use --list-formats for a list of available formats

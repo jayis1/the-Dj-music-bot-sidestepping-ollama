@@ -1929,12 +1929,16 @@ async def _generate_tts_moss(
     data.add_field("seed", "0")
 
     # Attach the prompt audio file for voice cloning (if available)
+    # Use a context manager to ensure the file handle is closed even if
+    # the request fails or an exception is raised before the finally block.
     uploaded_prompt = False
+    prompt_audio_fh = None
     if prompt_audio_path and os.path.isfile(prompt_audio_path):
         try:
+            prompt_audio_fh = open(prompt_audio_path, "rb")
             data.add_field(
                 "prompt_audio",
-                open(prompt_audio_path, "rb"),
+                prompt_audio_fh,
                 filename=os.path.basename(prompt_audio_path),
                 content_type="audio/wav",
             )
@@ -1944,6 +1948,12 @@ async def _generate_tts_moss(
                 f"{source}: Failed to attach MOSS prompt audio '{prompt_audio_path}': {e}. "
                 "Will use demo voice instead."
             )
+            if prompt_audio_fh:
+                try:
+                    prompt_audio_fh.close()
+                except Exception:
+                    pass
+                prompt_audio_fh = None
     else:
         if prompt_audio_path:
             logging.warning(
@@ -1994,12 +2004,11 @@ async def _generate_tts_moss(
         return None
     finally:
         # Close the prompt audio file handle if we opened it
-        try:
-            for part in data._parts:
-                if hasattr(part, "source") and hasattr(part.source, "close"):
-                    part.source.close()
-        except Exception:
-            pass
+        if prompt_audio_fh is not None:
+            try:
+                prompt_audio_fh.close()
+            except Exception:
+                pass
 
     # Decode the base64-encoded WAV audio from the response
     audio_b64 = result_data.get("audio_base64", "")

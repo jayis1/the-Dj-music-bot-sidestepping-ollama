@@ -87,7 +87,7 @@ open http://localhost:8080
 
 > **MOSS-TTS-Nano** starts automatically as a sidecar container on port 18083. The bot detects it and uses it immediately — no extra config needed.
 
-**Pre-built image:** `ghcr.io/jayis1/the-dj-music-bot:latest`  
+**Pre-built image:** `ghcr.io/jayis1/the-dj-music-bot:v420.0.3`  
 **Platforms:** `linux/amd64`, `linux/arm64`  
 **Releases:** [GitHub Releases page →](https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama/releases)
 
@@ -145,7 +145,7 @@ The bot supports three TTS engines with automatic fallback. Configure via `.env`
 ```bash
 # CPU (always works, highly optimized, no CUDA needed):
 docker run -d --name moss-tts --restart unless-stopped \
-  -p 18083:18083 ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
+  -p 18083:18083 ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
 
 # Or native install:
 pip install moss-tts-nano

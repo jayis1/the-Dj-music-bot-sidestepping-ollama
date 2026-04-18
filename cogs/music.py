@@ -296,18 +296,42 @@ class Music(commands.Cog):
 
             # Start Headless AutoDJ Master Loop natively!
             class DummyContext:
+                """Minimal mock of discord.ext.commands.Context for headless mode.
+
+                Provides all attributes that play_next(), _after_playback(), and
+                other Music cog methods access on ctx — guild, channel, author,
+                voice_client, bot, and message.  Falls back gracefully when the
+                guild has no text channels (creates a silent mock channel).
+                """
+
                 def __init__(self, bot, guild, wrapper):
                     self.bot = bot
                     self.guild = guild
                     self.author = guild.me
                     self.voice_client = wrapper
+                    # Ensure channel is never None — many code paths access
+                    # ctx.channel.id which would crash on None.
                     self.channel = (
-                        guild.text_channels[0] if guild.text_channels else None
+                        guild.text_channels[0] if guild.text_channels else _SilentChannel(guild)
                     )
                     self.message = type("Mock", (), {"author": self.author})()
 
                 async def send(self, *args, **kwargs):
                     pass
+
+            class _SilentChannel:
+                """A mock Discord channel that absorbs all messages silently."""
+
+                def __init__(self, guild):
+                    self.id = guild.id  # Use guild ID as a stable unique ID
+                    self.name = "silent-channel"
+                    self.guild = guild
+
+                async def send(self, *args, **kwargs):
+                    pass
+
+                async def fetch_message(self, message_id):
+                    return None
 
             wrapper = PCMBroadcasterWrapper(
                 self.bot, guild.id, self._broadcasters[guild.id]
@@ -1008,6 +1032,16 @@ class Music(commands.Cog):
             logging.debug(f"_safe_change_presence: failed (headless?): {e}")
 
     async def play_next(self, ctx, _skip_count=0, _drm_skip_count=0):
+        """Play the next song in the queue.
+
+        When a PlaceholderTrack fails to resolve (e.g. DRM, auth errors,
+        unavailable videos), this method used to recurse directly. This can
+        cause stack overflow with large playlists of bad tracks.
+
+        The _skip_count and _drm_skip_count guards prevent infinite retries,
+        and the retry paths now use asyncio.create_task() to break the
+        call stack, preventing stack overflow on consecutive failures.
+        """
         logging.info("play_next called.")
         queue = await self.get_queue(ctx.guild.id)
         if not queue.empty() and ctx.voice_client:
@@ -1062,7 +1096,12 @@ class Music(commands.Cog):
                         f"play_next: PlaceholderTrack has no webpage_url, skipping. Title: {data.title}"
                     )
                     await asyncio.sleep(1)
-                    await self.play_next(ctx, _skip_count=_skip_count + 1)
+                    # Use create_task to break the recursive call stack —
+                    # prevents stack overflow on playlists with many bad tracks.
+                    asyncio.ensure_future(
+                        self.play_next(ctx, _skip_count=_skip_count + 1),
+                        loop=self.bot.loop,
+                    )
                     return
 
                 logging.info(
@@ -1080,7 +1119,11 @@ class Music(commands.Cog):
                             f"Title: {data.title}, url: {data.url}"
                         )
                         await asyncio.sleep(2)
-                        await self.play_next(ctx, _skip_count=_skip_count + 1)
+                        # Use ensure_future to break the call stack and prevent overflow
+                        asyncio.ensure_future(
+                            self.play_next(ctx, _skip_count=_skip_count + 1),
+                            loop=self.bot.loop,
+                        )
                         return
                     logging.info(
                         f"play_next: Resolved PlaceholderTrack to '{data.title}' "
@@ -1119,10 +1162,14 @@ class Music(commands.Cog):
                             self._start_inactivity_timer(guild_id)
                             return
                         # Don't sleep — just move on to the next track immediately
-                        await self.play_next(
-                            ctx,
-                            _skip_count=_skip_count,
-                            _drm_skip_count=_drm_skip_count + 1,
+                        # Use ensure_future to break the recursive call stack.
+                        asyncio.ensure_future(
+                            self.play_next(
+                                ctx,
+                                _skip_count=_skip_count,
+                                _drm_skip_count=_drm_skip_count + 1,
+                            ),
+                            loop=self.bot.loop,
                         )
                         return
 
@@ -1147,7 +1194,11 @@ class Music(commands.Cog):
                             "UPGRADE: pip install -U yt-dlp  (cookies alone won't fix this)"
                         )
                     await asyncio.sleep(2)
-                    await self.play_next(ctx, _skip_count=_skip_count + 1)
+                    # Use ensure_future to break the call stack and prevent overflow
+                    asyncio.ensure_future(
+                        self.play_next(ctx, _skip_count=_skip_count + 1),
+                        loop=self.bot.loop,
+                    )
                     return
 
             # ── DJ Mode: Speak an intro before the song ────────────
@@ -1490,8 +1541,11 @@ class Music(commands.Cog):
             current_song_data = self.current_song.get(guild_id)
             if current_song_data:
                 await queue.put(current_song_data)
+                # current_song_data is a YTDLSource/PlaceholderTrack object,
+                # not a dict — use attribute access, not .get()
+                song_title = getattr(current_song_data, "title", "Unknown")
                 logging.info(
-                    f"Looping enabled. Re-added {current_song_data.get('title', 'Unknown')} to queue."
+                    f"Looping enabled. Re-added {song_title} to queue."
                 )
 
         # Play the next song in the queue

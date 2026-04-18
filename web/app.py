@@ -213,10 +213,11 @@ bot = None
 
 @app.context_processor
 def inject_bot_name():
-    """Make the bot's name and session auth state available in all templates."""
+    """Make the bot's name, version, and session auth state available in all templates."""
     name = bot.user.name if bot and bot.user else "MBot"
     return {
         "bot_name": name,
+        "bot_version": getattr(config, "BOT_VERSION", "dev"),
         "logged_in": session.get("authenticated", False),
     }
 

@@ -9,6 +9,9 @@ import config
 import logging
 from utils.discord_log_handler import DiscordLogHandler
 
+# Version constant (single source of truth — also in config.py)
+BOT_VERSION = config.BOT_VERSION
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +34,7 @@ discord_log_handler = None  # Initialize as None, will be set in on_ready
 @bot.event
 async def on_ready():
     global discord_log_handler
+    logging.info(f"🏴‍☠️ The Radio Pirate DJ Bot {BOT_VERSION}")
     logging.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logging.info(f"Intents: {bot.intents}")
     logging.info("------")

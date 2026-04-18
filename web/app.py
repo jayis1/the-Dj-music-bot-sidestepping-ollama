@@ -3451,6 +3451,7 @@ def api_obs_streaming_configure_and_start():
 
     # Step 3: Ensure overlay browser source exists in the "📺 Overlay Only" scene
     overlay_url = getattr(config, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+    overlay_scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
 
     # Try to create the browser source (no-op if it already exists)
     bridge.create_browser_source(
@@ -3458,16 +3459,17 @@ def api_obs_streaming_configure_and_start():
         url=overlay_url,
         width=1280,
         height=720,
+        scene_name=overlay_scene,
     )
 
     # Step 4: Ensure FFmpeg audio source exists for bot audio (UDP PCM on port 12345)
     bridge.create_audio_source(
         source_name="Bot Audio (UDP)",
         udp_port=12345,
+        scene_name=overlay_scene,
     )
 
     # Step 5: Switch to the overlay scene
-    overlay_scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
     bridge.set_current_scene(overlay_scene)
 
     # Step 6: Start OBS streaming

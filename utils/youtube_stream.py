@@ -113,6 +113,7 @@ class YouTubeLiveStreamer:
         self._started_at: float = 0
         self._last_error: str = ""
         self._use_vaapi = _VAAPI_ENABLED
+        self._stream_starting = False  # Guard against concurrent start attempts
         
         self.update_hud(waiting="Booting Mainframes...")
 
@@ -269,17 +270,27 @@ class YouTubeLiveStreamer:
     async def _start_obs_stream(self) -> bool:
         """Configure OBS for streaming and start the stream.
 
-        Sets the RTMP server + stream key in OBS, then calls start_stream().
-        OBS handles all video (scenes + browser overlay) and audio capture,
-        and is the single streaming point to YouTube Live.
+        Sets up everything OBS needs to stream to YouTube Live:
+        1. Push RTMP server + stream key to OBS
+        2. Ensure the overlay scene exists
+        3. Create browser overlay source (Mission Control overlay)
+        4. Create audio source (UDP PCM from bot's PCMBroadcaster)
+        5. Switch to the overlay scene
+        6. Start OBS streaming
 
         Returns True if streaming started successfully, False otherwise.
         """
         if not self._obs_bridge:
             return False
 
+        # Guard against concurrent start attempts (watchdog + initial start)
+        if self._stream_starting:
+            log.debug("YouTube Live/OBS: Start already in progress, skipping")
+            return True  # Assume the in-progress start will succeed
+        self._stream_starting = True
+
         try:
-            # Configure OBS stream settings: RTMP server + stream key
+            # Step 1: Configure OBS stream settings: RTMP server + stream key
             rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
             log.info(
                 f"YouTube Live/OBS: Configuring stream → {rtmp_endpoint} "
@@ -296,13 +307,49 @@ class YouTubeLiveStreamer:
 
             log.info("YouTube Live/OBS: Stream settings configured ✅")
 
-            # Ensure the overlay browser source exists in the current scene.
-            # The "📺 Overlay Only" scene already has it, but we make sure
-            # OBS can reach the overlay page.
+            # Step 2: Ensure the overlay scene exists
+            overlay_scene = os.environ.get(
+                "OBS_SCENE_OVERLAY", "📺 Overlay Only"
+            )
+            scene_list_result = self._obs_bridge.get_status()
+            existing_scenes = scene_list_result.get("scenes", [])
+            if overlay_scene not in existing_scenes:
+                log.info(f"YouTube Live/OBS: Creating scene '{overlay_scene}'")
+                try:
+                    self._obs_bridge.create_scene(overlay_scene)
+                except Exception:
+                    pass  # Scene might already exist (race), that's OK
+
+            # Step 3: Create browser overlay source (no-op if it already exists)
             overlay_url = os.environ.get("OBS_OVERLAY_URL", "http://localhost:8080/overlay")
             log.info(f"YouTube Live/OBS: Overlay URL → {overlay_url}")
+            try:
+                self._obs_bridge.create_browser_source(
+                    source_name="Browser Overlay (Bot)",
+                    url=overlay_url,
+                    width=1280,
+                    height=720,
+                    scene_name=overlay_scene,
+                )
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Browser source creation note: {e}")
 
-            # Start OBS streaming
+            # Step 4: Create FFmpeg audio source (UDP PCM from bot)
+            try:
+                self._obs_bridge.create_audio_source(
+                    source_name="Bot Audio (UDP)",
+                    udp_port=12345,
+                    scene_name=overlay_scene,
+                )
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Audio source creation note: {e}")
+
+            # Step 5: Switch to the overlay scene BEFORE starting stream
+            # This ensures the correct content is there from frame 1
+            self._obs_bridge.set_current_scene(overlay_scene)
+            log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
+
+            # Step 6: Start OBS streaming
             result = self._obs_bridge.start_streaming()
             if not result.get("connected"):
                 log.warning(f"YouTube Live/OBS: Failed to start streaming: {result}")
@@ -318,19 +365,13 @@ class YouTubeLiveStreamer:
                 return False
 
             log.info("YouTube Live/OBS: Streaming started ✅")
-
-            # Switch to the overlay scene for YouTube Live
-            overlay_scene = os.environ.get(
-                "OBS_SCENE_OVERLAY", "📺 Overlay Only"
-            )
-            self._obs_bridge.switch_scene(overlay_scene)
-            log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
-
             return True
 
         except Exception as e:
             log.error(f"YouTube Live/OBS: Exception starting stream: {e}")
             return False
+        finally:
+            self._stream_starting = False
 
     async def _stop_obs_stream(self):
         """Stop OBS streaming."""

@@ -396,6 +396,12 @@ class OBSBridge:
 
     # ── Scene Control ─────────────────────────────────────────────────────
 
+    def create_scene(self, scene_name: str) -> dict:
+        """Create a new scene in OBS. No-op if it already exists."""
+        return self._safe_call(
+            lambda c, sn=scene_name: c.create_scene(sceneName=sn)
+        )
+
     def set_current_scene(self, scene_name: str) -> dict:
         """Switch to a different OBS scene."""
         return self._safe_call(
@@ -578,51 +584,70 @@ class OBSBridge:
 
     # ── Source Creation ──────────────────────────────────────────────────
 
-    def create_browser_source(self, source_name: str, url: str, width: int = 1280, height: int = 720) -> dict:
+    def create_browser_source(self, source_name: str, url: str, width: int = 1280, height: int = 720, scene_name: str = "") -> dict:
         """Create a browser source in OBS pointing to a URL.
 
         Used to add the Mission Control overlay as a browser source
         that OBS can stream to YouTube Live.
+
+        Args:
+            source_name: Name for the source in OBS
+            url: URL the browser source will display
+            width/height: Dimensions of the browser source
+            scene_name: Scene to add the source to (empty = current scene)
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
 
-        return self._safe_call(
-            lambda c, sn=source_name, u=url, w=width, h=height: c.create_input(
+        def _create(c, _sn=source_name, _u=url, _w=width, _h=height, _scene=scene_name):
+            kwargs = dict(
                 inputKind="browser_source",
-                inputName=sn,
+                inputName=_sn,
                 inputSettings={
-                    "url": u,
-                    "width": w,
-                    "height": h,
+                    "url": _u,
+                    "width": _w,
+                    "height": _h,
                     "css": "body { background-color: transparent; margin: 0px; padding: 0px; overflow: hidden; }",
                     "reroute_audio": False,
                     "shutdown": True,
                 },
                 sceneItemEnabled=True,
             )
-        )
+            if _scene:
+                kwargs["sceneName"] = _scene
+            return c.create_input(**kwargs)
 
-    def create_audio_source(self, source_name: str, udp_port: int = 12345) -> dict:
+        return self._safe_call(_create)
+
+    def create_audio_source(self, source_name: str, udp_port: int = 12345, scene_name: str = "") -> dict:
         """Create a FFmpeg audio source that reads from the PCMBroadcaster UDP pipe.
 
         This allows OBS to capture the bot's audio output (music, TTS, SFX)
         for streaming alongside the visual overlay.
+
+        Args:
+            source_name: Name for the source in OBS
+            udp_port: UDP port to listen on (default 12345)
+            scene_name: Scene to add the source to (empty = current scene)
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
 
-        return self._safe_call(
-            lambda c, sn=source_name, p=udp_port: c.create_input(
+        def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
+            kwargs = dict(
                 inputKind="ffmpeg_source",
-                inputName=sn,
+                inputName=_sn,
                 inputSettings={
-                    "input": f"udp://127.0.0.1:{p}?pkt_size=3840&buffer_size=65536&reuse=1",
+                    "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=65536&reuse=1",
                     "is_local_file": False,
                 },
                 sceneItemEnabled=True,
             )
-        )
+            if _scene:
+                kwargs["sceneName"] = _scene
+            return c.create_input(**kwargs)
+
+        return self._safe_call(_create)
 
     # ── Reconnect ─────────────────────────────────────────────────────────
 

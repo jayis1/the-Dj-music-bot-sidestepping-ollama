@@ -240,7 +240,10 @@ class DjPregenerator:
             try:
                 # Get the next N songs from the queue without consuming them
                 upcoming = []
-                if queue and hasattr(queue, "_queue"):
+                if music and guild_id:
+                    upcoming = music.peek_queue(guild_id, max_items=max_ahead)
+                elif queue and hasattr(queue, "_queue"):
+                    # Fallback: direct queue access (legacy path)
                     upcoming = list(queue._queue)[:max_ahead]
 
                 if not upcoming:

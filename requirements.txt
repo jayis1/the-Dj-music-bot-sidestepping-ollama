@@ -9,6 +9,7 @@ edge-tts
 flask
 psutil
 syncedlyrics
+obsws-python
 pytest
 pytest-asyncio
 aioresponses

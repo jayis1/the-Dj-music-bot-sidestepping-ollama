@@ -8,11 +8,41 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='logo.jpg') }}">
     <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- CSRF token for protection against cross-site request forgery -->
+    <meta name="csrf-token" content="{{ csrf_token() }}">
 </head>
 <body>
     <div class="layout">
-        <nav class="sidebar">
-            <div class="sidebar-brand">
+
+    <!-- Global fetch() shim — automatically adds CSRF token to all mutating requests -->
+    <script>
+    (function() {
+        const originalFetch = window.fetch;
+        const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+        window.fetch = function(url, options) {
+            options = options || {};
+            // Add CSRF token header to all non-GET requests
+            if (options.method && options.method.toUpperCase() !== 'GET' &&
+                options.method.toUpperCase() !== 'HEAD' && options.method.toUpperCase() !== 'OPTIONS') {
+                options.headers = options.headers || {};
+                // Don't override if already set (e.g., by cookie bridge)
+                if (!options.headers['X-CSRFToken'] && !options.headers['X-Csrf-Token']) {
+                    if (options.headers instanceof Headers) {
+                        options.headers.set('X-CSRFToken', csrfToken);
+                    } else {
+                        options.headers['X-CSRFToken'] = csrfToken;
+                    }
+                }
+            }
+            return originalFetch.call(this, url, options);
+        };
+    })();
+    </script>
+
+    <nav class="sidebar">
+        <div class="sidebar-brand">
                 <img src="{{ url_for('static', filename='logo.jpg') }}" alt="{{ bot_name }}" style="width: 36px; height: 36px; border-radius: 8px; margin-bottom: 4px;">
                 <h1>{{ bot_name }}</h1>
                 <div class="subtitle">Mission Control</div>
@@ -41,6 +71,9 @@
                 </a>
                 <a href="{{ url_for('overlay_page') }}" class="nav-item {% if request.endpoint == 'overlay_page' %}active{% endif %}" target="_blank">
                     <span class="icon">📺</span> OBS Overlay
+                </a>
+                <a href="{{ url_for('obs_page') }}" class="nav-item {% if request.endpoint == 'obs_page' %}active{% endif %}">
+                    <span class="icon">🎬</span> OBS Studio
                 </a>
             </div>
             {% if session.get('authenticated') %}

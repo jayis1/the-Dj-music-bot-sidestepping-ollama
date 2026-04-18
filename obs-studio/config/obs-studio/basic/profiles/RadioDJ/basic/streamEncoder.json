@@ -1,0 +1,5 @@
+{
+    "DeviceName": "Radio DJ Audio (PulseAudio Null Sink)",
+    "DeviceId": "radio_dj_sink.monitor",
+    "Type": "wasapi_output_capture"
+}

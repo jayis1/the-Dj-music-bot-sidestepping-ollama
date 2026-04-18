@@ -1,12 +1,13 @@
 import pytest
 import asyncio
+import copy
 from cogs.youtube import YTDLSource, YTDL_FORMAT_OPTIONS
 
 @pytest.mark.asyncio
 async def test_playlist_extraction():
     url = "https://youtube.com/playlist?list=PL7UlqC4kFPVpadgAlxqcYPhWPPJ_H2Ghi&si=acuADwYbCwY45rR5"
     
-    playlist_opts = YTDL_FORMAT_OPTIONS.copy()
+    playlist_opts = copy.deepcopy(YTDL_FORMAT_OPTIONS)
     playlist_opts["noplaylist"] = False
     playlist_opts["playlist_items"] = "1-2" # Just 2 items for quick test
     
@@ -22,7 +23,7 @@ async def test_playlist_extraction():
 async def test_radio_extraction():
     url = "https://youtube.com/playlist?list=PL7UlqC4kFPVpadgAlxqcYPhWPPJ_H2Ghi&si=acuADwYbCwY45rR5"
     
-    radio_opts = YTDL_FORMAT_OPTIONS.copy()
+    radio_opts = copy.deepcopy(YTDL_FORMAT_OPTIONS)
     radio_opts["noplaylist"] = False
     radio_opts["playlist_items"] = "1-10" # test with 10 items
     

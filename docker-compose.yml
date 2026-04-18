@@ -1,15 +1,16 @@
 # ── Radio DJ Music Bot — Docker Compose ──────────────────────────────────────
-# Starts the bot + MOSS-TTS-Nano + Ollama together.
+# One-command radio station: bot + DJ voice + AI host + OBS Studio.
 #
 # Quick start:
 #   1. cp .env.example .env && nano .env   (set DISCORD_TOKEN at minimum)
 #   2. docker compose up -d
 #   3. Open http://your-server:8080 for Mission Control
 #
-# Services:
+# Services (all start by default with docker compose up -d):
 #   - bot:        The Radio DJ Discord bot + web dashboard
 #   - moss-tts:   MOSS-TTS-Nano voice cloning server (CPU, 0.1B params)
 #   - ollama:     AI side host LLM server (auto-pulls model on first start)
+#   - obs:        Headless OBS Studio for streaming + scene control
 #
 # GPU acceleration (optional — pick ONE profile):
 #   CPU only:                docker compose up -d
@@ -19,6 +20,7 @@
 #
 # The MOSS-TTS-Nano server runs on CPU by default (no GPU needed).
 # Ollama runs the AI side host — disable with OLLAMA_DJ_ENABLED=false in .env.
+# OBS Studio runs headlessly — control it from Mission Control → OBS Studio.
 #
 # ── AMD GPU Compatibility (ROCm 7.2) ────────────────────────────────────────
 #
@@ -105,6 +107,51 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
 
+  # ── OBS Studio (headless) ─────────────────────────────────────────────
+  # Headless OBS Studio for automated streaming — part of the default stack.
+  # Control everything from Mission Control → OBS Studio page.
+  #
+  # OBS provides:
+  #   - Scene switching (e.g., "Now Playing", "DJ Speaking", "Waiting")
+  #   - Streaming to YouTube/Twitch simultaneously with the bot
+  #   - Recording for later rebroadcast
+  #   - Replay buffer for highlight clips
+  #   - Browser source for the DJ overlay (http://bot:8080/overlay)
+  #
+  # The bot auto-connects to OBS via WebSocket (OBS_WS_HOST=obs).
+  # OBS scene collections and settings persist in the obs_config volume.
+  #
+  # To also use a desktop OBS: change OBS_WS_HOST in .env to your
+  # desktop IP and remove this container from the stack.
+  obs:
+    image: ghcr.io/jayis1/the-dj-music-bot/obs-studio:latest
+    # Uncomment to build locally instead:
+    # build:
+    #   context: ./obs-studio
+    #   dockerfile: Dockerfile
+    container_name: obs
+    restart: unless-stopped
+    ports:
+      - "4455:4455"    # WebSocket server (Mission Control connects here)
+      - "5900:5900"    # VNC (optional — for debugging the OBS UI remotely)
+    environment:
+      - OBS_WEBSOCKET_PASSWORD=${OBS_WS_PASSWORD:-djbot}
+      - DISPLAY=:99
+      - RESOLUTION=1280x720
+      - FPS=30
+    volumes:
+      - obs_config:/home/obs/.config/obs-studio
+      - ./assets:/app/assets:ro    # Logo, overlays, GIFs for OBS scenes
+    healthcheck:
+      # OBS WebSocket uses the WebSocket protocol, not HTTP. curl returns
+      # non-200 for WebSocket endpoints, so we use Python to test the TCP
+      # connection. Also verify the OBS process is running via pgrep.
+      test: ["CMD-SHELL", "pgrep -x obs > /dev/null && python3 -c \"import socket; s=socket.socket(); s.settimeout(2); s.connect(('localhost',4455)); s.close()\" || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   # ── Radio DJ Bot ───────────────────────────────────────────────────────────
   bot:
     image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
@@ -112,14 +159,17 @@ services:
     # build: .
     container_name: radio-dj-bot
     restart: unless-stopped
-    # The bot starts even if MOSS or Ollama are still booting — it gracefully
-    # falls back to Edge TTS if MOSS is down, and disables AI side host if
-    # Ollama is down. Using service_started instead of service_healthy prevents
-    # the bot from being killed (exit 137) when MOSS crash-loops.
+    # The bot starts even if MOSS, Ollama, or OBS are still booting —
+    # it gracefully falls back to Edge TTS if MOSS is down, disables
+    # AI side host if Ollama is down, and disables OBS control if OBS
+    # is down. Using service_started instead of service_healthy prevents
+    # the bot from being killed (exit 137) when a dependency crash-loops.
     depends_on:
       moss-tts:
         condition: service_started
       ollama:
+        condition: service_started
+      obs:
         condition: service_started
     env_file:
       - .env
@@ -128,6 +178,8 @@ services:
       - MOSS_TTS_URL=http://moss-tts:18083
       - TTS_MODE=moss
       - OLLAMA_HOST=http://ollama:11434
+      - OBS_WS_HOST=obs
+      - OBS_WS_PORT=4455
     ports:
       - "8080:8080"       # Mission Control web dashboard
     volumes:
@@ -150,20 +202,19 @@ services:
   # This gives you hardware-accelerated YouTube Live streaming while keeping
   # Ollama and MOSS-TTS on CPU (which is fine — they're fast on CPU).
   #
-  # Ollama and MOSS continue to run in CPU-only mode (the default services
-  # above). Only the bot container gets GPU access for encoding.
-  #
   # Enable: docker compose --profile vaapi up -d
   bot-vaapi:
     image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
     container_name: radio-dj-bot
     profiles: ["vaapi"]
     restart: unless-stopped
-    # Bot starts even if MOSS/Ollama are still booting — graceful fallback.
+    # Bot starts even if MOSS/Ollama/OBS are still booting — graceful fallback.
     depends_on:
       moss-tts:
         condition: service_started
       ollama:
+        condition: service_started
+      obs:
         condition: service_started
     env_file:
       - .env
@@ -171,6 +222,8 @@ services:
       - MOSS_TTS_URL=http://moss-tts:18083
       - TTS_MODE=moss
       - OLLAMA_HOST=http://ollama:11434
+      - OBS_WS_HOST=obs
+      - OBS_WS_PORT=4455
       - AMD_GPU_VAAPI=1
     ports:
       - "8080:8080"
@@ -212,12 +265,6 @@ services:
   #   ⚠️  RX 5700 XT / 5700 / 5600 XT / 5500 XT  (RDNA1)
   #       → Set HSA_OVERRIDE_GFX_VERSION=10.1.0 in .env
   #
-  # If your GPU isn't detected, check:
-  #   1. lsmod | grep amdgpu           (kernel module loaded?)
-  #   2. ls -la /dev/kfd /dev/dri/     (device nodes exist?)
-  #   3. sudo chmod 777 /dev/dri/renderD128 /dev/kfd   (permissions?)
-  #   4. vainfo                         (VA-API working?)
-  #
   # GPU architecture → HSA_OVERRIDE_GFX_VERSION cheat sheet:
   #   RDNA4  (RX 9070/9060):      not needed (gfx1200/1201 native)
   #   RDNA3  (RX 7900/7800/7700):  not needed (gfx1100/1101 native)
@@ -226,12 +273,6 @@ services:
   #   RDNA1  (RX 5700/5600/5500):  HSA_OVERRIDE_GFX_VERSION=10.1.0
   #
   # Enable: docker compose --profile amd-gpu up -d
-  #
-  # What it does:
-  #   - Ollama uses the ROCm image for AMD GPU inference (~5-10x faster)
-  #   - MOSS-TTS-Nano gets /dev/kfd and /dev/dri for GPU TTS
-  #   - FFmpeg encoding for YouTube Live uses VA-API hardware encoding
-  #   - HSA_OVERRIDE_GFX_VERSION is configurable via .env
 
   ollama-amd:
     image: ollama/ollama:rocm
@@ -246,10 +287,6 @@ services:
       - /dev/kfd
       - /dev/dri
     environment:
-      # HSA_OVERRIDE_GFX_VERSION: Needed for RDNA1/RDNA2/RDNA3.5 GPUs.
-      # Not needed for RDNA3 (gfx1100/1101) or RDNA4 (gfx1200/1201).
-      # Set this in your .env file to match your GPU architecture.
-      # See the cheat sheet above for the correct value.
       - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
@@ -285,11 +322,12 @@ services:
     container_name: radio-dj-bot
     profiles: ["amd-gpu"]
     restart: unless-stopped
-    # Bot starts even if MOSS/Ollama are still booting — graceful fallback.
     depends_on:
       moss-tts-amd:
         condition: service_started
       ollama-amd:
+        condition: service_started
+      obs:
         condition: service_started
     env_file:
       - .env
@@ -297,6 +335,8 @@ services:
       - MOSS_TTS_URL=http://moss-tts:18083
       - TTS_MODE=moss
       - OLLAMA_HOST=http://ollama:11434
+      - OBS_WS_HOST=obs
+      - OBS_WS_PORT=4455
       - AMD_GPU_VAAPI=1
     ports:
       - "8080:8080"
@@ -336,10 +376,6 @@ services:
   #           https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html
   #
   # Enable:   docker compose --profile nvidia-gpu up -d
-  #
-  # What it does:
-  #   - Ollama uses the CUDA image for NVIDIA GPU inference (~5-10x faster)
-  #   - MOSS-TTS-Nano gets NVIDIA GPU access for faster TTS generation
 
   ollama-nvidia:
     image: ollama/ollama:latest
@@ -394,11 +430,12 @@ services:
     container_name: radio-dj-bot
     profiles: ["nvidia-gpu"]
     restart: unless-stopped
-    # Bot starts even if MOSS/Ollama are still booting — graceful fallback.
     depends_on:
       moss-tts-nvidia:
         condition: service_started
       ollama-nvidia:
+        condition: service_started
+      obs:
         condition: service_started
     env_file:
       - .env
@@ -406,6 +443,8 @@ services:
       - MOSS_TTS_URL=http://moss-tts:18083
       - TTS_MODE=moss
       - OLLAMA_HOST=http://ollama:11434
+      - OBS_WS_HOST=obs
+      - OBS_WS_PORT=4455
     ports:
       - "8080:8080"
     volumes:
@@ -449,3 +488,6 @@ volumes:
     # Persists Ollama models across container restarts so you don't
     # have to re-download multi-GB model files every time.
     name: radio-dj-ollama
+  obs_config:
+    # Persists OBS scene collections, sources, and settings.
+    name: radio-dj-obs-config

@@ -1,0 +1,512 @@
+"""
+utils/obs_bridge.py — OBS Studio WebSocket Bridge for Mission Control.
+
+Provides bidirectional control of OBS Studio via the obs-websocket 5.x protocol.
+Used by the Mission Control dashboard to manage scenes, sources, transitions,
+streaming, recording, and filters — all from the web UI.
+
+Protocol docs: https://github.com/obsproject/obs-websocket/blob/master/docs/generated/protocol.json
+Python client: https://github.com/obs-websocket-community-project/obsws-python
+
+obsws-python ReqClient API:
+  The ReqClient has NAMED methods for every request, e.g.:
+    client.start_stream()
+    client.stop_stream()
+    client.toggle_stream()
+    client.get_stream_status()
+    client.set_current_program_scene(sceneName="My Scene")
+    ...
+
+  There is NO generic client.call() method. The low-level client.send(param, data, raw=True)
+  sends a raw request and returns a raw dict, but named methods are preferred because
+  they return properly typed dataclass objects.
+
+Setup:
+  1. Install OBS Studio: https://obsproject.com
+  2. Install obs-websocket 5 plugin (bundled with OBS 28+)
+  3. In OBS: Tools → WebSocket Server Settings → Enable, set port & password
+  4. Set OBS_WS_HOST and OBS_WS_PASSWORD in .env
+  5. Open Mission Control → OBS Studio page
+"""
+
+import asyncio
+import logging
+import time
+import os
+
+log = logging.getLogger("obs-bridge")
+
+# ── OBS WebSocket Connection ─────────────────────────────────────────────
+
+# Lazy import — obsws is optional (not everyone needs OBS)
+_obsws = None
+
+
+def _get_obsws():
+    """Lazily import obsws-python. Returns None if not installed."""
+    global _obsws
+    if _obsws is not None:
+        return _obsws
+    try:
+        import obsws_python as obsws
+        _obsws = obsws
+        return _obsws
+    except ImportError:
+        log.debug("obsws-python not installed — OBS integration disabled")
+        return None
+
+
+class OBSBridge:
+    """Manages the connection to OBS Studio via obs-websocket 5.x.
+
+    This is a stateless request/response bridge — it connects, sends a
+    request, and disconnects. This avoids the complexity of maintaining
+    a persistent WebSocket connection with reconnection logic, event
+    subscriptions, and thread safety concerns.
+
+    For real-time event subscriptions (e.g., scene change notifications),
+    a future version could add a persistent connection with callbacks.
+    """
+
+    def __init__(self, host: str = "localhost", port: int = 4455, password: str = "", enabled: bool = True):
+        self.host = host
+        self.port = port
+        self.password = password
+        self.enabled = enabled and bool(password)  # Don't try if no password
+        self._last_status = None
+        self._last_status_time = 0
+        self._status_cache_ttl = 5  # seconds
+
+        if self.enabled:
+            obsws = _get_obsws()
+            if obsws is None:
+                self.enabled = False
+                log.info("OBS Bridge: Disabled (obsws-python not installed)")
+            else:
+                log.info(f"OBS Bridge: Configured → {self.host}:{self.port}")
+        else:
+            if not password:
+                log.info("OBS Bridge: Disabled (no OBS_WS_PASSWORD set)")
+
+    def _connect(self):
+        """Create a new OBS WebSocket client connection."""
+        obsws = _get_obsws()
+        if obsws is None:
+            return None
+        try:
+            client = obsws.ReqClient(
+                host=self.host,
+                port=self.port,
+                password=self.password,
+                timeout=5,
+            )
+            return client
+        except Exception as e:
+            log.warning(f"OBS Bridge: Connection failed → {e}")
+            return None
+
+    def _safe_call(self, func, **kwargs):
+        """Send a request to OBS using a named method on ReqClient.
+
+        Connects, calls the method, disconnects — safe for Flask's
+        synchronous context. Returns a result dict for the API.
+
+        Args:
+            func: One of the named ReqClient methods (e.g. client.start_stream).
+            **kwargs: Keyword arguments passed to the method.
+
+        Returns:
+            dict with keys: connected (bool), status ("ok"/"error"), data (dict),
+            and optionally error (str).
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        client = self._connect()
+        if client is None:
+            return {"error": "Could not connect to OBS", "connected": False}
+
+        try:
+            # Call the named method on the ReqClient
+            response = func(client, **kwargs)
+            result = {"connected": True, "status": "ok"}
+
+            # obsws-python returns dataclass objects for typed responses,
+            # or raw dicts when using send(raw=True). Named methods return
+            # dataclasses. Convert to a dict for JSON serialization.
+            if response is None:
+                result["data"] = {}
+            elif isinstance(response, dict):
+                result["data"] = response
+            elif hasattr(response, "__dict__") and not isinstance(response, (str, int, float, bool)):
+                # Dataclass-like object — convert attributes to dict
+                data = {}
+                for key, value in response.__dict__.items():
+                    if not key.startswith("_"):
+                        # Recursively convert nested dataclasses
+                        if hasattr(value, "__dict__") and not isinstance(value, (str, int, float, bool, list)):
+                            data[key] = {
+                                k: v for k, v in value.__dict__.items()
+                                if not k.startswith("_")
+                            }
+                        elif isinstance(value, list):
+                            data[key] = [
+                                {
+                                    k: v for k, v in item.__dict__.items()
+                                    if not k.startswith("_")
+                                }
+                                if hasattr(item, "__dict__") and not isinstance(item, (str, int, float, bool))
+                                else item
+                                for item in value
+                            ]
+                        else:
+                            data[key] = value
+                result["data"] = data
+            else:
+                result["data"] = {"value": response}
+
+            return result
+
+        except Exception as e:
+            error_msg = str(e)
+            log.warning(f"OBS Bridge: Request failed → {error_msg}")
+            return {"error": error_msg, "connected": True}
+        finally:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+    # ══════════════════════════════════════════════════════════════════════
+    # PUBLIC API — called from Flask routes
+    # ══════════════════════════════════════════════════════════════════════
+
+    def get_status(self) -> dict:
+        """Get overall OBS status: streaming, recording, replay buffer, current scene."""
+        # Use cached status if fresh
+        if self._last_status and (time.time() - self._last_status_time) < self._status_cache_ttl:
+            return self._last_status
+
+        result = {
+            "connected": False,
+            "streaming": False,
+            "recording": False,
+            "replay_buffer": False,
+            "current_scene": "",
+            "scenes": [],
+            "transitions": [],
+        }
+
+        if not self.enabled:
+            return result
+
+        client = self._connect()
+        if client is None:
+            return result
+
+        result["connected"] = True
+
+        try:
+            # Get streaming status
+            try:
+                resp = client.get_stream_status()
+                if hasattr(resp, "output_active"):
+                    result["streaming"] = resp.output_active
+                elif isinstance(resp, dict):
+                    result["streaming"] = resp.get("outputActive", False)
+            except Exception:
+                pass
+
+            # Get recording status
+            try:
+                resp = client.get_record_status()
+                if hasattr(resp, "output_active"):
+                    result["recording"] = resp.output_active
+                elif isinstance(resp, dict):
+                    result["recording"] = resp.get("outputActive", False)
+            except Exception:
+                pass
+
+            # Get replay buffer status
+            try:
+                resp = client.get_replay_buffer_status()
+                if hasattr(resp, "output_active"):
+                    result["replay_buffer"] = resp.output_active
+                elif isinstance(resp, dict):
+                    result["replay_buffer"] = resp.get("outputActive", False)
+            except Exception:
+                pass
+
+            # Get current scene
+            try:
+                resp = client.get_current_program_scene()
+                if hasattr(resp, "scene_name"):
+                    result["current_scene"] = resp.scene_name
+                elif isinstance(resp, dict):
+                    result["current_scene"] = resp.get("currentProgramSceneName", "")
+            except Exception:
+                pass
+
+            # Get scene list
+            try:
+                resp = client.get_scene_list()
+                if hasattr(resp, "scenes"):
+                    result["scenes"] = [
+                        s.scene_name if hasattr(s, "scene_name") else s.get("sceneName", "")
+                        for s in resp.scenes
+                    ]
+                elif isinstance(resp, dict):
+                    result["scenes"] = [
+                        s.get("sceneName", str(s)) for s in resp.get("scenes", [])
+                    ]
+            except Exception:
+                pass
+
+            # Get transition list
+            try:
+                resp = client.get_scene_transition_list()
+                if hasattr(resp, "transitions"):
+                    result["transitions"] = [
+                        t.name if hasattr(t, "name") else t.get("transitionName", "")
+                        for t in resp.transitions
+                    ]
+                elif isinstance(resp, dict):
+                    result["transitions"] = [
+                        t.get("transitionName", str(t))
+                        for t in resp.get("transitions", [])
+                    ]
+            except Exception:
+                pass
+
+        except Exception as e:
+            log.warning(f"OBS Bridge: Status query failed → {e}")
+            result["error"] = str(e)
+        finally:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+        self._last_status = result
+        self._last_status_time = time.time()
+        return result
+
+    # ── Streaming Control ─────────────────────────────────────────────────
+
+    def start_streaming(self) -> dict:
+        """Start OBS streaming."""
+        return self._safe_call(lambda c: c.start_stream())
+
+    def stop_streaming(self) -> dict:
+        """Stop OBS streaming."""
+        return self._safe_call(lambda c: c.stop_stream())
+
+    def toggle_streaming(self) -> dict:
+        """Toggle OBS streaming on/off."""
+        return self._safe_call(lambda c: c.toggle_stream())
+
+    # ── Recording Control ─────────────────────────────────────────────────
+
+    def start_recording(self) -> dict:
+        """Start OBS recording."""
+        return self._safe_call(lambda c: c.start_record())
+
+    def stop_recording(self) -> dict:
+        """Stop OBS recording."""
+        return self._safe_call(lambda c: c.stop_record())
+
+    def toggle_recording(self) -> dict:
+        """Toggle OBS recording on/off."""
+        return self._safe_call(lambda c: c.toggle_record())
+
+    # ── Scene Control ─────────────────────────────────────────────────────
+
+    def set_current_scene(self, scene_name: str) -> dict:
+        """Switch to a different OBS scene."""
+        return self._safe_call(
+            lambda c, sn=scene_name: c.set_current_program_scene(sceneName=sn)
+        )
+
+    # ── Source Control ────────────────────────────────────────────────────
+
+    def get_source_list(self) -> dict:
+        """Get all input sources."""
+        return self._safe_call(lambda c: c.get_input_list())
+
+    def set_source_visibility(self, scene_name: str, source_name: str, visible: bool) -> dict:
+        """Toggle visibility of a source in a scene."""
+        item_id = self._get_scene_item_id(scene_name, source_name)
+        if item_id < 0:
+            return {"error": f"Source '{source_name}' not found in scene '{scene_name}'", "connected": True}
+
+        return self._safe_call(
+            lambda c, sn=scene_name, iid=item_id, v=visible: c.set_scene_item_enabled(
+                sceneName=sn, sceneItemId=iid, sceneItemEnabled=v
+            )
+        )
+
+    def _get_scene_item_id(self, scene_name: str, source_name: str) -> int:
+        """Resolve a source name to its scene item ID (requires a live connection)."""
+        client = self._connect()
+        if client is None:
+            return -1
+        try:
+            resp = client.get_scene_item_list(sceneName=scene_name)
+            items = resp.scene_items if hasattr(resp, "scene_items") else resp.get("sceneItems", [])
+            for item in items:
+                name = item.source_name if hasattr(item, "source_name") else item.get("sourceName", "")
+                if name == source_name:
+                    return item.scene_item_id if hasattr(item, "scene_item_id") else item.get("sceneItemId", -1)
+            return -1
+        except Exception:
+            return -1
+        finally:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+    def set_source_mute(self, source_name: str, muted: bool) -> dict:
+        """Mute/unmute an audio source."""
+        return self._safe_call(
+            lambda c, sn=source_name, m=muted: c.set_input_mute(inputName=sn, inputMuted=m)
+        )
+
+    def toggle_source_mute(self, source_name: str) -> dict:
+        """Toggle mute on an audio source."""
+        return self._safe_call(
+            lambda c, sn=source_name: c.toggle_input_mute(inputName=sn)
+        )
+
+    def set_source_volume(self, source_name: str, volume_db: float) -> dict:
+        """Set volume of a source in dB."""
+        return self._safe_call(
+            lambda c, sn=source_name, v=volume_db: c.set_input_volume(
+                inputName=sn, inputVolumeDb=v
+            )
+        )
+
+    # ── Transition Control ────────────────────────────────────────────────
+
+    def set_current_transition(self, transition_name: str) -> dict:
+        """Set the active scene transition."""
+        return self._safe_call(
+            lambda c, tn=transition_name: c.set_current_scene_transition(transitionName=tn)
+        )
+
+    def trigger_transition(self) -> dict:
+        """Trigger the current transition to the preview scene."""
+        return self._safe_call(
+            lambda c: c.trigger_studio_mode_transition()
+        )
+
+    # ── Studio Mode ───────────────────────────────────────────────────────
+
+    def enable_studio_mode(self) -> dict:
+        """Enable OBS studio mode."""
+        return self._safe_call(
+            lambda c: c.set_studio_mode_enabled(studioModeEnabled=True)
+        )
+
+    def disable_studio_mode(self) -> dict:
+        """Disable OBS studio mode."""
+        return self._safe_call(
+            lambda c: c.set_studio_mode_enabled(studioModeEnabled=False)
+        )
+
+    # ── Replay Buffer ────────────────────────────────────────────────────
+
+    def start_replay_buffer(self) -> dict:
+        """Start the replay buffer."""
+        return self._safe_call(lambda c: c.start_replay_buffer())
+
+    def stop_replay_buffer(self) -> dict:
+        """Stop the replay buffer."""
+        return self._safe_call(lambda c: c.stop_replay_buffer())
+
+    def save_replay_buffer(self) -> dict:
+        """Save the current replay buffer contents."""
+        return self._safe_call(lambda c: c.save_replay_buffer())
+
+    # ── Virtual Camera ────────────────────────────────────────────────────
+
+    def start_virtual_camera(self) -> dict:
+        """Start the virtual camera."""
+        return self._safe_call(lambda c: c.start_virtual_cam())
+
+    def stop_virtual_camera(self) -> dict:
+        """Stop the virtual camera."""
+        return self._safe_call(lambda c: c.stop_virtual_cam())
+
+    # ── Screenshot ────────────────────────────────────────────────────────
+
+    def take_screenshot(self, source_name: str = "") -> dict:
+        """Take a screenshot of a source (or the main output)."""
+        if source_name:
+            return self._safe_call(
+                lambda c, sn=source_name: c.save_source_screenshot(
+                    sourceName=sn,
+                    imageFormat="png",
+                    imageWidth=1280,
+                    imageHeight=720,
+                )
+            )
+        return self._safe_call(
+            lambda c: c.save_source_screenshot(
+                sourceName="️ Now Playing",
+                imageFormat="png",
+                imageWidth=1280,
+                imageHeight=720,
+            )
+        )
+
+    # ── Reconnect ─────────────────────────────────────────────────────────
+
+    def reconnect(self) -> dict:
+        """Force a reconnection by clearing the status cache."""
+        self._last_status = None
+        return self.get_status()
+
+    # ── Auto Scene Switching ───────────────────────────────────────────────
+    # Called by the bot when playback state changes. Non-blocking — fires
+    # in a thread and never raises exceptions.
+
+    def switch_scene(self, scene_name: str) -> bool:
+        """Try to switch to a scene (non-blocking, fire-and-forget).
+
+        Returns True if the request was sent (not guaranteed to succeed).
+        Used by the bot for auto scene switching — failures are logged
+        but never crash the bot.
+        """
+        if not self.enabled:
+            return False
+        try:
+            result = self.set_current_scene(scene_name)
+            if result.get("status") == "ok" or result.get("connected"):
+                log.debug(f"OBS Auto Scene: Switched to '{scene_name}'")
+                return True
+            else:
+                log.debug(f"OBS Auto Scene: Failed to switch to '{scene_name}': {result.get('error', 'unknown')}")
+                return False
+        except Exception as e:
+            log.debug(f"OBS Auto Scene: Exception switching to '{scene_name}': {e}")
+            return False
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Module-level singleton — created by bot.py at startup
+# ══════════════════════════════════════════════════════════════════════════
+
+obs_bridge: OBSBridge | None = None
+
+
+def init_bridge(host: str, port: int, password: str, enabled: bool = True):
+    """Initialize the global OBS Bridge instance. Called once at startup."""
+    global obs_bridge
+    obs_bridge = OBSBridge(host=host, port=port, password=password, enabled=enabled)
+    return obs_bridge
+
+
+def get_bridge() -> OBSBridge | None:
+    """Get the global OBS Bridge instance."""
+    return obs_bridge

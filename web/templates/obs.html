@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block title %}OBS Studio — Mission Control{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h2>🎬 OBS Studio</h2>
+    <p class="page-description">Control OBS Studio directly from Mission Control. Switch scenes, start/stop streaming, manage sources, and more.</p>
+</div>
+
+<!-- OBS Connection Status -->
+<div id="obs-status-banner" class="card" style="margin-bottom:20px; padding:20px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+        <span id="obs-status-dot" style="width:12px; height:12px; border-radius:50%; background:#666; display:inline-block;"></span>
+        <div style="flex:1;">
+            <strong id="obs-status-text">Checking connection...</strong>
+            <p id="obs-status-detail" style="margin:4px 0 0; font-size:13px; color:var(--text-secondary);"></p>
+        </div>
+        <button onclick="obsReconnect()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border); color:var(--text-secondary);">🔄 Reconnect</button>
+    </div>
+</div>
+
+<!-- Not Configured Banner (hidden when OBS is connected) -->
+<div id="obs-not-configured" class="card" style="display:none; margin-bottom:20px; padding:24px; text-align:center;">
+    <div style="font-size:48px; margin-bottom:12px;">🎬</div>
+    <h3 style="margin:0 0 8px;">OBS Studio Not Connected</h3>
+    <p style="color:var(--text-secondary); max-width:500px; margin:0 auto 16px; line-height:1.6;">
+        To control OBS from Mission Control, you need:
+    </p>
+    <div style="text-align:left; max-width:460px; margin:0 auto 20px; font-size:14px; line-height:2;">
+        <div>1️⃣ Install <a href="https://obsproject.com" target="_blank" style="color:var(--accent);">OBS Studio</a> (v28+ includes WebSocket)</div>
+        <div>2️⃣ In OBS: <strong>Tools → WebSocket Server Settings → Enable</strong></div>
+        <div>3️⃣ Set a password in OBS WebSocket settings</div>
+        <div>4️⃣ Add these to your <code>.env</code> file:</div>
+    </div>
+    <div style="background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:16px; text-align:left; font-family:monospace; font-size:13px; max-width:400px; margin:0 auto;">
+        OBS_WS_ENABLED=true<br>
+        OBS_WS_HOST=localhost<br>
+        OBS_WS_PORT=4455<br>
+        OBS_WS_PASSWORD=your_password
+    </div>
+    <p style="color:var(--text-muted); font-size:12px; margin-top:16px;">
+        Then restart the bot and refresh this page.
+    </p>
+</div>
+
+<!-- Main Controls (visible when connected) -->
+<div id="obs-controls" style="display:none;">
+
+    <!-- Stream & Record Controls -->
+    <div class="card" style="margin-bottom:20px; padding:20px;">
+        <h3 style="margin:0 0 16px;">📡 Output Controls</h3>
+        <div style="display:flex; gap:12px; flex-wrap:wrap;">
+            <button id="btn-stream" onclick="obsToggleStream()" class="btn" style="min-width:160px;">
+                <span id="stream-icon">⏺</span> <span id="stream-text">Start Streaming</span>
+            </button>
+            <button id="btn-record" onclick="obsToggleRecord()" class="btn" style="min-width:160px;">
+                <span id="record-icon">🔴</span> <span id="record-text">Start Recording</span>
+            </button>
+            <button id="btn-replay" onclick="obsToggleReplayBuffer()" class="btn" style="min-width:160px;">
+                <span id="replay-icon">🔁</span> <span id="replay-text">Start Replay Buffer</span>
+            </button>
+            <button onclick="obsSaveReplay()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border);">💾 Save Replay</button>
+        </div>
+    </div>
+
+    <!-- Scene Switcher -->
+    <div class="card" style="margin-bottom:20px; padding:20px;">
+        <h3 style="margin:0 0 16px;">🎭 Scenes</h3>
+        <div id="scene-list" style="display:flex; gap:10px; flex-wrap:wrap;">
+            <!-- Populated by JS -->
+        </div>
+        <div style="margin-top:16px; display:flex; gap:10px; align-items:center;">
+            <label style="font-size:13px; color:var(--text-secondary);">Transition:</label>
+            <select id="transition-select" onchange="obsSetTransition(this.value)" style="padding:6px 12px; border-radius:6px; background:var(--surface-2); border:1px solid var(--border); color:var(--text); font-size:13px;">
+                <!-- Populated by JS -->
+            </select>
+            <button onclick="obsTriggerTransition()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border);">▶ Apply</button>
+        </div>
+    </div>
+
+    <!-- Studio Mode -->
+    <div class="card" style="margin-bottom:20px; padding:20px;">
+        <h3 style="margin:0 0 16px;">🎥 Studio Mode</h3>
+        <div style="display:flex; gap:12px;">
+            <button onclick="obsEnableStudioMode()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border);">Enable</button>
+            <button onclick="obsDisableStudioMode()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border);">Disable</button>
+        </div>
+    </div>
+
+    <!-- Virtual Camera -->
+    <div class="card" style="margin-bottom:20px; padding:20px;">
+        <h3 style="margin:0 0 16px;">📷 Virtual Camera</h3>
+        <div style="display:flex; gap:12px;">
+            <button onclick="obsStartVirtualCam()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border);">▶ Start</button>
+            <button onclick="obsStopVirtualCam()" class="btn btn-sm" style="background:var(--surface-2); border:1px solid var(--border);">⏹ Stop</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── OBS Studio Mission Control Integration ──────────────────────────────
+
+const REFRESH_INTERVAL = 5000;  // Refresh status every 5 seconds
+let obsRefreshTimer = null;
+
+// Poll OBS status on page load and every 5 seconds
+document.addEventListener('DOMContentLoaded', () => {
+    obsRefreshStatus();
+    obsRefreshTimer = setInterval(obsRefreshStatus, REFRESH_INTERVAL);
+});
+
+async function obsApi(endpoint, method='GET', body=null) {
+    const opts = { method, headers: { 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    try {
+        const resp = await fetch(endpoint, opts);
+        return await resp.json();
+    } catch (e) {
+        console.error('OBS API error:', e);
+        return { error: e.message, connected: false };
+    }
+}
+
+async function obsRefreshStatus() {
+    const status = await obsApi('/api/obs/status');
+    const banner = document.getElementById('obs-status-banner');
+    const dot = document.getElementById('obs-status-dot');
+    const text = document.getElementById('obs-status-text');
+    const detail = document.getElementById('obs-status-detail');
+    const controls = document.getElementById('obs-controls');
+    const notConfigured = document.getElementById('obs-not-configured');
+
+    if (!status.enabled) {
+        dot.style.background = '#666';
+        text.textContent = 'OBS Not Configured';
+        detail.textContent = 'Set OBS_WS_PASSWORD in .env to enable OBS integration.';
+        controls.style.display = 'none';
+        notConfigured.style.display = 'block';
+        return;
+    }
+
+    notConfigured.style.display = 'none';
+
+    if (!status.connected) {
+        dot.style.background = '#ef4444';
+        text.textContent = 'OBS Disconnected';
+        detail.textContent = 'Make sure OBS Studio is running with WebSocket server enabled.';
+        controls.style.display = 'none';
+        return;
+    }
+
+    dot.style.background = '#22c55e';
+    text.textContent = `OBS Connected — ${status.current_scene || 'Unknown Scene'}`;
+    detail.textContent = `Streaming: ${status.streaming ? '● LIVE' : '○ Off'}  |  Recording: ${status.recording ? '● REC' : '○ Off'}  |  Replay Buffer: ${status.replay_buffer ? '● ON' : '○ Off'}`;
+    controls.style.display = 'block';
+
+    // Update streaming button
+    const streamBtn = document.getElementById('btn-stream');
+    const streamIcon = document.getElementById('stream-icon');
+    const streamText = document.getElementById('stream-text');
+    if (status.streaming) {
+        streamBtn.style.background = '#ef4444'; streamBtn.style.color = '#fff';
+        streamIcon.textContent = '⏹'; streamText.textContent = 'Stop Streaming';
+    } else {
+        streamBtn.style.background = ''; streamBtn.style.color = '';
+        streamIcon.textContent = '⏺'; streamText.textContent = 'Start Streaming';
+    }
+
+    // Update recording button
+    const recordBtn = document.getElementById('btn-record');
+    const recordIcon = document.getElementById('record-icon');
+    const recordText = document.getElementById('record-text');
+    if (status.recording) {
+        recordBtn.style.background = '#ef4444'; recordBtn.style.color = '#fff';
+        recordIcon.textContent = '⏹'; recordText.textContent = 'Stop Recording';
+    } else {
+        recordBtn.style.background = ''; recordBtn.style.color = '';
+        recordIcon.textContent = '🔴'; recordText.textContent = 'Start Recording';
+    }
+
+    // Update replay buffer button
+    const replayBtn = document.getElementById('btn-replay');
+    const replayIcon = document.getElementById('replay-icon');
+    const replayText = document.getElementById('replay-text');
+    if (status.replay_buffer) {
+        replayBtn.style.background = '#f59e0b'; replayBtn.style.color = '#000';
+        replayIcon.textContent = '⏹'; replayText.textContent = 'Stop Replay Buffer';
+    } else {
+        replayBtn.style.background = ''; replayBtn.style.color = '';
+        replayIcon.textContent = '🔁'; replayText.textContent = 'Start Replay Buffer';
+    }
+
+    // Update scene list
+    const sceneList = document.getElementById('scene-list');
+    sceneList.innerHTML = '';
+    (status.scenes || []).forEach(scene => {
+        const isActive = scene === status.current_scene;
+        const btn = document.createElement('button');
+        btn.className = 'btn btn-sm';
+        btn.textContent = scene;
+        if (isActive) {
+            btn.style.background = 'var(--accent)';
+            btn.style.color = '#000';
+            btn.style.fontWeight = 'bold';
+        } else {
+            btn.style.background = 'var(--surface-2)';
+            btn.style.border = '1px solid var(--border)';
+        }
+        btn.onclick = () => obsSetScene(scene);
+        sceneList.appendChild(btn);
+    });
+
+    // Update transition select
+    const transSelect = document.getElementById('transition-select');
+    transSelect.innerHTML = '';
+    (status.transitions || []).forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t; opt.textContent = t;
+        transSelect.appendChild(opt);
+    });
+}
+
+async function obsToggleStream() {
+    await obsApi('/api/obs/streaming/toggle', 'POST');
+    setTimeout(obsRefreshStatus, 1000);
+}
+
+async function obsToggleRecord() {
+    await obsApi('/api/obs/recording/toggle', 'POST');
+    setTimeout(obsRefreshStatus, 1000);
+}
+
+async function obsToggleReplayBuffer() {
+    const status = await obsApi('/api/obs/status');
+    if (status.replay_buffer) {
+        await obsApi('/api/obs/replay-buffer/stop', 'POST');
+    } else {
+        await obsApi('/api/obs/replay-buffer/start', 'POST');
+    }
+    setTimeout(obsRefreshStatus, 1000);
+}
+
+async function obsSaveReplay() {
+    await obsApi('/api/obs/replay-buffer/save', 'POST');
+}
+
+async function obsSetScene(sceneName) {
+    await obsApi('/api/obs/scene', 'POST', { scene_name: sceneName });
+    setTimeout(obsRefreshStatus, 500);
+}
+
+async function obsSetTransition(name) {
+    await obsApi('/api/obs/transition', 'POST', { transition_name: name });
+}
+
+async function obsTriggerTransition() {
+    const select = document.getElementById('transition-select');
+    await obsSetTransition(select.value);
+}
+
+async function obsEnableStudioMode() {
+    await obsApi('/api/obs/studio-mode/enable', 'POST');
+    setTimeout(obsRefreshStatus, 1000);
+}
+
+async function obsDisableStudioMode() {
+    await obsApi('/api/obs/studio-mode/disable', 'POST');
+    setTimeout(obsRefreshStatus, 1000);
+}
+
+async function obsStartVirtualCam() {
+    await obsApi('/api/obs/virtual-cam/start', 'POST');
+}
+
+async function obsStopVirtualCam() {
+    await obsApi('/api/obs/virtual-cam/stop', 'POST');
+}
+
+async function obsReconnect() {
+    await obsApi('/api/obs/reconnect', 'POST');
+    setTimeout(obsRefreshStatus, 2000);
+}
+</script>
+{% endblock %}

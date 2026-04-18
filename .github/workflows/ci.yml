@@ -104,3 +104,14 @@ jobs:
           push: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # ── OBS Studio image: amd64 ──────────────────────────────────────
+      # OBS image is amd64 only (OBS + Chromium + VNC on arm64 is impractical).
+      - name: Build OBS Studio image (amd64)
+        uses: docker/build-push-action@v5
+        with:
+          context: ./obs-studio
+          platforms: linux/amd64
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

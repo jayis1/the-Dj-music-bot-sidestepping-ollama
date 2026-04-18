@@ -1,0 +1,4 @@
+# Don't include unnecessary files in OBS Docker build context
+README.md
+Dockerfile
+.dockerignore

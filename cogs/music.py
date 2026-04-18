@@ -8,6 +8,7 @@ import random
 import re
 import logging
 import time
+import threading
 import config
 
 from cogs.youtube import (
@@ -21,8 +22,9 @@ from cogs.youtube import (
 try:
     from cogs.youtube import get_ytdl_format_options
 except ImportError:
-    # Fallback for older youtube.py that doesn't have this function yet
-    get_ytdl_format_options = YTDL_FORMAT_OPTIONS.copy
+    # Fallback for older youtube.py — use deep copy to avoid shared references
+    import copy as _copy
+    get_ytdl_format_options = lambda: _copy.deepcopy(YTDL_FORMAT_OPTIONS)
 from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
     EDGE_TTS_AVAILABLE,
@@ -206,6 +208,53 @@ class Music(commands.Cog):
         else:
             vc.play(source, after=after)
         return True
+
+    # ── OBS Auto Scene Switching ────────────────────────────────────────
+    # When OBS_AUTO_SCENES is enabled, the bot auto-switches OBS scenes
+    # based on playback state. This is fire-and-forget — failures are
+    # logged but never crash the bot. The OBS bridge is synchronous, so
+    # we run scene switches in a background thread.
+
+    def _obs_switch_scene(self, scene_name: str):
+        """Switch OBS scene in a background thread (non-blocking, fire-and-forget).
+
+        Called from async code — spawns a daemon thread so it never blocks
+        the event loop. Failures are logged at DEBUG level and never raise.
+        """
+        if not getattr(config, "OBS_AUTO_SCENES", False):
+            return
+
+        def _switch():
+            try:
+                from utils.obs_bridge import get_bridge
+                bridge = get_bridge()
+                if bridge and bridge.enabled:
+                    bridge.switch_scene(scene_name)
+            except Exception as e:
+                logging.debug(f"OBS auto-scene: Failed to switch to '{scene_name}': {e}")
+
+        t = threading.Thread(target=_switch, daemon=True)
+        t.start()
+
+    async def _obs_scene_now_playing(self):
+        """Switch OBS to the Now Playing scene. Called when a song starts."""
+        scene = getattr(config, "OBS_SCENE_NOW_PLAYING", "️ Now Playing")
+        self._obs_switch_scene(scene)
+
+    async def _obs_scene_dj_speaking(self):
+        """Switch OBS to the DJ Speaking scene. Called when DJ TTS starts."""
+        scene = getattr(config, "OBS_SCENE_DJ_SPEAKING", "🎙️ DJ Speaking")
+        self._obs_switch_scene(scene)
+
+    async def _obs_scene_waiting(self):
+        """Switch OBS to the Waiting scene. Called when queue is empty."""
+        scene = getattr(config, "OBS_SCENE_WAITING", "⏳ Waiting")
+        self._obs_switch_scene(scene)
+
+    async def _obs_scene_overlay(self):
+        """Switch OBS to the Overlay Only scene. Called during YouTube Live overlay."""
+        scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
+        self._obs_switch_scene(scene)
 
     # ── Auto-start YouTube Live autonomous stream on boot ──
     @commands.Cog.listener()
@@ -406,6 +455,9 @@ class Music(commands.Cog):
                 f"YouTube Live: ✅ Started {mode_label} stream "
                 f"with DJ engine seamlessly multiplexed via PCMBroadcaster!"
             )
+
+            # OBS auto scene: Switch to "Overlay Only" when YouTube Live stream starts
+            await self._obs_scene_overlay()
         except Exception as e:
             logging.error(f"YouTube Live: Auto-start failed: {e}")
 
@@ -471,6 +523,55 @@ class Music(commands.Cog):
         if guild_id not in self.song_queues:
             self.song_queues[guild_id] = asyncio.Queue()
         return self.song_queues[guild_id]
+
+    def peek_queue(self, guild_id, max_items=None):
+        """Return a list of items in the queue without consuming them.
+
+        Uses the internal deque of asyncio.Queue, which is the only way
+        to peek at a queue's contents without async get(). This is safe
+        because we return copies, not references.
+
+        Args:
+            guild_id: The guild ID to peek at.
+            max_items: Maximum items to return (None = all).
+
+        Returns:
+            List of queue items (YTDLSource or PlaceholderTrack objects).
+        """
+        q = self.song_queues.get(guild_id)
+        if q is None:
+            return []
+        try:
+            items = list(q._queue)
+        except Exception:
+            return []
+        if max_items is not None:
+            items = items[:max_items]
+        return items
+
+    def peek_queue_first(self, guild_id):
+        """Return the first item in the queue without consuming it, or None.
+
+        This is the most common queue peek operation — used to check
+        what song is up next (for DJ intro/outro, now-playing display, etc.)
+        """
+        q = self.song_queues.get(guild_id)
+        if q is None or q.empty():
+            return None
+        try:
+            return q._queue[0] if len(q._queue) > 0 else None
+        except (IndexError, AttributeError):
+            return None
+
+    def queue_push_front(self, guild_id, item):
+        """Insert an item at the front of the queue (position 0).
+
+        This makes the item the next to be played. Used by Battle of the
+        Beats and other features that need to prioritize a song.
+        """
+        if guild_id not in self.song_queues:
+            self.song_queues[guild_id] = asyncio.Queue()
+        self.song_queues[guild_id]._queue.appendleft(item)
 
     def clear_yt_auth_block(self):
         """Clear the YouTube auth-blocked flag after cookies are updated.
@@ -1214,8 +1315,9 @@ class Music(commands.Cog):
                     # Transition from a previous track — outro the old,
                     # intro the new, all in one spoken line
                     peek_title = None
-                    if not queue.empty() and queue.qsize() > 0:
-                        peek_title = queue._queue[0].title
+                    next_item = self.peek_queue_first(guild_id)
+                    if next_item:
+                        peek_title = getattr(next_item, "title", None)
                     intro_text = generate_outro(
                         prev_song.title,
                         has_next=True,
@@ -1233,6 +1335,8 @@ class Music(commands.Cog):
 
                 spoke = await self._dj_speak(ctx.voice_client, intro_text, guild_id)
                 if spoke:
+                    # OBS auto scene: Switch to "DJ Speaking" when DJ starts talking
+                    await self._obs_scene_dj_speaking()
                     # TTS started — song will play after the intro finishes
                     # (via _on_tts_done → _play_song_after_dj → _start_song_playback)
                     # Note: We don't start bed music here because Discord's voice
@@ -1254,6 +1358,9 @@ class Music(commands.Cog):
             logging.info("Queue is empty, stopping playback.")
             guild_id = ctx.guild.id
 
+            # OBS auto scene: Switch to "Waiting" when queue is empty
+            await self._obs_scene_waiting()
+
             # Auto-DJ: refill the queue instead of going silent
             if self.autodj_enabled.get(guild_id, False):
                 filled = await self._autodj_fill(ctx)
@@ -1273,6 +1380,8 @@ class Music(commands.Cog):
             ):
                 last_song = self.current_song[guild_id]
                 outro_text = generate_outro(last_song.title, has_next=False)
+                # OBS auto scene: Switch to "DJ Speaking" for the outro
+                await self._obs_scene_dj_speaking()
                 await self._dj_speak(ctx.voice_client, outro_text, guild_id)
 
             await self._safe_change_presence(activity=None)
@@ -1719,10 +1828,11 @@ class Music(commands.Cog):
         queue = await self.get_queue(
             ctx.guild.id
         )  # Ensure get_queue is called with guild_id
-        if not queue.empty():
+        queue_items = self.peek_queue(ctx.guild.id)
+        if queue_items:
             queue_list = "\n".join(
                 f"**{i + 1}.** {item.title}"
-                for i, item in enumerate(list(queue._queue))
+                for i, item in enumerate(queue_items)
             )
             logging.info(
                 f"Displaying queue with {queue.qsize()} songs for {ctx.guild.name})"
@@ -2824,10 +2934,11 @@ class Music(commands.Cog):
         next_title = ""
 
         # Check the queue for next song info
-        if queue and not queue.empty():
+        next_item = self.peek_queue_first(guild_id)
+        if next_item:
             try:
-                next_title = queue._queue[0].title
-            except (IndexError, AttributeError):
+                next_title = getattr(next_item, "title", "")
+            except AttributeError:
                 pass
 
         # Check if there was a previous song
@@ -2935,6 +3046,9 @@ class Music(commands.Cog):
 
         # Stop any bed music before the song starts
         await self._stop_bed_music(guild_id)
+
+        # OBS auto scene: Switch to "Now Playing" when a song starts
+        await self._obs_scene_now_playing()
 
         try:
             logging.info(
@@ -3484,11 +3598,11 @@ class Music(commands.Cog):
             elif custom_id == "stop":
                 await self.stop(ctx)
             elif custom_id == "queue":
-                queue = await self.get_queue(ctx.guild.id)
-                if not queue.empty():
+                queue_items = self.peek_queue(ctx.guild.id)
+                if queue_items:
                     queue_list = "\n".join(
                         f"**{i + 1}.** {item.title}"
-                        for i, item in enumerate(list(queue._queue))
+                        for i, item in enumerate(queue_items)
                     )
                     embed = self.create_embed(
                         f"{config.QUEUE_EMOJI} Current Queue", queue_list
@@ -3762,12 +3876,10 @@ class Music(commands.Cog):
                 winner_data["webpage_url"] = winner_url
 
             winner_track = PlaceholderTrack(winner_data)
-            if guild_id not in self.song_queues:
-                self.song_queues[guild_id] = asyncio.Queue()
             # Insert at position 0 (front of queue) so it's the next song to play
-            self.song_queues[guild_id]._queue.appendleft(winner_track)
+            self.queue_push_front(guild_id, winner_track)
 
-            queue_pos = len(self.song_queues[guild_id]._queue)
+            queue_pos = len(self.peek_queue(guild_id))
             if queue_pos == 1:
                 await channel.send(f"🎵 Winner **{winner_title}** is up next!")
             else:

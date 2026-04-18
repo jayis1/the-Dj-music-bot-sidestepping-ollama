@@ -474,6 +474,20 @@ def run_web_server():
         logging.info(
             f"Web dashboard starting on http://{config.WEB_HOST}:{config.WEB_PORT}"
         )
+
+        # Initialize OBS Bridge if configured
+        try:
+            from utils.obs_bridge import init_bridge
+            init_bridge(
+                host=config.OBS_WS_HOST,
+                port=config.OBS_WS_PORT,
+                password=config.OBS_WS_PASSWORD,
+                enabled=config.OBS_WS_ENABLED,
+            )
+            logging.info("OBS Bridge initialized")
+        except Exception as e:
+            logging.warning(f"OBS Bridge initialization failed: {e}")
+
         app.run(
             host=config.WEB_HOST, port=config.WEB_PORT, debug=False, use_reloader=False
         )

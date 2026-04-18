@@ -108,11 +108,16 @@ YTDL_FORMAT_OPTIONS.update(_COOKIE_OPTS)
 
 def get_ytdl_format_options():
     """
-    Return a fresh copy of YTDL_FORMAT_OPTIONS with current cookie settings.
-    Use this when you need to customize options — always returns a copy
-    so mutations don't affect the global state.
+    Return a fresh deep copy of YTDL_FORMAT_OPTIONS with current cookie settings.
+    Use this when you need to customize options — always returns a deep copy
+    so mutations to nested dicts (e.g., http_headers) don't affect the global state.
+
+    NOTE: dict.copy() is SHALLOW — nested dicts like http_headers are shared
+    references. copy.deepcopy() prevents one caller's mutation from affecting
+    all other callers that got a shallow copy.
     """
-    return YTDL_FORMAT_OPTIONS.copy()
+    import copy
+    return copy.deepcopy(YTDL_FORMAT_OPTIONS)
 
 
 # ── Playlist Options (fast flat extraction — no stream URLs) ──────────────

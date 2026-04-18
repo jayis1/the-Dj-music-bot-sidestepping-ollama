@@ -94,9 +94,17 @@ def delete_preset(name: str) -> bool:
     return False
 
 
-def queue_to_tracks(queue) -> list[dict]:
-    """Convert an asyncio.Queue of songs to a serializable list of dicts."""
-    items = list(queue._queue)
+def queue_to_tracks(queue, music_cog=None, guild_id=None) -> list[dict]:
+    """Convert a queue of songs to a serializable list of dicts.
+
+    Accepts either an asyncio.Queue directly or uses the music cog's
+    peek_queue() method for safe access without private attribute access.
+    """
+    if music_cog and guild_id is not None:
+        items = music_cog.peek_queue(guild_id)
+    else:
+        # Fallback: direct queue access (legacy path)
+        items = list(queue._queue)
     tracks = []
     for item in items:
         track = {

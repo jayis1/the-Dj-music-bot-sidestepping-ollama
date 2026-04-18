@@ -254,3 +254,36 @@ YOUTUBE_STREAM_PLAYLIST = os.environ.get("YOUTUBE_STREAM_PLAYLIST", "")
 # If neither is set, yt-dlp runs without cookies (may get blocked by YouTube).
 YTDDL_COOKIES_FROM_BROWSER = os.environ.get("YTDDL_COOKIES_FROM_BROWSER", "")
 YTDDL_COOKIEFILE = os.environ.get("YTDDL_COOKIEFILE", "youtube_cookie.txt")
+
+# ── OBS Studio Integration ──────────────────────────────────────────────
+# Control OBS Studio from Mission Control via obs-websocket 5.x.
+# Requires OBS Studio with obs-websocket plugin (bundled since OBS 28).
+#
+# Setup:
+#   1. Install OBS Studio: https://obsproject.com
+#   2. In OBS: Tools → WebSocket Server Settings → Enable
+#   3. Set a password in OBS WebSocket settings
+#   4. Set OBS_WS_PASSWORD in .env (and OBS_WS_HOST/OBS_WS_PORT if not localhost)
+#
+# If OBS_WS_PASSWORD is not set, the OBS page in Mission Control
+# shows a "not configured" message instead of erroring.
+
+OBS_WS_ENABLED = os.environ.get("OBS_WS_ENABLED", "true").lower() == "true"
+OBS_WS_HOST = os.environ.get("OBS_WS_HOST", "localhost")
+OBS_WS_PORT = int(os.environ.get("OBS_WS_PORT", "4455"))
+OBS_WS_PASSWORD = os.environ.get("OBS_WS_PASSWORD", "")
+
+# OBS Auto Scene Switching — the bot automatically switches OBS scenes
+# based on the current playback state. This makes the visual on YouTube Live
+# match the audio (e.g., "Now Playing" during songs, "DJ Speaking" during DJ lines).
+# Set to "true" to enable. Requires OBS_WS_ENABLED=true and OBS_WS_PASSWORD set.
+# Scene names must match your OBS scene collection exactly.
+OBS_AUTO_SCENES = os.environ.get("OBS_AUTO_SCENES", "false").lower() == "true"
+
+# Scene name mappings — these are the scene names the bot will switch to.
+# Change these if you rename scenes in OBS. Must match your OBS scene
+# collection exactly (case-sensitive).
+OBS_SCENE_NOW_PLAYING = os.environ.get("OBS_SCENE_NOW_PLAYING", "️ Now Playing")
+OBS_SCENE_DJ_SPEAKING = os.environ.get("OBS_SCENE_DJ_SPEAKING", "🎙️ DJ Speaking")
+OBS_SCENE_WAITING = os.environ.get("OBS_SCENE_WAITING", "⏳ Waiting")
+OBS_SCENE_OVERLAY = os.environ.get("OBS_SCENE_OVERLAY", "📺 Overlay Only")

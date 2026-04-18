@@ -37,6 +37,7 @@
 <div class="card">
     <h2 style="margin-bottom: 16px;">➕ Add New Line</h2>
     <form class="add-line-form" method="POST" action="{{ url_for('dj_lines_add') }}">
+        <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
         <select name="category">
             {% for cat in categories %}
             <option value="{{ cat.key }}">{{ cat.label }}</option>
@@ -75,6 +76,7 @@
             <span class="line-badge custom">custom</span>
             <div class="actions">
                 <form method="POST" action="{{ url_for('dj_lines_remove') }}" style="display:inline;">
+                    <input type="hidden" name="_csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="category" value="{{ cat.key }}">
                     <input type="hidden" name="index" value="{{ loop.index0 }}">
                     <button type="submit" class="btn btn-danger btn-icon" title="Delete" onclick="return confirm('Delete this line?')">✕</button>

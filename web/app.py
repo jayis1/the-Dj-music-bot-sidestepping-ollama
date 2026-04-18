@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import re
+import secrets
 import signal
 import sys
 import time
@@ -79,6 +80,36 @@ app.secret_key = os.environ.get(
 )
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16MB max upload
 
+# ── CSRF Protection ──────────────────────────────────────────────────────
+# Lightweight CSRF token system — no Flask-WTF dependency needed.
+#
+# How it works:
+#   1. On first GET request, a random CSRF token is generated and stored in
+#      the session (session["_csrf_token"]).
+#   2. The token is exposed as a <meta> tag in base.html.
+#   3. All fetch() calls are intercepted by a global JS shim that adds
+#      the X-CSRFToken header to every non-GET request.
+#   4. On the server side, before_request validates the token on all
+#      POST/PUT/DELETE/PATCH requests.
+#   5. Login and API endpoints with CORS (cookie bridge) are exempt.
+#
+# This protects against cross-site request forgery — a malicious site can't
+# make the user's browser send state-changing requests to Mission Control.
+
+
+def _generate_csrf_token():
+    """Generate a random CSRF token for the current session."""
+    import secrets
+    if "_csrf_token" not in session:
+        session["_csrf_token"] = secrets.token_hex(32)
+    return session["_csrf_token"]
+
+
+@app.context_processor
+def inject_csrf_token():
+    """Make the CSRF token available in all templates as {{ csrf_token }}."""
+    return {"csrf_token": _generate_csrf_token}
+
 # ── Reverse Proxy Support ────────────────────────────────────────────
 # When the dashboard runs behind a reverse proxy (Nginx Proxy Manager,
 # Caddy, Traefik, Cloudflare Tunnel, etc.), enable REVERSE_PROXY in .env
@@ -138,6 +169,65 @@ def require_login():
 
     # Redirect everything else to login
     return redirect(url_for("login"))
+
+
+@app.before_request
+def validate_csrf():
+    """Validate CSRF token on all mutating requests (POST/PUT/DELETE/PATCH).
+
+    Exemptions:
+      - GET/HEAD/OPTIONS requests (safe, no state changes)
+      - Login endpoint (CSRF token not yet available to unauthenticated users)
+      - Cookie bridge endpoints (CORS requests from the browser extension
+        don't have access to the session CSRF token)
+      - Overlay API (public, read-only data for OBS browser sources)
+
+    The token is checked against session["_csrf_token"] which is set on
+    the first GET request. The frontend sends it as X-CSRFToken header
+    on all fetch() calls (injected by the global JS shim in base.html).
+    """
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+
+    # Exempt login (user doesn't have a CSRF token yet)
+    if request.endpoint == "login":
+        return
+
+    # Exempt CORS endpoints (browser extension can't access session)
+    cors_endpoints = {
+        "api_ytcookies_inject",
+        "api_ytcookies_upload",
+        "api_ytcookies_set",
+    }
+    if request.endpoint in cors_endpoints:
+        return
+
+    # Exempt overlay API (OBS browser source, public read data)
+    if request.endpoint == "api_overlay_state":
+        return
+
+    # Validate CSRF token
+    token = session.get("_csrf_token")
+    if not token:
+        # No token in session — probably a new session, generate one
+        # and let the request through (the next request will be validated)
+        _generate_csrf_token()
+        return
+
+    # Check for the token in the request headers or form data
+    request_token = request.headers.get("X-CSRFToken") or request.form.get("_csrf_token")
+    if request_token and hmac.compare_digest(request_token, token):
+        return  # Token matches — request is valid
+
+    # Token missing or mismatch — reject
+    log.warning(
+        f"CSRF validation failed: endpoint={request.endpoint}, "
+        f"method={request.method}, ip={request.remote_addr}"
+    )
+    # For API endpoints, return JSON error. For pages, return 403.
+    if request.endpoint and request.endpoint.startswith("api_"):
+        return jsonify({"error": "CSRF token validation failed"}), 403
+    return "CSRF token validation failed. Please reload the page and try again.", 403
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -309,13 +399,8 @@ def _get_guilds_data(music):
             if music:
                 vc = music._get_audio_client(guild_id)
                 current = music.current_song.get(guild_id)
-                q = music.song_queues.get(guild_id)
-                if q:
-                    queue_size = q.qsize()
-                    try:
-                        queue_items = list(q._queue)
-                    except Exception:
-                        queue_items = []
+                queue_items = music.peek_queue(guild_id)
+                queue_size = len(queue_items)
             else:
                 vc = voice
 
@@ -439,13 +524,8 @@ def _get_guilds_data(music):
         queue_size = 0
         if music:
             current = music.current_song.get(guild_id)
-            q = music.song_queues.get(guild_id)
-            if q:
-                queue_size = q.qsize()
-                try:
-                    queue_items = list(q._queue)
-                except Exception:
-                    queue_items = []
+            queue_items = music.peek_queue(guild_id)
+            queue_size = len(queue_items)
 
         guilds_data.append(
             {
@@ -2009,8 +2089,8 @@ def api_battle_create(guild_id):
         from cogs.youtube import get_ytdl_format_options
     except ImportError:
         from cogs.youtube import YTDL_FORMAT_OPTIONS
-
-        get_ytdl_format_options = YTDL_FORMAT_OPTIONS.copy
+        import copy as _copy
+        get_ytdl_format_options = lambda: _copy.deepcopy(YTDL_FORMAT_OPTIONS)
 
     title_a = song_a
     title_b = song_b
@@ -3110,3 +3190,226 @@ def api_youtube_stream_skip(guild_id):
         return jsonify({"ok": False, "error": "No changes specified"}), 400
 
     return jsonify({"ok": True, "changes": changes})
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# OBS Studio Integration — Mission Control OBS Page + API
+# ══════════════════════════════════════════════════════════════════════════
+
+@app.route("/obs")
+@login_required
+def obs_page():
+    """OBS Studio control panel in Mission Control.
+
+    Full control over scenes, sources, streaming, recording, transitions,
+    and more — all from the web dashboard.
+
+    Requires OBS Studio with obs-websocket 5.x plugin (bundled since OBS 28).
+    Configure OBS_WS_HOST, OBS_WS_PORT, and OBS_WS_PASSWORD in .env.
+    """
+    return render_template("obs.html")
+
+
+@app.route("/api/obs/status")
+@login_required
+def api_obs_status():
+    """Get current OBS status: connected, streaming, recording, scenes, etc."""
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if bridge is None or not bridge.enabled:
+        return jsonify({"connected": False, "enabled": False, "error": "OBS integration not configured"})
+    status = bridge.get_status()
+    status["enabled"] = True
+    return jsonify(status)
+
+
+@app.route("/api/obs/streaming/start", methods=["POST"])
+@login_required
+def api_obs_streaming_start():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.start_streaming())
+
+
+@app.route("/api/obs/streaming/stop", methods=["POST"])
+@login_required
+def api_obs_streaming_stop():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.stop_streaming())
+
+
+@app.route("/api/obs/streaming/toggle", methods=["POST"])
+@login_required
+def api_obs_streaming_toggle():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.toggle_streaming())
+
+
+@app.route("/api/obs/recording/start", methods=["POST"])
+@login_required
+def api_obs_recording_start():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.start_recording())
+
+
+@app.route("/api/obs/recording/stop", methods=["POST"])
+@login_required
+def api_obs_recording_stop():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.stop_recording())
+
+
+@app.route("/api/obs/recording/toggle", methods=["POST"])
+@login_required
+def api_obs_recording_toggle():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.toggle_recording())
+
+
+@app.route("/api/obs/scene", methods=["POST"])
+@login_required
+def api_obs_set_scene():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    scene_name = request.json.get("scene_name", "") or request.form.get("scene_name", "")
+    if not scene_name:
+        return jsonify({"ok": False, "error": "scene_name required"})
+    return jsonify(bridge.set_current_scene(scene_name))
+
+
+@app.route("/api/obs/source/visibility", methods=["POST"])
+@login_required
+def api_obs_source_visibility():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    data = request.get_json(force=True)
+    scene_name = data.get("scene_name", "")
+    source_name = data.get("source_name", "")
+    visible = data.get("visible", True)
+    if not scene_name or not source_name:
+        return jsonify({"ok": False, "error": "scene_name and source_name required"})
+    return jsonify(bridge.set_source_visibility(scene_name, source_name, visible))
+
+
+@app.route("/api/obs/source/mute", methods=["POST"])
+@login_required
+def api_obs_source_mute():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    data = request.get_json(force=True)
+    source_name = data.get("source_name", "")
+    muted = data.get("muted", True)
+    if not source_name:
+        return jsonify({"ok": False, "error": "source_name required"})
+    return jsonify(bridge.set_source_mute(source_name, muted))
+
+
+@app.route("/api/obs/source/volume", methods=["POST"])
+@login_required
+def api_obs_source_volume():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    data = request.get_json(force=True)
+    source_name = data.get("source_name", "")
+    volume_db = data.get("volume_db", 0.0)
+    if not source_name:
+        return jsonify({"ok": False, "error": "source_name required"})
+    return jsonify(bridge.set_source_volume(source_name, float(volume_db)))
+
+
+@app.route("/api/obs/transition", methods=["POST"])
+@login_required
+def api_obs_set_transition():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    transition_name = request.json.get("transition_name", "") if request.json else ""
+    if not transition_name:
+        return jsonify({"ok": False, "error": "transition_name required"})
+    return jsonify(bridge.set_current_transition(transition_name))
+
+
+@app.route("/api/obs/studio-mode/enable", methods=["POST"])
+@login_required
+def api_obs_studio_mode_enable():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.enable_studio_mode())
+
+
+@app.route("/api/obs/studio-mode/disable", methods=["POST"])
+@login_required
+def api_obs_studio_mode_disable():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.disable_studio_mode())
+
+
+@app.route("/api/obs/replay-buffer/start", methods=["POST"])
+@login_required
+def api_obs_replay_buffer_start():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.start_replay_buffer())
+
+
+@app.route("/api/obs/replay-buffer/stop", methods=["POST"])
+@login_required
+def api_obs_replay_buffer_stop():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.stop_replay_buffer())
+
+
+@app.route("/api/obs/replay-buffer/save", methods=["POST"])
+@login_required
+def api_obs_replay_buffer_save():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.save_replay_buffer())
+
+
+@app.route("/api/obs/reconnect", methods=["POST"])
+@login_required
+def api_obs_reconnect():
+    from utils.obs_bridge import get_bridge
+    bridge = get_bridge()
+    if not bridge or not bridge.enabled:
+        return jsonify({"ok": False, "error": "OBS not configured"})
+    return jsonify(bridge.reconnect())

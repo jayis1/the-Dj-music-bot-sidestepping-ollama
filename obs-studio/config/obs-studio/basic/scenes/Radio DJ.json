@@ -1,0 +1,397 @@
+{
+    "Name": "Radio DJ",
+    "Items": {
+        "️ Now Playing": {
+            "fixed_function": false,
+            "id_counter": 100,
+            "name": "️ Now Playing",
+            "private_settings": {},
+            "sources": [
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 1,
+                    "locked": false,
+                    "name": "Background Color",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "color": 4278190080,
+                        "height": 720,
+                        "width": 1280
+                    },
+                    "type": "color_source_v3",
+                    "volume": 1.0,
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 2,
+                    "locked": false,
+                    "name": "Now Playing Title (GDI+)",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "align": 1,
+                        "bk_color": 0,
+                        "bk_opacity": 0,
+                        "chatlog": false,
+                        "chatlog_lines": 6,
+                        "color": 4294967295,
+                        "custom_font": false,
+                        "ext": false,
+                        "file": "",
+                        "font": {
+                            "face": "Arial",
+                            "size": 48,
+                            "style": "Bold"
+                        },
+                        "gradient": false,
+                        "gradient_color": 4278190080,
+                        "gradient_dir": 0.0,
+                        "gradient_opacity": 100,
+                        "opacity": 100,
+                        "outline": false,
+                        "outline_color": 4278190080,
+                        "outline_opacity": 100,
+                        "outline_size": 2,
+                        "read_from_file": false,
+                        "text": "Now Playing",
+                        "valign": 1,
+                        "vertical": false
+                    },
+                    "type": "text_gdiplus_v2",
+                    "volume": 1.0,
+                    "x": 40,
+                    "y": 280
+                },
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 3,
+                    "locked": false,
+                    "name": "Station Name (GDI+)",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "align": 1,
+                        "bk_color": 0,
+                        "bk_opacity": 0,
+                        "chatlog": false,
+                        "chatlog_lines": 6,
+                        "color": 4286544650,
+                        "custom_font": false,
+                        "ext": false,
+                        "file": "",
+                        "font": {
+                            "face": "Arial",
+                            "size": 32,
+                            "style": "Regular"
+                        },
+                        "gradient": false,
+                        "gradient_color": 4278190080,
+                        "gradient_dir": 0.0,
+                        "gradient_opacity": 100,
+                        "opacity": 100,
+                        "outline": false,
+                        "outline_color": 4278190080,
+                        "outline_opacity": 100,
+                        "outline_size": 2,
+                        "read_from_file": false,
+                        "text": "Radio DJ Bot",
+                        "valign": 0,
+                        "vertical": false
+                    },
+                    "type": "text_gdiplus_v2",
+                    "volume": 1.0,
+                    "x": 40,
+                    "y": 40
+                }
+            ]
+        },
+        "🎙️ DJ Speaking": {
+            "fixed_function": false,
+            "id_counter": 200,
+            "name": "🎙️ DJ Speaking",
+            "private_settings": {},
+            "sources": [
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 1,
+                    "locked": false,
+                    "name": "Background Color",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "color": 4278190303,
+                        "height": 720,
+                        "width": 1280
+                    },
+                    "type": "color_source_v3",
+                    "volume": 1.0,
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 2,
+                    "locked": false,
+                    "name": "DJ Speaking Title (GDI+)",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "align": 1,
+                        "bk_color": 0,
+                        "bk_opacity": 0,
+                        "chatlog": false,
+                        "chatlog_lines": 6,
+                        "color": 4294967295,
+                        "custom_font": false,
+                        "ext": false,
+                        "file": "",
+                        "font": {
+                            "face": "Arial",
+                            "size": 56,
+                            "style": "Bold"
+                        },
+                        "gradient": false,
+                        "gradient_color": 4278190080,
+                        "gradient_dir": 0.0,
+                        "gradient_opacity": 100,
+                        "opacity": 100,
+                        "outline": false,
+                        "outline_color": 4278190080,
+                        "outline_opacity": 100,
+                        "outline_size": 2,
+                        "read_from_file": false,
+                        "text": "🎙️ The DJ is Speaking...",
+                        "valign": 1,
+                        "vertical": false
+                    },
+                    "type": "text_gdiplus_v2",
+                    "volume": 1.0,
+                    "x": 40,
+                    "y": 290
+                }
+            ]
+        },
+        "⏳ Waiting": {
+            "fixed_function": false,
+            "id_counter": 300,
+            "name": "⏳ Waiting",
+            "private_settings": {},
+            "sources": [
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 1,
+                    "locked": false,
+                    "name": "Background Color",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "color": 4286544384,
+                        "height": 720,
+                        "width": 1280
+                    },
+                    "type": "color_source_v3",
+                    "volume": 1.0,
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 2,
+                    "locked": false,
+                    "name": "Waiting Title (GDI+)",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "align": 1,
+                        "bk_color": 0,
+                        "bk_opacity": 0,
+                        "chatlog": false,
+                        "chatlog_lines": 6,
+                        "color": 4294967295,
+                        "custom_font": false,
+                        "ext": false,
+                        "file": "",
+                        "font": {
+                            "face": "Arial",
+                            "size": 48,
+                            "style": "Regular"
+                        },
+                        "gradient": false,
+                        "gradient_color": 4278190080,
+                        "gradient_dir": 0.0,
+                        "gradient_opacity": 100,
+                        "opacity": 100,
+                        "outline": false,
+                        "outline_color": 4278190080,
+                        "outline_opacity": 100,
+                        "outline_size": 2,
+                        "read_from_file": false,
+                        "text": "⏳ Waiting for next track...",
+                        "valign": 1,
+                        "vertical": false
+                    },
+                    "type": "text_gdiplus_v2",
+                    "volume": 1.0,
+                    "x": 40,
+                    "y": 290
+                }
+            ]
+        },
+        "📺 Overlay Only": {
+            "fixed_function": false,
+            "id_counter": 400,
+            "name": "📺 Overlay Only",
+            "private_settings": {},
+            "sources": [
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 1,
+                    "locked": false,
+                    "name": "Background Color",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "color": 4278190080,
+                        "height": 720,
+                        "width": 1280
+                    },
+                    "type": "color_source_v3",
+                    "volume": 1.0,
+                    "x": 0,
+                    "y": 0
+                },
+                {
+                    "balance": 0.5,
+                    "deinterlace_field_order": 0,
+                    "deinterlace_mode": 0,
+                    "enabled": true,
+                    "flags": 0,
+                    "hotkeys": {},
+                    "id": 2,
+                    "locked": false,
+                    "name": "Browser Overlay (Bot)",
+                    "private_settings": {},
+                    "push-to-mouse": false,
+                    "push-to-talk": false,
+                    "render": true,
+                    "settings": {
+                        "css": "body { background-color: transparent; margin: 0px; padding: 0px; overflow: hidden; }",
+                        "height": 720,
+                        "reroute_audio": false,
+                        "shutdown": true,
+                        "url": "http://bot:8080/overlay",
+                        "width": 1280
+                    },
+                    "type": "browser_source",
+                    "volume": 1.0,
+                    "x": 0,
+                    "y": 0
+                }
+            ]
+        }
+    },
+    "current_scene": "️ Now Playing",
+    "current_program_scene": "️ Now Playing",
+    "groups": [],
+    "modules": {
+        "auto-scene-switcher": "off",
+        "scripts-tool": []
+    },
+    "quick_transitions": [
+        {
+            "decorators": [],
+            "duration": 300,
+            "fade_from_black": false,
+            "fade_to_black": false,
+            "hotkey": "OBS_KEY_1",
+            "id": 1,
+            "name": "Cut",
+            "transition": "Cut"
+        },
+        {
+            "decorators": [],
+            "duration": 500,
+            "fade_from_black": false,
+            "fade_to_black": false,
+            "hotkey": "OBS_KEY_2",
+            "id": 2,
+            "name": "Fade",
+            "transition": "Fade"
+        }
+    ],
+    "scaling_enabled": false,
+    "scaling_level": 0,
+    "transitions": [
+        {
+            "id": "Cut",
+            "name": "Cut",
+            "settings": null,
+            "type": "cut_transition"
+        },
+        {
+            "id": "Fade",
+            "name": "Fade",
+            "settings": null,
+            "type": "fade_transition"
+        }
+    ]
+}

@@ -9,6 +9,8 @@
 #   ghcr.io/jayis1/the-dj-music-bot:latest          (bot)
 #   ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:<version>
 #   ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
+#   ghcr.io/jayis1/the-dj-music-bot/obs-studio:<version>
+#   ghcr.io/jayis1/the-dj-music-bot/obs-studio:latest
 #
 # Note on Ollama: Ollama is NOT a custom image — it uses the official
 # ollama/ollama image directly in docker-compose.yml. The model is
@@ -110,7 +112,34 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # 10. Create GitHub Release with docker-compose.yml + .env.example as assets
+      # 10. Extract Docker metadata for OBS Studio
+      - name: Docker metadata — OBS Studio
+        id: meta-obs
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/jayis1/the-dj-music-bot/obs-studio
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      # 11. Build and push OBS Studio image (amd64 only — OBS + VNC on arm64 is impractical)
+      - name: Build & push OBS Studio image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./obs-studio
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta-obs.outputs.tags }}
+          labels: ${{ steps.meta-obs.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+            VERSION=${{ steps.version.outputs.VERSION }}
+
+      # 12. Create GitHub Release with docker-compose.yml + .env.example as assets
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -158,8 +187,22 @@ jobs:
             ghcr.io/jayis1/the-dj-music-bot:latest
             ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:${{ steps.version.outputs.VERSION }}
             ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:latest
+            ghcr.io/jayis1/the-dj-music-bot/obs-studio:${{ steps.version.outputs.VERSION }}
+            ghcr.io/jayis1/the-dj-music-bot/obs-studio:latest
             ```
 
             Ollama uses the official image: `ollama/ollama:latest` (no custom build needed).
+
+            ## 🎬 OBS Studio
+
+            The docker-compose.yml includes a headless OBS Studio container for
+            streaming to YouTube Live with scene control, browser source overlay,
+            and recording. Control it from Mission Control → OBS Studio.
+
+            To enable auto scene switching (visuals match the audio):
+            ```bash
+            OBS_AUTO_SCENES=true
+            OBS_WS_PASSWORD=your_obs_password
+            ```
 
             See [README](https://github.com/jayis1/the-Dj-music-bot-sidestepping-ollama#readme) for full documentation.

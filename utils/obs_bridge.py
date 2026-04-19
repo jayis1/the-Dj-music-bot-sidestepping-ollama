@@ -49,6 +49,7 @@ import logging
 import time
 import os
 import sys
+from contextlib import contextmanager
 
 log = logging.getLogger("obs-bridge")
 
@@ -161,6 +162,10 @@ class OBSBridge:
         self._last_connect_fail = 0  # timestamp of last failed connection
         self._last_connect_time = 0  # timestamp of last successful connection
         self._connection_logged = False  # Only log "configured" once
+        # Visualizer cache — avoids repeated scene item ID lookups
+        self._viz_scene_name = None
+        self._viz_item_id = -1
+        self._viz_positioned = False
 
         if self.enabled:
             obsws = _get_obsws()
@@ -333,6 +338,35 @@ class OBSBridge:
                 client.disconnect()
             except Exception:
                 pass
+
+    @contextmanager
+    def _batch(self):
+        """Context manager that provides a single persistent WebSocket connection.
+
+        Use this when making multiple sequential API calls (e.g., during
+        overlay creation where 15+ source create + position calls happen).
+        Instead of connect/disconnect per call, all calls share one
+        connection — dramatically reducing the connection storm.
+
+        Usage:
+            with self._batch() as client:
+                if client:
+                    client.create_input(...)
+                    client.set_scene_item_transform(...)
+                    client.set_input_settings(...)
+
+        Yields:
+            obsws.ReqClient or None (if connection failed)
+        """
+        client = self._connect()
+        try:
+            yield client
+        finally:
+            if client:
+                try:
+                    client.disconnect()
+                except Exception:
+                    pass
 
     # ══════════════════════════════════════════════════════════════════════
     # PUBLIC API — called from Flask routes
@@ -572,6 +606,26 @@ class OBSBridge:
             except Exception:
                 pass
 
+    def _get_scene_item_id_from_client(self, client, scene_name: str, source_name: str) -> int:
+        """Resolve a source name to its scene item ID using an EXISTING connection.
+
+        Used inside _batch() contexts where we already have a connected client.
+        Avoids opening an additional WebSocket connection just to look up an item ID.
+        Returns -1 if not found.
+        """
+        if client is None:
+            return -1
+        try:
+            resp = client.get_scene_item_list(name=scene_name)
+            items = resp.scene_items if hasattr(resp, "scene_items") else resp.get("sceneItems", [])
+            for item in items:
+                name = item.source_name if hasattr(item, "source_name") else item.get("sourceName", "")
+                if name == source_name:
+                    return item.scene_item_id if hasattr(item, "scene_item_id") else item.get("sceneItemId", -1)
+            return -1
+        except Exception:
+            return -1
+
     def set_source_mute(self, source_name: str, muted: bool) -> dict:
         """Mute/unmute an audio source."""
         return self._safe_call(
@@ -790,224 +844,331 @@ class OBSBridge:
 
         results = {}
 
-        # ── 1. Background — station logo (image_source) ────────────────
-        # The logo.png fills the entire 1280×720 canvas as the stream
-        # background. If no logo exists, falls back to a solid black
-        # color_source_v3 so the stream always has a background.
+        # ── Resolve overlay parameters ──────────────────────────────────
         logo_path = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png"
         )
         use_logo = os.path.isfile(logo_path)
 
-        def _create_bg(c, _scene=scene_name, _logo=use_logo, _path=logo_path):
-            try:
-                existing = c.get_input_settings(name="Overlay Background")
-                if existing:
-                    # Update to use logo if we switched from color source
-                    if _logo:
-                        try:
-                            c.set_input_settings(
-                                name="Overlay Background",
-                                settings={"file": _path, "unload": False},
-                                overlay=True,
-                            )
-                        except Exception:
-                            pass
-                    return existing
-            except Exception:
-                pass
-
-            if _logo:
-                return c.create_input(
-                    sceneName=_scene,
-                    inputKind="image_source",
-                    inputName="Overlay Background",
-                    inputSettings={
-                        "file": _path,
-                        "unload": False,
-                    },
-                    sceneItemEnabled=True,
-                )
-            else:
-                # Fallback: solid black background
-                return c.create_input(
-                    sceneName=_scene,
-                    inputKind="color_source_v3",
-                    inputName="Overlay Background",
-                    inputSettings={
-                        "color": 4278190080,  # 0xFF000000 = opaque black (ARGB)
-                        "width": 1280,
-                        "height": 720,
-                    },
-                    sceneItemEnabled=True,
-                )
-
-        results["background"] = self._safe_call(_create_bg)
-
-        # Position and scale the background to fill the 1280×720 canvas
-        self._position_background(scene_name)
-
-        # ── 2. State indicator text source (reads from file) ────────
-        # Shows 🎵 Now Playing / 🎙️ DJ Speaking / ⏳ Waiting
-        # This REPLACES scene switching — we always stay on ONE scene
-        # and update the state indicator instead.
-        def _create_state(c, _scene=scene_name):
-            try:
-                existing = c.get_input_settings(name="State")
-                if existing:
-                    return existing
-            except Exception:
-                pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind=_TEXT_INPUT_KIND,
-                inputName="State",
-                inputSettings=_text_settings(
-                    " ", "DejaVu Sans", "Bold", 28,
-                    color=4294967295,  # White
-                    align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_state.txt",
-                ),
-                sceneItemEnabled=True,
-            )
-
-        results["state_text"] = self._safe_call(_create_state)
-
-        # ── 3. Station name text source (reads from file) ─────────
-        def _create_station(c, _scene=scene_name):
-            try:
-                existing = c.get_input_settings(name="Station Name")
-                if existing:
-                    return existing
-            except Exception:
-                pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind=_TEXT_INPUT_KIND,
-                inputName="Station Name",
-                inputSettings=_text_settings(
-                    " ", "DejaVu Sans", "Bold", 42,
-                    color=4294967295,  # White
-                    align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_station.txt",
-                ),
-                sceneItemEnabled=True,
-            )
-
-        results["station_text"] = self._safe_call(_create_station)
-
-        # ── 4. Now Playing title text source (reads from file) ─────
-        def _create_title(c, _scene=scene_name):
-            try:
-                existing = c.get_input_settings(name="Now Playing")
-                if existing:
-                    return existing
-            except Exception:
-                pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind=_TEXT_INPUT_KIND,
-                inputName="Now Playing",
-                inputSettings=_text_settings(
-                    "Waiting for playback...", "DejaVu Sans", "Bold", 56,
-                    color=4294967264,  # Gold
-                    align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_title.txt",
-                ),
-                sceneItemEnabled=True,
-            )
-
-        results["title_text"] = self._safe_call(_create_title)
-
-        # ── 5. DJ/Speaking text source (reads from file) ───────────
-        def _create_dj(c, _scene=scene_name):
-            try:
-                existing = c.get_input_settings(name="DJ Speaking")
-                if existing:
-                    return existing
-            except Exception:
-                pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind=_TEXT_INPUT_KIND,
-                inputName="DJ Speaking",
-                inputSettings=_text_settings(
-                    " ", "DejaVu Sans", "Regular", 36,
-                    color=4278255872,  # Cyan-green
-                    align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_dj.txt",
-                ),
-                sceneItemEnabled=True,
-            )
-
-        results["dj_text"] = self._safe_call(_create_dj)
-
-        # ── 6. Waiting/ticker text source (reads from file) ────────
-        def _create_waiting(c, _scene=scene_name):
-            try:
-                existing = c.get_input_settings(name="Ticker")
-                if existing:
-                    return existing
-            except Exception:
-                pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind=_TEXT_INPUT_KIND,
-                inputName="Ticker",
-                inputSettings=_text_settings(
-                    "Initializing...", "DejaVu Sans", "Regular", 24,
-                    color=4294967295,  # White
-                    align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_waiting.txt",
-                ),
-                sceneItemEnabled=True,
-            )
-
-        results["ticker_text"] = self._safe_call(_create_waiting)
-
-        # ── 7. Song Thumbnail (image_source) ────────────────────────
-        # Displays the current song's album art / thumbnail.
-        # The image is downloaded to /tmp/radio_thumbnail.jpg by
-        # youtube_stream.py play_song() whenever a new song starts.
-        # OBS auto-refreshes the image on each frame render.
-        results["thumbnail"] = self.create_thumbnail_source(scene_name=scene_name)
-
-        # ── 8. Audio Visualizer (image_source — sound wave) ──────────
-        # A waveform PNG image that dynamically shows audio levels.
-        # The PCMBroadcaster tracks RMS audio level history, and a polling loop
-        # in youtube_stream.py renders the waveform image every 200ms.
-        results["visualizer"] = self.create_visualizer_bar(scene_name=scene_name)
-
-        # ── 9. GIF Overlay (ffmpeg_source) ──────────────────────────
-        # An animated GIF that adds visual energy to the stream.
-        # Loops infinitely. Positioned as background decoration.
-        # Falls back to assets/giphy.gif if no custom GIF is configured.
         try:
             import config as _cfg
             gif_path = getattr(_cfg, "YOUTUBE_STREAM_GIF", "") or ""
         except ImportError:
             gif_path = ""
-        results["gif"] = self.create_gif_source(gif_path=gif_path, scene_name=scene_name)
 
-        # ── 10. Position scene items ────────────────────────────────
-        # Set transform (position, size) for each text source so they
-        # appear in the right places on the 1280x720 canvas.
-        self._position_overlay_items(scene_name)
+        # Write placeholder images if missing
+        thumb_path = "/tmp/radio_thumbnail.jpg"
+        if not os.path.exists(thumb_path):
+            self._create_placeholder_thumbnail()
+        viz_path = "/tmp/radio_visualizer.png"
+        self._render_waveform_image([0.02] * 64, viz_path)
+
+        # Resolve GIF path
+        if not gif_path or not os.path.isfile(gif_path):
+            assets_gif = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "assets", "giphy.gif"
+            )
+            gif_path = assets_gif if os.path.isfile(assets_gif) else ""
+
+        # ── Batch: Create ALL sources + position them in ONE connection ──
+        # This replaces ~15 separate connect/disconnect cycles with a single
+        # WebSocket session, dramatically reducing the connection storm that
+        # overwhelms OBS's internal event loop during startup.
+        with self._batch() as client:
+            if client is None:
+                return {"error": "OBS is not running", "connected": False}
+
+            # ── 1. Background (logo.png or solid black) ────────────────
+            try:
+                try:
+                    existing = client.get_input_settings(name="Overlay Background")
+                    if existing and use_logo:
+                        try:
+                            client.set_input_settings(
+                                name="Overlay Background",
+                                settings={"file": logo_path, "unload": False},
+                                overlay=True,
+                            )
+                        except Exception:
+                            pass
+                    if not existing:
+                        raise Exception("create")
+                except Exception:
+                    if use_logo:
+                        client.create_input(
+                            sceneName=scene_name,
+                            inputKind="image_source",
+                            inputName="Overlay Background",
+                            inputSettings={"file": logo_path, "unload": False},
+                            sceneItemEnabled=True,
+                        )
+                    else:
+                        client.create_input(
+                            sceneName=scene_name,
+                            inputKind="color_source_v3",
+                            inputName="Overlay Background",
+                            inputSettings={"color": 4278190080, "width": 1280, "height": 720},
+                            sceneItemEnabled=True,
+                        )
+                results["background"] = {"connected": True, "status": "ok"}
+            except Exception as e:
+                results["background"] = {"error": str(e), "connected": True}
+
+            # ── 2-6. Text sources (State, Station Name, Now Playing, DJ, Ticker) ──
+            text_sources = {
+                "State": _text_settings(
+                    " ", "DejaVu Sans", "Bold", 28,
+                    color=4294967295, align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_state.txt",
+                ),
+                "Station Name": _text_settings(
+                    " ", "DejaVu Sans", "Bold", 42,
+                    color=4294967295, align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_station.txt",
+                ),
+                "Now Playing": _text_settings(
+                    "Waiting for playback...", "DejaVu Sans", "Bold", 56,
+                    color=4294967264, align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_title.txt",
+                ),
+                "DJ Speaking": _text_settings(
+                    " ", "DejaVu Sans", "Regular", 36,
+                    color=4278255872, align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_dj.txt",
+                ),
+                "Ticker": _text_settings(
+                    "Initializing...", "DejaVu Sans", "Regular", 24,
+                    color=4294967295, align=0, valign=0,
+                    read_from_file=True, file_path="/tmp/radio_waiting.txt",
+                ),
+            }
+
+            text_keys = ["state_text", "station_text", "title_text", "dj_text", "ticker_text"]
+            for (source_name, settings), result_key in zip(text_sources.items(), text_keys):
+                try:
+                    try:
+                        existing = client.get_input_settings(name=source_name)
+                        if existing:
+                            # Push file-reading settings to existing source
+                            try:
+                                client.set_input_settings(
+                                    name=source_name, settings=settings, overlay=True,
+                                )
+                            except Exception:
+                                pass
+                            results[result_key] = {"connected": True, "status": "ok"}
+                            continue
+                    except Exception:
+                        pass
+                    client.create_input(
+                        sceneName=scene_name,
+                        inputKind=_TEXT_INPUT_KIND,
+                        inputName=source_name,
+                        inputSettings=settings,
+                        sceneItemEnabled=True,
+                    )
+                    results[result_key] = {"connected": True, "status": "ok"}
+                except Exception as e:
+                    results[result_key] = {"error": str(e), "connected": True}
+
+            # ── 7. Song Thumbnail (image_source) ────────────────────────
+            try:
+                try:
+                    existing = client.get_input_settings(name="Song Thumbnail")
+                    if existing:
+                        try:
+                            client.set_input_settings(
+                                name="Song Thumbnail",
+                                settings={"file": thumb_path, "unload": False},
+                                overlay=True,
+                            )
+                        except Exception:
+                            pass
+                        results["thumbnail"] = {"connected": True, "status": "ok"}
+                    else:
+                        raise Exception("create")
+                except Exception:
+                    client.create_input(
+                        sceneName=scene_name,
+                        inputKind="image_source",
+                        inputName="Song Thumbnail",
+                        inputSettings={"file": thumb_path, "unload": False},
+                        sceneItemEnabled=True,
+                    )
+                    results["thumbnail"] = {"connected": True, "status": "ok"}
+            except Exception as e:
+                results["thumbnail"] = {"error": str(e), "connected": True}
+
+            # ── 8. Audio Visualizer (image_source — sound wave) ──────────
+            try:
+                try:
+                    existing = client.get_input_settings(name="Audio Visualizer")
+                    if existing:
+                        try:
+                            client.set_input_settings(
+                                name="Audio Visualizer",
+                                settings={"file": viz_path, "unload": False},
+                                overlay=True,
+                            )
+                        except Exception:
+                            pass
+                        results["visualizer"] = {"connected": True, "status": "ok"}
+                    else:
+                        raise Exception("create")
+                except Exception:
+                    try:
+                        client.create_input(
+                            sceneName=scene_name,
+                            inputKind="image_source",
+                            inputName="Audio Visualizer",
+                            inputSettings={"file": viz_path, "unload": False},
+                            sceneItemEnabled=True,
+                        )
+                        results["visualizer"] = {"connected": True, "status": "ok"}
+                    except Exception:
+                        # Name collision with old color_source — update settings
+                        try:
+                            client.set_input_settings(
+                                name="Audio Visualizer",
+                                settings={"file": viz_path, "unload": False},
+                                overlay=True,
+                            )
+                            results["visualizer"] = {"connected": True, "status": "ok"}
+                        except Exception as e2:
+                            results["visualizer"] = {"error": str(e2), "connected": True}
+            except Exception as e:
+                results["visualizer"] = {"error": str(e), "connected": True}
+
+            # ── 9. GIF Overlay (ffmpeg_source) ──────────────────────────
+            if gif_path:
+                try:
+                    try:
+                        existing = client.get_input_settings(name="GIF Overlay")
+                        if existing:
+                            try:
+                                client.set_input_settings(
+                                    name="GIF Overlay",
+                                    settings={
+                                        "is_local_file": True,
+                                        "local_file": gif_path,
+                                        "looping": True,
+                                        "restart_on_activate": True,
+                                        "close_when_inactive": False,
+                                    },
+                                    overlay=True,
+                                )
+                            except Exception:
+                                pass
+                            results["gif"] = {"connected": True, "status": "ok"}
+                        else:
+                            raise Exception("create")
+                    except Exception:
+                        client.create_input(
+                            sceneName=scene_name,
+                            inputKind="ffmpeg_source",
+                            inputName="GIF Overlay",
+                            inputSettings={
+                                "is_local_file": True,
+                                "local_file": gif_path,
+                                "looping": True,
+                                "restart_on_activate": True,
+                                "close_when_inactive": False,
+                            },
+                            sceneItemEnabled=True,
+                        )
+                        results["gif"] = {"connected": True, "status": "ok"}
+                except Exception as e:
+                    results["gif"] = {"error": str(e), "connected": True}
+            else:
+                results["gif"] = {"error": "No GIF file found", "connected": True}
+
+            # ── 10. Position ALL scene items in the same connection ─────
+            # Background positioning
+            try:
+                bg_item_id = self._get_scene_item_id_from_client(client, scene_name, "Overlay Background")
+                if bg_item_id >= 0 and use_logo:
+                    client.set_scene_item_transform(
+                        scene_name=scene_name, item_id=bg_item_id,
+                        transform={"positionX": 0, "positionY": 0, "scaleX": 2.0, "scaleY": 2.0},
+                    )
+            except Exception as e:
+                log.debug(f"OBS Bridge: Failed to position background: {e}")
+
+            # Text overlay positioning
+            text_positions = {
+                "State": {"x": 40, "y": 30},
+                "Station Name": {"x": 40, "y": 80},
+                "Now Playing": {"x": 40, "y": 140},
+                "DJ Speaking": {"x": 40, "y": 210},
+                "Ticker": {"x": 40, "y": 640},
+            }
+            for source_name, pos in text_positions.items():
+                try:
+                    item_id = self._get_scene_item_id_from_client(client, scene_name, source_name)
+                    if item_id >= 0:
+                        client.set_scene_item_transform(
+                            scene_name=scene_name, item_id=item_id,
+                            transform={"positionX": pos["x"], "positionY": pos["y"]},
+                        )
+                except Exception as e:
+                    log.debug(f"OBS Bridge: Failed to position '{source_name}': {e}")
+
+            # Thumbnail positioning
+            try:
+                thumb_item_id = self._get_scene_item_id_from_client(client, scene_name, "Song Thumbnail")
+                if thumb_item_id >= 0:
+                    client.set_scene_item_transform(
+                        scene_name=scene_name, item_id=thumb_item_id,
+                        transform={"positionX": 1060, "positionY": 85, "scaleX": 0.5, "scaleY": 0.5},
+                    )
+            except Exception as e:
+                log.debug(f"OBS Bridge: Failed to position thumbnail: {e}")
+
+            # Visualizer positioning
+            try:
+                viz_item_id = self._get_scene_item_id_from_client(client, scene_name, "Audio Visualizer")
+                if viz_item_id >= 0:
+                    client.set_scene_item_transform(
+                        scene_name=scene_name, item_id=viz_item_id,
+                        transform={"positionX": 40, "positionY": 270},
+                    )
+            except Exception as e:
+                log.debug(f"OBS Bridge: Failed to position visualizer: {e}")
+
+            # GIF positioning
+            if gif_path:
+                try:
+                    gif_item_id = self._get_scene_item_id_from_client(client, scene_name, "GIF Overlay")
+                    if gif_item_id >= 0:
+                        client.set_scene_item_transform(
+                            scene_name=scene_name, item_id=gif_item_id,
+                            transform={"positionX": 40, "positionY": 320, "scaleX": 0.5, "scaleY": 0.5},
+                        )
+                except Exception as e:
+                    log.debug(f"OBS Bridge: Failed to position GIF: {e}")
+
+        # ── Post-batch: invalidate cache ──
+        # Scene items have been repositioned inside the batch — reset
+        # cached item IDs so the visualizer polling can re-resolve them.
+        self.invalidate_visualizer_cache()
+
+        # Cache the visualizer item ID and scene name for future position checks
+        self._viz_scene_name = scene_name
+        self._viz_positioned = True  # Positioned inside the batch above
 
         errors = [k for k, v in results.items() if v.get("error")]
         if errors:
             log.warning(f"OBS Bridge: Native overlay had errors: {errors}")
         else:
-            log.info("OBS Bridge: Native overlay created ✅")
+            log.info("OBS Bridge: Native overlay created ✅ (batch mode — single WebSocket connection)")
 
-        # ── 8. Force-update existing text sources to read from files ──
+        # ── Post-batch: force-update existing text sources ──
         # Sources created by previous runs may still have static text
         # instead of reading from /tmp/radio_*.txt. We push the correct
         # settings to ensure they switch to file-reading mode.
+        # This uses ~5 individual _safe_call() connections — acceptable after
+        # the main batch just saved ~15 connections.
         self._update_existing_text_sources()
-
-        # Invalidate visualizer cache since scene items may have changed
-        self.invalidate_visualizer_cache()
 
         return {"connected": True, "status": "ok", "sources_created": list(results.keys()), "errors": errors or None}
 
@@ -1018,6 +1179,8 @@ class OBSBridge:
         "MBOT RADIO") instead of reading from dynamic files. This method
         pushes the correct file-reading settings to all overlay text sources.
         Uses overlay=True to force OBS to apply changes immediately.
+
+        Batches all updates into a single WebSocket connection.
         """
         if not self.enabled:
             return
@@ -1031,20 +1194,21 @@ class OBSBridge:
             "Ticker": ("/tmp/radio_waiting.txt", 24, 4294967295),       # White
         }
 
-        for source_name, (file_path, font_size, color) in source_configs.items():
-            try:
-                settings = _text_settings(
-                    " ", "DejaVu Sans", "Bold" if source_name != "DJ Speaking" else "Regular",
-                    font_size, color=color, align=0, valign=0,
-                    read_from_file=True, file_path=file_path,
-                )
-                self._safe_call(
-                    lambda c, sn=source_name, s=settings: c.set_input_settings(
-                        name=sn, settings=s, overlay=True,
+        with self._batch() as client:
+            if client is None:
+                return
+            for source_name, (file_path, font_size, color) in source_configs.items():
+                try:
+                    settings = _text_settings(
+                        " ", "DejaVu Sans", "Bold" if source_name != "DJ Speaking" else "Regular",
+                        font_size, color=color, align=0, valign=0,
+                        read_from_file=True, file_path=file_path,
                     )
-                )
-            except Exception:
-                pass  # Source may not exist yet — that's OK
+                    client.set_input_settings(
+                        name=source_name, settings=settings, overlay=True,
+                    )
+                except Exception:
+                    pass  # Source may not exist yet — that's OK
 
     def _position_background(self, scene_name: str):
         """Position and scale the background (logo.png) to fill the 1280×720 canvas.
@@ -1658,7 +1822,8 @@ class OBSBridge:
         try:
             from PIL import Image, ImageDraw
         except ImportError:
-            # PIL not available — can't render waveform
+            # PIL not available — fall back to raw PNG generation
+            OBSBridge._render_waveform_image_no_pil(rms_history, output_path, width, height)
             return
 
         n_bars = len(rms_history)
@@ -1740,6 +1905,138 @@ class OBSBridge:
         # Save as PNG
         img.save(output_path, "PNG")
 
+    @staticmethod
+    def _render_waveform_image_no_pil(rms_history: list, output_path: str,
+                                       width: int = 1200, height: int = 60):
+        """Render a simple waveform PNG without PIL (standard library only).
+
+        Uses raw PNG byte construction via struct + zlib. Produces an RGBA
+        image with the same layout as the PIL version:
+          - 64 vertical bars centered horizontally
+          - Bars extend above and below the midline (mirrored waveform)
+          - Neon cyan color with age-based brightness fading
+          - Transparent background (alpha=0)
+
+        This is the fallback when Pillow is NOT installed on the server.
+        The output is visually simpler (no anti-aliasing, no rounded caps)
+        but structurally identical — OBS reads it the same way.
+
+        PNG format reference: http://www.libpng.org/pub/png/spec/1.2/PNG-Structure.html
+        """
+        import struct
+        import zlib
+
+        n_bars = len(rms_history)
+        if n_bars == 0:
+            n_bars = 1
+            rms_history = [0.02]
+
+        # Bar layout — same as PIL version
+        total_gap = 2
+        bar_width = max(2, (width - (n_bars - 1) * total_gap) // n_bars)
+        total_bars_width = n_bars * bar_width + (n_bars - 1) * total_gap
+        x_offset = (width - total_bars_width) // 2
+        midline = height // 2
+        max_bar_height = midline - 2
+
+        # Build raw pixel data (RGBA, 4 bytes per pixel)
+        # PNG rows are left-to-right, top-to-bottom, each row prefixed with
+        # filter byte 0 (None filter). Row format: [0][R G B A][R G B A]...
+        raw_rows = []
+
+        for y in range(height):
+            # Start each row with filter type 0 (None)
+            row = bytearray([0])
+            for x in range(width):
+                # Default: fully transparent (background)
+                r, g, b, a = 0, 0, 0, 0
+
+                # Check if this pixel falls within a bar
+                # Determine which bar (if any) this x-coordinate belongs to
+                bar_idx = -1
+                if x >= x_offset:
+                    rel_x = x - x_offset
+                    # Each bar occupies bar_width pixels, then total_gap pixels
+                    bar_pitch = bar_width + total_gap
+                    if rel_x < total_bars_width:
+                        idx = rel_x // bar_pitch
+                        within = rel_x % bar_pitch
+                        if within < bar_width and idx < n_bars:
+                            bar_idx = idx
+
+                if bar_idx >= 0:
+                    rms = max(0.0, min(1.0, rms_history[bar_idx]))
+                    bar_height = max(1, int(rms * max_bar_height))
+
+                    # Top of this bar
+                    top_y = midline - bar_height
+                    # Bottom of this bar (mirrored)
+                    bot_y = midline + bar_height - 1
+
+                    # Age factor: 0.0 (oldest, left) → 1.0 (newest, right)
+                    age_factor = bar_idx / max(1, n_bars - 1)
+                    brightness = 0.4 + 0.6 * age_factor
+                    alpha = int(100 + 155 * age_factor)
+
+                    # Neon cyan: R=0, G=255, B=224 scaled by brightness
+                    cr = int(0 * brightness)
+                    cg = int(255 * brightness)
+                    cb = int(224 * brightness)
+
+                    # Check if pixel is in the top half or bottom half
+                    if top_y <= y <= midline - 1:
+                        # Top half of bar — full brightness
+                        r, g, b, a = cr, cg, cb, alpha
+                        # Bright cap at the very top of the bar
+                        if y == top_y and bar_height > 3:
+                            cap_brightness = min(1.0, brightness * 1.5)
+                            r = int(min(255, 50 * cap_brightness))
+                            g = int(min(255, 255 * cap_brightness))
+                            b = int(min(255, 240 * cap_brightness))
+                            a = min(255, alpha + 50)
+                    elif midline <= y <= bot_y:
+                        # Bottom half (mirror) — dimmer reflection
+                        r, g, b, a = cr, cg, cb, int(alpha * 0.5)
+                    # else: pixel is between top and bottom bars or outside bar
+                    # → stays transparent (the midline gap)
+
+                row.extend([r, g, b, a])
+
+            raw_rows.append(bytes(row))
+
+        # Concatenate all rows
+        raw_data = b"".join(raw_rows)
+
+        # Deflate-compress the raw pixel data
+        compressed = zlib.compress(raw_data)
+
+        # ── Build PNG file ──
+        def _make_chunk(chunk_type: bytes, data: bytes) -> bytes:
+            """Build a single PNG chunk: length + type + data + CRC."""
+            chunk_len = struct.pack(">I", len(data))
+            crc = struct.pack(">I", zlib.crc32(chunk_type + data) & 0xFFFFFFFF)
+            return chunk_len + chunk_type + data + crc
+
+        # PNG signature
+        png_sig = b"\x89PNG\r\n\x1a\n"
+
+        # IHDR chunk: width, height, bit_depth=8, color_type=6 (RGBA), compression=0, filter=0, interlace=0
+        ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
+        ihdr = _make_chunk(b"IHDR", ihdr_data)
+
+        # IDAT chunk: compressed image data
+        idat = _make_chunk(b"IDAT", compressed)
+
+        # IEND chunk: end marker
+        iend = _make_chunk(b"IEND", b"")
+
+        # Write the PNG file
+        try:
+            with open(output_path, "wb") as f:
+                f.write(png_sig + ihdr + idat + iend)
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to write no-PIL waveform PNG: {e}")
+
     def invalidate_visualizer_cache(self):
         """Clear the visualizer's cached scene name and item ID.
 
@@ -1747,7 +2044,6 @@ class OBSBridge:
         """
         self._viz_scene_name = None
         self._viz_item_id = -1
-        self._viz_last_scale = 0.0
         self._viz_positioned = False
 
     def create_gif_source(self, gif_path: str = "", scene_name: str = "") -> dict:

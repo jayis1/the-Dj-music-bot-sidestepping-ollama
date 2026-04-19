@@ -362,46 +362,62 @@ class YouTubeLiveStreamer:
             # correct RTMP server + stream key even before the WebSocket API pushes it.
             self._write_obs_service_json()
 
-            # ── Step 2: Configure OBS stream settings via WebSocket API ─
-            rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
-            log.info(
-                f"YouTube Live/OBS: Configuring stream → {rtmp_endpoint} "
-                f"(key: ...{self.stream_key[-4:]})"
-            )
-            result = self._obs_bridge.set_stream_settings(
-                service="rtmp_custom",
-                server=rtmp_endpoint,
-                key=self.stream_key,
-            )
-            if not result.get("connected"):
-                log.warning(f"YouTube Live/OBS: Failed to configure stream settings: {result}")
-                return False
+            # ── Step 1.5: Write encoder JSON + fix basic.ini ───────────
+            # OBS 29 uses per-encoder JSON files (streamEncoder.json) that take
+            # PRECEDENCE over basic.ini settings. Without this file, OBS overrides
+            # our x264 settings with YouTube's recommended values (bitrate=2500,
+            # keyint=250), causing "Poor" stream health on YouTube (8.3s keyframe
+            # frequency). The WebSocket set_encoder_settings() call is silently
+            # ignored — only the on-disk JSON file actually works.
+            self._write_obs_encoder_json()
 
-            log.info("YouTube Live/OBS: Stream settings configured ✅")
-
-            # ── Step 3: Ensure the overlay scene exists ────────────────
+            # ── Steps 2-3: Batch WebSocket operations (first batch) ───────
+            # Steps 2 (stream settings) and 3 (scene creation) share one
+            # WebSocket connection. Step 4 (overlay) is batched internally
+            # by create_native_overlay(). Steps 5-7.5 use a second batch.
             overlay_scene = os.environ.get(
                 "OBS_SCENE_OVERLAY", "📺 Overlay Only"
             )
-            scene_list_result = self._obs_bridge.get_status()
-            existing_scenes = scene_list_result.get("scenes", [])
-            if overlay_scene not in existing_scenes:
-                log.info(f"YouTube Live/OBS: Creating scene '{overlay_scene}'")
+
+            with self._obs_bridge._batch() as batch_client:
+                if batch_client is None:
+                    log.warning("YouTube Live/OBS: Cannot connect for batch setup")
+                    return False
+
+                # ── Step 2: Configure stream settings ──
+                rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
+                log.info(
+                    f"YouTube Live/OBS: Configuring stream → {rtmp_endpoint} "
+                    f"(key: ...{self.stream_key[-4:]})"
+                )
                 try:
-                    self._obs_bridge.create_scene(overlay_scene)
-                except Exception:
-                    pass  # Scene might already exist (race), that's OK
+                    batch_client.set_stream_service_settings(
+                        "rtmp_custom",
+                        {"server": rtmp_endpoint, "key": self.stream_key},
+                    )
+                    log.info("YouTube Live/OBS: Stream settings configured ✅")
+                except Exception as e:
+                    log.warning(f"YouTube Live/OBS: Failed to configure stream settings: {e}")
+                    return False
+
+                # ── Step 3: Ensure the overlay scene exists ──
+                try:
+                    scene_list = batch_client.get_scene_list()
+                    existing_scenes = [
+                        s.scene_name if hasattr(s, "scene_name") else str(s)
+                        for s in (scene_list.scenes if hasattr(scene_list, "scenes") else [])
+                    ]
+                    if overlay_scene not in existing_scenes:
+                        log.info(f"YouTube Live/OBS: Creating scene '{overlay_scene}'")
+                        try:
+                            batch_client.create_scene(name=overlay_scene)
+                        except Exception:
+                            pass  # Scene might already exist (race), that's OK
+                except Exception as e:
+                    log.debug(f"YouTube Live/OBS: Scene check/create error: {e}")
 
             # ── Step 4: Create overlay sources (native color+text) ──────
-            # On Debian 12, obs-browser plugin is NOT available, so browser_source
-            # fails with error 605. We try native overlay first (color+text sources)
-            # which works on all platforms, and fall back to browser source on
-            # platforms where obs-browser is installed.
-            overlay_scene = os.environ.get(
-                "OBS_SCENE_OVERLAY", "📺 Overlay Only"
-            )
-
-            # Try native overlay first (works everywhere including Debian 12)
+            # This is now batched internally — one connection for all sources!
             log.info("YouTube Live/OBS: Creating native overlay (color+text sources)")
             result = self._obs_bridge.create_native_overlay(
                 scene_name=overlay_scene,
@@ -412,66 +428,88 @@ class YouTubeLiveStreamer:
                     "Overlay may be incomplete."
                 )
 
-            # ── Step 5: Create FFmpeg audio source (UDP PCM from bot) ───
-            result = self._obs_bridge.create_audio_source(
-                source_name="Bot Audio (UDP)",
-                udp_port=12345,
-                scene_name=overlay_scene,
-            )
-            if result.get("error"):
-                log.warning(f"YouTube Live/OBS: Audio source issue: {result['error']}")
-            else:
-                log.info("YouTube Live/OBS: Audio source created ✅")
-
-            # ── Step 6: Mute OBS Desktop Audio ──────────────────────────
-            # OBS's "Desktop Audio" captures from PulseAudio's radio_dj_sink
-            # at 44.1kHz. This creates a DOUBLE-AUDIO problem (same audio
-            # arrives both via PulseAudio AND via the UDP ffmpeg source)
-            # and a SAMPLE RATE MISMATCH (44.1kHz Desktop vs 48kHz UDP).
-            # The 44.1kHz→48kHz resampling causes the "slowed down" effect.
-            # Since the bot audio already arrives via UDP, the PulseAudio
-            # Desktop Audio capture is redundant and must be muted.
-            try:
-                mute_result = self._obs_bridge.set_source_mute("Desktop Audio", muted=True)
-                if not mute_result.get("error"):
-                    log.info("YouTube Live/OBS: Muted Desktop Audio (using UDP source instead)")
+            # ── Steps 5-7.5: Batch WebSocket (audio + mute + switch + encoder) ──
+            with self._obs_bridge._batch() as batch_client:
+                if batch_client is None:
+                    log.warning("YouTube Live/OBS: Cannot connect for audio/mute setup")
+                    # Non-fatal — we can still try streaming
                 else:
-                    # Might be named differently — try alternative names
-                    for alt_name in ["PulseAudio", "Audio Output", "DesktopAudioHandler"]:
-                        alt_result = self._obs_bridge.set_source_mute(alt_name, muted=True)
-                        if not alt_result.get("error"):
-                            log.info(f"YouTube Live/OBS: Muted '{alt_name}' (using UDP source instead)")
+                    # ── Step 5: Create FFmpeg audio source (UDP PCM from bot) ──
+                    try:
+                        existing_audio = batch_client.get_input_settings(name="Bot Audio (UDP)")
+                        if existing_audio:
+                            # Push correct settings to existing source
+                            try:
+                                batch_client.set_input_settings(
+                                    name="Bot Audio (UDP)",
+                                    settings={
+                                        "input": f"udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
+                                        "is_local_file": False,
+                                        "input_format": "s16le",
+                                        "ffmpeg_options": "sample_rate=48000 channels=2",
+                                        "close_when_inactive": False,
+                                        "restart_on_activate": True,
+                                    },
+                                    overlay=True,
+                                )
+                                log.info("YouTube Live/OBS: Updated audio source settings (overlay=True)")
+                            except Exception:
+                                pass
+                        else:
+                            raise Exception("create")
+                    except Exception:
+                        try:
+                            batch_client.create_input(
+                                sceneName=overlay_scene,
+                                inputKind="ffmpeg_source",
+                                inputName="Bot Audio (UDP)",
+                                inputSettings={
+                                    "input": "udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
+                                    "is_local_file": False,
+                                    "input_format": "s16le",
+                                    "ffmpeg_options": "sample_rate=48000 channels=2",
+                                    "close_when_inactive": False,
+                                    "restart_on_activate": True,
+                                },
+                                sceneItemEnabled=True,
+                            )
+                            log.info("YouTube Live/OBS: Audio source created ✅")
+                        except Exception as e:
+                            log.warning(f"YouTube Live/OBS: Audio source issue: {e}")
+
+                    # ── Step 6: Mute OBS Desktop Audio ──
+                    for mute_name in ["Desktop Audio", "PulseAudio", "Audio Output", "DesktopAudioHandler"]:
+                        try:
+                            batch_client.set_input_mute(name=mute_name, muted=True)
+                            log.info(f"YouTube Live/OBS: Muted '{mute_name}' (using UDP source instead)")
                             break
-            except Exception as e:
-                log.debug(f"YouTube Live/OBS: Could not mute Desktop Audio: {e}")
+                        except Exception:
+                            continue
 
-            # ── Step 7: Switch to the overlay scene BEFORE starting stream
-            # This ensures the correct content is there from frame 1
-            self._obs_bridge.set_current_scene(overlay_scene)
-            log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
+                    # ── Step 7: Switch to the overlay scene ──
+                    try:
+                        batch_client.set_current_program_scene(name=overlay_scene)
+                        log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
+                    except Exception as e:
+                        log.debug(f"YouTube Live/OBS: Could not switch scene: {e}")
 
-            # ── Step 7.5: Push encoder settings (keyint_sec, bitrate) ────
-            # OBS's Advanced mode often caches stale encoder settings from
-            # previous runs. Even though basic.ini has keyint_sec=2, OBS may
-            # still use keyint=250 (x264 default = 8.3s @ 30fps → "Poor" on
-            # YouTube). Pushing via WebSocket forces the correct values.
-            try:
-                enc_result = self._obs_bridge.set_encoder_settings(
-                    keyint_sec=2, bitrate=3000,
-                    preset="veryfast", rate_control="CBR",
-                )
-                if not enc_result.get("error"):
-                    log.info(
-                        "YouTube Live/OBS: Encoder settings pushed — "
-                        "keyint_sec=2, bitrate=3000, CBR, veryfast"
-                    )
-                else:
-                    log.debug(
-                        f"YouTube Live/OBS: Encoder settings push had issues: "
-                        f"{enc_result}"
-                    )
-            except Exception as e:
-                log.debug(f"YouTube Live/OBS: Could not push encoder settings: {e}")
+                    # ── Step 7.5: Push encoder settings (secondary) ──
+                    try:
+                        batch_client.set_stream_encoder_settings(
+                            {
+                                "keyint_sec": "2",
+                                "bitrate": "3000",
+                                "rate_control": "CBR",
+                                "preset": "veryfast",
+                            },
+                            "obs_x264",
+                        )
+                        log.info(
+                            "YouTube Live/OBS: Encoder settings pushed (secondary) — "
+                            "keyint_sec=2, bitrate=3000, CBR, veryfast"
+                        )
+                    except Exception as e:
+                        log.debug(f"YouTube Live/OBS: Encoder push (secondary) failed: {e}")
 
             # ── Step 8: Start OBS streaming ─────────────────────────────
             result = self._obs_bridge.start_streaming()
@@ -555,6 +593,121 @@ class YouTubeLiveStreamer:
             )
         except Exception as e:
             log.warning(f"YouTube Live/OBS: Failed to write service.json: {e}")
+
+    def _write_obs_encoder_json(self):
+        """Write streamEncoder.json and fix basic.ini in the OBS profile directory.
+
+        OBS 29 uses per-encoder JSON files (streamEncoder.json) to store
+        x264 settings. These take PRECEDENCE over basic.ini settings.
+        Without this file, OBS falls back to YouTube's recommended settings
+        (bitrate=2500, keyint=250) even if basic.ini says keyint_sec=2
+        and Bitrate=3000.
+
+        The log will show:
+          info: [x264 encoder: 'advanced_video_stream'] settings:
+                  rate_control: CBR
+                  bitrate:      2500      ← WRONG (should be 3000)
+                  keyint:       250       ← WRONG (should be 60)
+
+        YouTube requires keyframes ≤4 seconds apart (keyint_sec=2 at 30fps
+        = 60 frames = 2 seconds). Without this, YouTube shows "Poor" stream
+        health with the message:
+          "Please use a keyframe frequency of four seconds or less.
+           Currently, keyframes are not being sent often enough.
+           The current keyframe frequency is 8.3 seconds."
+
+        Additionally, ApplyServiceSettings must be false in basic.ini
+        or YouTube's recommended settings override our custom ones.
+        """
+        import json
+        import configparser
+
+        profile_name = os.environ.get("OBS_PROFILE_NAME", "RadioDJ")
+        profile_dir = os.path.expanduser(
+            f"~/.config/obs-studio/basic/profiles/{profile_name}"
+        )
+
+        if not os.path.isdir(profile_dir):
+            try:
+                os.makedirs(profile_dir, exist_ok=True)
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
+                return
+
+        # ── Write streamEncoder.json ──
+        # This is the OBS 29 per-encoder settings file.
+        # Format: { "obs_x264": { ... x264 settings ... } }
+        encoder_data = {
+            "obs_x264": {
+                "rate_control": "CBR",
+                "bitrate": 3000,
+                "buffer_size": 3000,
+                "keyint_sec": 2,
+                "preset": "veryfast",
+                "profile": "high",
+                "tune": "zerolatency",
+                "x264opts": "keyint=60:min-keyint=60:bframes=0",
+            }
+        }
+
+        encoder_json_path = os.path.join(profile_dir, "streamEncoder.json")
+        try:
+            with open(encoder_json_path, "w") as f:
+                json.dump(encoder_data, f, indent=4)
+            log.info(
+                f"YouTube Live/OBS: Wrote streamEncoder.json → {profile_dir} "
+                f"(keyint_sec=2, bitrate=3000, CBR, veryfast, keyint=60)"
+            )
+        except Exception as e:
+            log.warning(f"YouTube Live/OBS: Failed to write streamEncoder.json: {e}")
+
+        # ── Fix basic.ini: ApplyServiceSettings must be false ──
+        # When true, OBS overrides our encoder settings with YouTube's
+        # recommended values (bitrate=2500, which OBS interprets as
+        # keyint=250 too). Set to false to use our custom values.
+        basic_ini_path = os.path.join(profile_dir, "basic.ini")
+        try:
+            if os.path.isfile(basic_ini_path):
+                ucfg = configparser.ConfigParser()
+                ucfg.read(basic_ini_path)
+                changed = False
+
+                if ucfg.get("AdvOut", "ApplyServiceSettings", fallback="true") != "false":
+                    ucfg.set("AdvOut", "ApplyServiceSettings", "false")
+                    changed = True
+
+                # Also ensure keyint_sec and bitrate are correct
+                if ucfg.get("AdvOut", "keyint_sec", fallback="") != "2":
+                    ucfg.set("AdvOut", "keyint_sec", "2")
+                    changed = True
+                if ucfg.get("AdvOut", "Bitrate", fallback="") != "3000":
+                    ucfg.set("AdvOut", "Bitrate", "3000")
+                    changed = True
+                if ucfg.get("AdvOut", "MaxBitrate", fallback="") != "3000":
+                    ucfg.set("AdvOut", "MaxBitrate", "3000")
+                    changed = True
+                if ucfg.get("AdvOut", "BufferSize", fallback="") != "3000":
+                    ucfg.set("AdvOut", "BufferSize", "3000")
+                    changed = True
+                if ucfg.get("AdvOut", "RateControl", fallback="") != "CBR":
+                    ucfg.set("AdvOut", "RateControl", "CBR")
+                    changed = True
+                if ucfg.get("AdvOut", "Preset", fallback="") != "veryfast":
+                    ucfg.set("AdvOut", "Preset", "veryfast")
+                    changed = True
+
+                if changed:
+                    with open(basic_ini_path, "w") as f:
+                        ucfg.write(f)
+                    log.info(
+                        "YouTube Live/OBS: Fixed basic.ini encoder settings "
+                        "(ApplyServiceSettings=false, keyint_sec=2, Bitrate=3000)"
+                    )
+            else:
+                # basic.ini doesn't exist yet — write a minimal one
+                log.debug(f"YouTube Live/OBS: basic.ini not found at {basic_ini_path}, will be created by start.sh")
+        except Exception as e:
+            log.debug(f"YouTube Live/OBS: Could not fix basic.ini: {e}")
 
     async def _stop_obs_stream(self):
         """Stop OBS streaming."""
@@ -693,7 +846,6 @@ class YouTubeLiveStreamer:
 
     async def _start_master_ffmpeg(self):
         """Construct the FFmpeg process with Xvfb and Chromium headless screen capture!"""
-        import shutil
         xvfb_path = shutil.which("Xvfb")
         chromium_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
         

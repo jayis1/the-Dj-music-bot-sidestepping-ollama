@@ -602,19 +602,18 @@ class YouTubeLiveStreamer:
             pass
 
     async def _visualizer_poll_obs(self):
-        """Poll the PCMBroadcaster's beat-pulse level and update the OBS visualizer bar.
+        """Poll the PCMBroadcaster's RMS history and render the sound-wave visualizer.
 
         This coroutine runs at ~5 FPS (every 200ms) while the stream is active.
-        It reads the beat-pulse audio level from the PCMBroadcaster and adjusts
-        the width (scaleX) of the "Audio Visualizer" color source in OBS.
+        It reads the RMS history buffer from the PCMBroadcaster (64 samples ≈
+        1.3 seconds of audio) and renders a waveform PNG image at
+        /tmp/radio_visualizer.png. OBS's image_source auto-refreshes on the
+        next frame render, so the update appears instantly with zero WebSocket
+        overhead.
 
-        The beat-pulse algorithm detects transients (drum hits, bass, sibilance)
-        and makes the bar snap to peak on each beat, then decay fast between
-        beats — creating a pulsing "VU meter on steroids" effect.
-
-        The OBS Bridge's update_visualizer_bar() caches the scene item ID
-        and skips WebSocket calls when the scale change is <2%, so most
-        ticks during silence result in zero WebSocket connections.
+        The waveform shows vertical bars with varying heights — creating a
+        "sound wave" / "equalizer" look that pulses with beats and syllables.
+        Recent samples are brighter, older samples are dimmer.
 
         NOTE: 200ms is the minimum safe polling interval. Faster rates
         cause WebSocket connection storms that break OBS audio.
@@ -633,20 +632,26 @@ class YouTubeLiveStreamer:
                 if not self._obs_bridge or not self._obs_bridge.enabled:
                     continue
 
-                # Read the audio level from the registered PCMBroadcaster
+                # Read the audio level AND RMS history from the registered PCMBroadcaster
                 level = 0.0
+                rms_history = None
                 try:
                     broadcaster = get_broadcaster()
                     if broadcaster:
                         level = broadcaster.get_audio_level()
+                        rms_history = broadcaster.get_rms_history()
                 except Exception:
                     pass
 
-                # Update the OBS visualizer bar width
+                # Render the sound-wave visualizer image.
+                # This writes /tmp/radio_visualizer.png which OBS's
+                # image_source picks up automatically. No WebSocket call
+                # needed for the image update — only for initial positioning.
                 if self._obs_bridge and self._obs_bridge.enabled:
                     try:
                         self._obs_bridge.update_visualizer_bar(
-                            level=level, scene_name=overlay_scene
+                            level=level, scene_name=overlay_scene,
+                            rms_history=rms_history,
                         )
                     except Exception:
                         pass  # Non-critical — visualizer is cosmetic

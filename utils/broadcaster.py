@@ -61,6 +61,14 @@ class PCMBroadcaster(discord.AudioSource):
         # When short >> long, a beat (transient) is detected.
         self._energy_long = 0.0          # Long-term energy average
 
+        # ── Sound Wave RMS History Buffer ──
+        # A rolling buffer of recent RMS levels used to render the
+        # sound-wave visualizer. Each slot is one 20ms tick's RMS value.
+        # 64 slots ≈ 1.3 seconds of audio history — enough to show
+        # the wave shape of beats and transitions.
+        self._rms_history = [0.0] * 64
+        self._rms_history_idx = 0
+
         self._thread = threading.Thread(target=self._autonomous_clock, daemon=True)
         self._thread.start()
         log.info(
@@ -163,6 +171,20 @@ class PCMBroadcaster(discord.AudioSource):
         with self._audio_level_lock:
             return self._audio_level_peak
 
+    def get_rms_history(self) -> list[float]:
+        """Get the circular RMS history buffer in chronological order.
+
+        Returns a list of 64 floats (0.0–1.0), oldest to newest,
+        representing ~1.3 seconds of audio RMS levels at 20ms intervals.
+        This is used by the sound-wave visualizer renderer to draw
+        the waveform shape.
+        """
+        with self._audio_level_lock:
+            # Read the buffer in chronological order (oldest → newest)
+            n = len(self._rms_history)
+            idx = self._rms_history_idx
+            return list(self._rms_history[idx:] + self._rms_history[:idx])
+
     def read(self) -> bytes:
         """Called automatically by Discord VoiceClient. Drives the clock native to the server.
 
@@ -239,6 +261,12 @@ class PCMBroadcaster(discord.AudioSource):
         rms = self._compute_rms(pcm_data)
 
         with self._audio_level_lock:
+            # ── Record RMS into circular history buffer ──
+            # Used by the sound-wave visualizer renderer to draw the
+            # waveform shape. Each slot = one 20ms tick's RMS.
+            self._rms_history[self._rms_history_idx] = rms
+            self._rms_history_idx = (self._rms_history_idx + 1) % len(self._rms_history)
+
             # Update long-term energy average (slow-moving background)
             # α = 0.01 → very slow adaptation, takes ~100 ticks (2 sec) to settle
             self._energy_long = self._energy_long * 0.99 + rms * 0.01

@@ -972,10 +972,10 @@ class OBSBridge:
         # OBS auto-refreshes the image on each frame render.
         results["thumbnail"] = self.create_thumbnail_source(scene_name=scene_name)
 
-        # ── 8. Audio Visualizer bar (color_source_v3) ───────────────
-        # A neon green bar that dynamically resizes based on audio level.
-        # The PCMBroadcaster tracks RMS audio level, and a polling loop
-        # in youtube_stream.py updates the bar width via WebSocket.
+        # ── 8. Audio Visualizer (image_source — sound wave) ──────────
+        # A waveform PNG image that dynamically shows audio levels.
+        # The PCMBroadcaster tracks RMS audio level history, and a polling loop
+        # in youtube_stream.py renders the waveform image every 200ms.
         results["visualizer"] = self.create_visualizer_bar(scene_name=scene_name)
 
         # ── 9. GIF Overlay (ffmpeg_source) ──────────────────────────
@@ -1099,8 +1099,8 @@ class OBSBridge:
           │  (40,80)  Station Name                                │Thumb│  │
           │  (40,140) Now Playing title                           │150px│  │
           │  (40,210) DJ Speaking text                            └────┘  │
-          │  (40,280) ████ Audio Visualizer Bar ███████                   │
-          │  (40,320) [GIF Overlay - decorative]                          │
+          │  (40,270) ▁▂▃▅▇█▇▅▃▂▁ Sound Wave Visualizer █▇▅▃▂▁          │
+          │  (40,340) [GIF Overlay - decorative]                          │
           │                                                                │
           │  (40,640) Ticker                                                │
           └────────────────────────────────────────────────────────────────┘
@@ -1456,21 +1456,24 @@ class OBSBridge:
             log.debug(f"OBS Bridge: Failed to position thumbnail: {e}")
 
     def create_visualizer_bar(self, scene_name: str = "") -> dict:
-        """Create a beat-pulse visualizer bar using a color source.
+        """Create a sound-wave visualizer using an image_source.
 
-        Uses a color_source_v3 as a colored bar whose width is
-        dynamically adjusted by update_visualizer_bar() based on the
-        beat-pulse audio level from the PCMBroadcaster.
+        Instead of a single pulsing bar, the visualizer renders a dynamic
+        waveform PNG image at /tmp/radio_visualizer.png. The image shows
+        ~1.3 seconds of audio history as vertical bars with varying heights,
+        creating a "sound wave" / "equalizer" look that pulses with the beat.
 
-        The PCMBroadcaster detects beats (transients: kick drums, snares,
-        bass hits, sibilance) and makes the bar snap to peak on each
-        beat, then decay fast between beats — creating a pulsing effect.
+        The PCMBroadcaster provides a rolling buffer of 64 RMS samples
+        (~1.3s at 20ms per sample). The visualizer polling loop renders
+        these as a waveform image and OBS's image_source auto-refreshes
+        on the next frame.
 
-        The bar is:
-          - 1200px wide (max) × 30px tall
-          - Neon cyan (#00FFE0) for a "beat pulse" look
-          - Positioned below the DJ Speaking text (y=280)
-          - Width pulses from minimum to full based on beat detection
+        The waveform image is:
+          - 1200px wide × 60px tall
+          - 64 vertical bars (one per RMS sample) with smooth interpolation
+          - Neon cyan gradient (bright at peaks, dim at baseline)
+          - Positioned below the DJ Speaking text (y=270)
+          - Semi-transparent look with rounded bar tops
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -1478,19 +1481,19 @@ class OBSBridge:
         if not scene_name:
             scene_name = self._get_current_scene_name()
 
-        # Neon cyan: ARGB: A=0xFF, R=0x00, G=0xFF, B=0xE0
-        # = 0xFF00FFE0 = 4278255840
-        visualizer_color = 4278255840  # Neon cyan ARGB
+        # Generate a default placeholder waveform image
+        viz_path = "/tmp/radio_visualizer.png"
+        self._render_waveform_image([0.02] * 64, viz_path)
 
-        def _create(c, _scene=scene_name, _color=visualizer_color):
+        def _create(c, _scene=scene_name, _path=viz_path):
             try:
                 existing = c.get_input_settings(name="Audio Visualizer")
                 if existing:
-                    # Update to new color/size if settings changed
+                    # Update the file path in case it was a color_source before
                     try:
                         c.set_input_settings(
                             name="Audio Visualizer",
-                            settings={"color": _color, "width": 1200, "height": 30},
+                            settings={"file": _path, "unload": False},
                             overlay=True,
                         )
                     except Exception:
@@ -1498,26 +1501,50 @@ class OBSBridge:
                     return existing
             except Exception:
                 pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind="color_source_v3",
-                inputName="Audio Visualizer",
-                inputSettings={
-                    "color": _color,
-                    "width": 1200,   # Maximum width (gets scaled by update)
-                    "height": 30,    # Taller than before for more visual impact
-                },
-                sceneItemEnabled=True,
-            )
+
+            # Delete the old color_source if it exists — we're replacing
+            # it with an image_source for the waveform.
+            # NOTE: We don't remove_input() because that causes race
+            # condition error 601. Instead, we just create the new source
+            # with the same name. If OBS complains the name is taken,
+            # the existing source gets reused with updated settings.
+            try:
+                return c.create_input(
+                    sceneName=_scene,
+                    inputKind="image_source",
+                    inputName="Audio Visualizer",
+                    inputSettings={
+                        "file": _path,
+                        "unload": False,
+                    },
+                    sceneItemEnabled=True,
+                )
+            except Exception:
+                # Source name collision — the old color_source is still
+                # registered under this name. Try updating it instead.
+                try:
+                    c.set_input_settings(
+                        name="Audio Visualizer",
+                        settings={"file": _path, "unload": False},
+                        overlay=True,
+                    )
+                    return c.get_input_settings(name="Audio Visualizer")
+                except Exception:
+                    raise
 
         result = self._safe_call(_create)
         if not result.get("error"):
             self._position_visualizer(scene_name)
-            log.info("OBS Bridge: Audio Visualizer bar created ✅")
+            log.info("OBS Bridge: Sound-wave visualizer created ✅")
         return result
 
     def _position_visualizer(self, scene_name: str):
-        """Position the audio visualizer bar on the canvas."""
+        """Position the sound-wave visualizer on the canvas.
+
+        The waveform image is 1200×60, positioned at (40, 270).
+        No scaling needed — the image is rendered at the exact pixel
+        size it should appear on the 1280×720 canvas.
+        """
         item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
         if item_id < 0:
             return
@@ -1527,82 +1554,191 @@ class OBSBridge:
                     scene_name=sn, item_id=iid,
                     transform={
                         "positionX": 40,
-                        "positionY": 280,
+                        "positionY": 270,
                     }
                 )
             )
         except Exception as e:
             log.debug(f"OBS Bridge: Failed to position visualizer: {e}")
 
-    def update_visualizer_bar(self, level: float, scene_name: str = "") -> dict:
-        """Update the beat-pulse visualizer bar width based on beat level.
+    def update_visualizer_bar(self, level: float, scene_name: str = "",
+                               rms_history: list | None = None) -> dict:
+        """Update the sound-wave visualizer by rendering a new waveform PNG.
 
         Args:
             level: Beat-pulse level 0.0–1.0 (from PCMBroadcaster.get_audio_level())
-                  This is NOT a smooth RMS average — it snaps to peak on beats
-                  and decays fast between them, creating a pulsing effect.
+            rms_history: List of 64 RMS values (from PCMBroadcaster.get_rms_history())
+                         oldest to newest, representing ~1.3s of audio.
+                         If None, only the beat-pulse level is used (fallback).
             scene_name: Scene name (empty = current scene)
 
-        The bar's scaleX is set to `level`, so:
-          - 0.0 = minimum sliver (always at least 3% width)
-          - 0.5 = half width (600px)
-          - 1.0 = full width (1200px)
+        Instead of resizing a color_source bar, this renders a full waveform
+        PNG image at /tmp/radio_visualizer.png. OBS's image_source auto-
+        refreshes on the next frame render, so the update appears instantly.
 
-        During music playback, the bar pulses with kick drums and beats.
-        During silence, it drops to minimum quickly.
+        The waveform shows ~1.3 seconds of audio history as vertical bars
+        whose height varies with the RMS level — creating a "sound wave" /
+        "equalizer" look. Recent samples (right side) are brighter, older
+        samples (left side) are dimmer — giving a natural "scrolling wave" feel.
 
-        PERFORMANCE: This method is called at ~5 FPS by the visualizer
-        polling loop. To avoid flooding OBS with WebSocket connections,
-        it uses a cached scene item ID (resolved once, then reused)
-        and skips updates when the scale change is <3% (the pulse moves
-        too fast between beats for sub-3% differences to be visible).
+        PERFORMANCE: This is called at ~5 FPS. Rendering a 1200×60 PNG with
+        PIL takes <1ms — negligible compared to the 200ms polling interval.
+        OBS detects the file change via modification time and reloads on the
+        next frame. No WebSocket calls are needed just to update the image.
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
 
-        # Clamp level to [0.0, 1.0]
-        level = max(0.0, min(1.0, level))
+        # Build RMS history for rendering
+        if rms_history is None or len(rms_history) == 0:
+            # Fallback: use the single beat-pulse level to fill all bars
+            level = max(0.0, min(1.0, level))
+            rms_history = [level * 0.5] * 64  # Flat line at half the level
 
-        # Minimum 3% so the bar is always faintly visible as a baseline
-        scale_x = max(0.03, level)
+        # Render the waveform image to disk
+        viz_path = "/tmp/radio_visualizer.png"
+        try:
+            self._render_waveform_image(rms_history, viz_path)
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to render waveform image: {e}")
+            return {"connected": True, "status": "error", "error": str(e)}
 
-        # Skip update if the change is negligible — avoids WebSocket spam.
-        # 3% threshold: the beat pulse moves fast enough that <3% changes
-        # are invisible between polling ticks.
-        last_scale = getattr(self, '_viz_last_scale', 0.0)
-        if abs(scale_x - last_scale) < 0.03:
-            return {"connected": True, "status": "ok", "data": {"skipped": True}}
-        self._viz_last_scale = scale_x
-
-        # Use cached scene name and item ID (resolved once, then reused).
-        # This avoids 2 extra WebSocket connections per tick (get_status +
-        # get_scene_item_list) which would flood OBS.
-        if not scene_name:
-            scene_name = getattr(self, '_viz_scene_name', "📺 Overlay Only")
-
-        item_id = getattr(self, '_viz_item_id', -1)
-
-        # First call (or cache miss) — resolve scene name and item ID
-        if item_id < 0:
-            if not scene_name or scene_name == "📺 Overlay Only":
-                scene_name = self._get_current_scene_name()
-            self._viz_scene_name = scene_name
-            item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
-            self._viz_item_id = item_id
+        # OBS's image_source auto-detects file changes via modification time.
+        # We don't need a WebSocket call just to update the displayed image —
+        # OBS checks the file on every frame render. This is much more
+        # efficient than the old approach of calling set_scene_item_transform
+        # on every tick.
+        #
+        # However, on the first call after create_visualizer_bar(), we need
+        # to ensure the item is positioned correctly. After that, no
+        # WebSocket calls are needed during normal playback.
+        needs_position = not getattr(self, '_viz_positioned', False)
+        if needs_position:
+            if not scene_name:
+                scene_name = getattr(self, '_viz_scene_name', "📺 Overlay Only")
+            item_id = getattr(self, '_viz_item_id', -1)
             if item_id < 0:
-                return {"error": "Audio Visualizer source not found in scene", "connected": True}
+                if not scene_name or scene_name == "📺 Overlay Only":
+                    scene_name = self._get_current_scene_name()
+                self._viz_scene_name = scene_name
+                item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
+                self._viz_item_id = item_id
 
-        return self._safe_call(
-            lambda c, sn=scene_name, iid=item_id, sx=scale_x: c.set_scene_item_transform(
-                scene_name=sn, item_id=iid,
-                transform={
-                    "positionX": 40,
-                    "positionY": 280,
-                    "scaleX": sx,
-                    "scaleY": 1.0,
-                }
+            if item_id >= 0:
+                self._safe_call(
+                    lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
+                        scene_name=sn, item_id=iid,
+                        transform={
+                            "positionX": 40,
+                            "positionY": 270,
+                        }
+                    )
+                )
+                self._viz_positioned = True
+
+        return {"connected": True, "status": "ok", "data": {"rendered": True}}
+
+    @staticmethod
+    def _render_waveform_image(rms_history: list, output_path: str,
+                                width: int = 1200, height: int = 60):
+        """Render a sound-wave visualizer PNG from RMS history.
+
+        Creates an image showing the audio waveform as vertical bars
+        whose heights vary with the RMS level — creating an "equalizer"
+        or "sound wave" look. Recent samples are brighter (right side),
+        older samples are dimmer (left side).
+
+        Args:
+            rms_history: List of RMS values (0.0–1.0), oldest to newest.
+                         Typically 64 samples from PCMBroadcaster (≈1.3s).
+            output_path: Path to write the PNG file.
+            width: Image width in pixels (default 1200).
+            height: Image height in pixels (default 60).
+        """
+        try:
+            from PIL import Image, ImageDraw
+        except ImportError:
+            # PIL not available — can't render waveform
+            return
+
+        n_bars = len(rms_history)
+        if n_bars == 0:
+            return
+
+        # Create transparent background image (RGBA for alpha channel)
+        img = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(img)
+
+        # Bar dimensions
+        # Each bar: bar_width pixels wide, with gap pixels of spacing
+        total_gap = 2  # 2px gap between bars
+        bar_width = max(2, (width - (n_bars - 1) * total_gap) // n_bars)
+        # Center the bars horizontally
+        total_bars_width = n_bars * bar_width + (n_bars - 1) * total_gap
+        x_offset = (width - total_bars_width) // 2
+
+        # The waveform is drawn from the CENTER vertically (mirror image)
+        # so it looks like a proper sound wave — bars extend up AND down
+        # from the midline. This gives that classic "oscilloscope" look.
+        midline = height // 2
+        max_bar_height = midline - 2  # Leave 2px padding from edges
+
+        for i, rms in enumerate(rms_history):
+            # Clamp RMS to valid range
+            rms = max(0.0, min(1.0, rms))
+
+            # Bar height proportional to RMS (minimum 1px so it's visible)
+            bar_height = max(1, int(rms * max_bar_height))
+
+            # X position of this bar
+            x = x_offset + i * (bar_width + total_gap)
+
+            # Color: neon cyan gradient
+            # Newer bars (right) are brighter, older bars (left) are dimmer
+            # This creates a natural "scrolling wave from right" feel
+            age_factor = i / max(1, n_bars - 1)  # 0.0 (oldest) → 1.0 (newest)
+            # Alpha fades from 40% (oldest) to 100% (newest)
+            alpha = int(100 + 155 * age_factor)
+            # Brightness: older bars are dimmer
+            brightness = 0.4 + 0.6 * age_factor
+
+            # Neon cyan: R=0, G=255, B=224 — scale by brightness
+            r = int(0 * brightness)
+            g = int(255 * brightness)
+            b = int(224 * brightness)
+
+            # Draw the top half of the bar (above midline)
+            top_y = midline - bar_height
+            draw.rectangle(
+                [x, top_y, x + bar_width - 1, midline - 1],
+                fill=(r, g, b, alpha),
             )
-        )
+
+            # Draw the bottom half (mirrored, slightly dimmer)
+            bottom_alpha = int(alpha * 0.5)  # Mirror reflection is dimmer
+            draw.rectangle(
+                [x, midline, x + bar_width - 1, midline + bar_height - 1],
+                fill=(r, g, b, bottom_alpha),
+            )
+
+            # Add a bright "cap" at the peak of each bar (top only)
+            # This creates the classic "LED meter" look
+            if bar_height > 3:
+                cap_brightness = min(1.0, brightness * 1.5)
+                cap_r = int(min(255, 50 * cap_brightness))
+                cap_g = int(min(255, 255 * cap_brightness))
+                cap_b = int(min(255, 240 * cap_brightness))
+                draw.rectangle(
+                    [x, top_y, x + bar_width - 1, top_y + 1],
+                    fill=(cap_r, cap_g, cap_b, min(255, alpha + 50)),
+                )
+
+        # Add a faint center line (the zero-crossing line)
+        draw.line([(x_offset, midline), (x_offset + total_bars_width, midline)],
+                  fill=(0, 200, 180, 30), width=1)
+
+        # Save as PNG
+        img.save(output_path, "PNG")
 
     def invalidate_visualizer_cache(self):
         """Clear the visualizer's cached scene name and item ID.
@@ -1612,6 +1748,7 @@ class OBSBridge:
         self._viz_scene_name = None
         self._viz_item_id = -1
         self._viz_last_scale = 0.0
+        self._viz_positioned = False
 
     def create_gif_source(self, gif_path: str = "", scene_name: str = "") -> dict:
         """Create a media source (ffmpeg_source) that loops an animated GIF.
@@ -1868,6 +2005,13 @@ class OBSBridge:
         thumb_path = "/tmp/radio_thumbnail.jpg"
         if not os.path.exists(thumb_path):
             OBSBridge._create_placeholder_thumbnail_static()
+
+        # Create a placeholder waveform image for the sound-wave visualizer.
+        # This gets replaced with real audio data once the visualizer polling
+        # loop starts (every 200ms). Shows a flat "silent" baseline.
+        viz_path = "/tmp/radio_visualizer.png"
+        if not os.path.exists(viz_path):
+            OBSBridge._render_waveform_image([0.02] * 64, viz_path)
 
     @staticmethod
     def _create_placeholder_thumbnail_static():

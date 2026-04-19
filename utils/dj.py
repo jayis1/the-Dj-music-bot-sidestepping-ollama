@@ -1191,6 +1191,151 @@ CALLOUTS = [
     "WOW! I'm genuinely impressed by you all! {sound:anime_wow_sound_effect}",
 ]
 
+# ══════════════════════════════════════════════════════════════════════
+# SAVAGE / EDGY / ADULT DJ LINES
+# ══════════════════════════════════════════════════════════════════════
+# The station's DJ personality isn't some friendly morning zoo keeper.
+# These lines are for a DJ who's jaded, hostile, sarcastic, and doesn't
+# care whether you like them. Think: late-night pirate radio attitude.
+# Weed/drinking/late-night references fit the 420 branding.
+# ⚠️ These are "adult" and "not friendly" as explicitly requested.
+# They're edgy and confrontational, not slur-heavy or genuinely hateful.
+# ══════════════════════════════════════════════════════════════════════
+
+SAVAGE_INTROS = [
+    "{greeting} Yeah, I don't care either. Let's just play {title} and pretend we're all having a good time.",
+    "{greeting} You want a warm welcome? Wrong station. You get {title}. Deal with it.",
+    "{greeting} I was going to say something nice but then I remembered who I am. {title}.",
+    "{greeting} Let's get this over with. {title}.",
+    "{greeting} If you're expecting enthusiasm, you showed up to the wrong damn stream. Here's {title}.",
+    "{greeting} Another session of me pretending to care. {title}. I'm {dj_name} and I'm already over it.",
+    "{greeting} Look, I'm not here to make friends. I'm here to play {title}. The two things are unrelated.",
+    "{greeting} Pour yourself something strong. You're gonna need it for {title}.",
+    "{greeting} Wake up, light up, and shut up. {title}.",
+    "{greeting} The only thing open at this hour is this station and whatever you're smoking. {title}.",
+    "{greeting} I didn't ask you to be here. But you are. So suffer through {title} with me.",
+    "{greeting} If small talk is what you want, call your mother. Here, we have {title}.",
+    "{greeting} Your DJ is two drinks in and zero cares given. Kicking off with {title}.",
+    "{greeting} Good vibes only? Absolutely not. {title}.",
+    "{greeting} This is your captain speaking. We're going down. {title}.",
+    # ── With sound tags ──
+    "{greeting} No peace. No quiet. Just {title}. {sound:air_raid}",
+    "{greeting} Oh, you're still here? Cute. {title}. {sound:the_rock_shut_up}",
+    "{greeting} Shut up and listen. {title}. {sound:censor_beep_1}",
+    "{greeting} Welcome to the hostile hour. {title}! {sound:loud_explosion}",
+    "{greeting} I woke up like this. Angry. {title}. {sound:bone_crack}",
+    "{greeting} This is {dj_name}. I don't do requests and I don't do polite. {title}. {sound:dj_stop}",
+    "{greeting} Light it up. {title}. {sound:airhorn} The only thing I'm uplifting today is the volume.",
+    "{greeting} {title}. I didn't choose this. The algorithm did. And the algorithm has no taste. {sound:windows_10_error_sound}",
+    "{greeting} You want a DJ who cares? Wrong number. {title}! {sound:censor_beep_1}",
+    "{greeting} The hater in me says skip this, but the DJ in me says play {title}. DJ wins. Unfortunately. {sound:vine_boom}",
+]
+
+SAVAGE_HYPE_INTROS = [
+    "Finally something worth playing. {title}.",
+    "This one doesn't suck. {title}.",
+    "You're welcome for this one. {title}.",
+    "Oh, this slaps. Even I'm not mad about it. {title}.",
+    "I actually chose this one on purpose. That's how you know {title} is good.",
+    "Don't get used to good music. But enjoy {title} while it lasts.",
+    "{title}. Even a broken clock is right twice a day.",
+    "Okay FINE. This one is actually fire. {title}. I said what I said.",
+    "If you don't like {title}, your opinion is wrong. And I don't care about your opinion anyway.",
+    "{title}. Play it loud or don't play it at all. Actually, I don't care how you play it.",
+    # ── With sound tags ──
+    "This is the good stuff. {title}. {sound:airhorn} Don't make me regret sharing it.",
+    "I hate to admit it but {title} goes hard. {sound:combo_hit}",
+    "Shut up and pay attention. {title}! {sound:dj_stop}",
+    "Take a hit and listen. {title}. {sound:loud_explosion}",
+    "Even your DJ can't hate on {title}. {sound:combo_hit} That's saying something.",
+    "This one's for everyone who's still awake and still angry. {title}! {sound:air_raid}",
+]
+
+SAVAGE_OUTROS = [
+    "That was {title}. You survived. Barely.",
+    "{title}. You're welcome, even though you didn't earn it.",
+    "And that was {title}. I'm not saying it was good. I'm not saying it wasn't.",
+    "{title}. My work here is done. Was it ever really started? Doesn't matter.",
+    "That was {title}. If you hated it, write a complaint. I won't read it.",
+    "And {title} is over. On to the next disappointment.",
+    "{title}. Done. I've played worse. I've played better. This was somewhere in the middle of nowhere.",
+    "That was {title}. Another track, another minute closer to the grave. We're all counting down.",
+    "{title}. Over. Like my patience.",
+    "And {title} is done. Don't clap. It's not that kind of station.",
+    # ── With sound tags ──
+    "That was {title}. {sound:the_rock_shut_up} Now be quiet.",
+    "And {title} is done. {sound:vine_boom} You're welcome.",
+    "That was {title}. {sound:censor_beep_1} And I'm not sorry.",
+    "RIP {title}. {sound:undertakers_bell_2UwFCIe} Into the void it goes.",
+    "{title}. Over. {sound:bone_crack} Just like my will to live.",
+    "And that was {title}. {sound:pluh} Don't ask for it again. I don't do encores.",
+]
+
+SAVAGE_TRANSITIONS = [
+    "That was {prev_title}. Next is {next_title}. Try to keep up.",
+    "{prev_title} is dead. Long live {next_title}. Or whatever.",
+    "Moving on from {prev_title} to {next_title}. You'll survive. Probably.",
+    "From {prev_title} straight into {next_title}. No transition. No mercy.",
+    "{prev_title} tried its best. {next_title} won't. Let's find out together.",
+    "Forget {prev_title}. Here's {next_title}. I already did.",
+    "{prev_title} is over and I don't care. {next_title} is next and I care slightly less.",
+    "If {prev_title} was a warmup, {next_title} is the main event. If {prev_title} was the main event, {next_title} is the hangover.",
+    "From {prev_title} to {next_title}. The vibe shift is violent. Good.",
+    "{prev_title}. Fine. {next_title}. Whatever. Moving on.",
+    # ── With sound tags ──
+    "{prev_title} out. {next_title} in. {sound:the_rock_shut_up} No questions.",
+    "Next up after {prev_title}: {next_title}. {sound:censor_beep_1} Don't like it? Too bad.",
+    "From {prev_title} RIGHT into {next_title}. {sound:air_raid} No time for feelings.",
+    "Switching gears aggressively. {prev_title} → {next_title}! {sound:loud_explosion}",
+    "That was {prev_title}. Now {next_title}. {sound:bone_crack} I don't do smooth transitions.",
+    "{prev_title} is dead. {next_title} killed it. {sound:combo_hit} Justice served cold.",
+]
+
+SAVAGE_STATION_IDS = [
+    f"{config.STATION_NAME} Radio. Deal with it.",
+    f"You're stuck with {config.STATION_NAME} Radio. There is no escape.",
+    f"{config.STATION_NAME} Radio — we don't play nice. We play music.",
+    f"This is {config.STATION_NAME} Radio. Your DJ is {config.DJ_NAME} and she doesn't want to be here either.",
+    f"{config.STATION_NAME} Radio — the station for people who are too tired for small talk.",
+    f"{config.STATION_NAME} Radio. If you want friendly, there's a preschool down the street.",
+    f"{config.STATION_NAME} Radio — 24/7 tunes, zero given.",
+    f"This is {config.DJ_NAME} on {config.STATION_NAME} Radio. No, I will not take requests. Yes, you can deal with it.",
+    f"{config.STATION_NAME} Radio. The only thing we're uplifting is the bass.",
+    f"{config.STATION_NAME} Radio — where the music slaps and the DJ snaps back.",
+    f"Wake and bake with {config.STATION_NAME} Radio. I said what I said.",
+    f"You're tuned into {config.STATION_NAME} Radio. I didn't ask you to be here but you showed up anyway.",
+    f"{config.STATION_NAME} Radio. Broadcasting bad decisions since day one.",
+    f"{config.STATION_NAME} Radio — because therapy is expensive and this is free.",
+    # ── With sound tags ──
+    f"{{sound:air_raid}} {config.STATION_NAME} Radio. Deal with it.",
+    f"{config.STATION_NAME} Radio. Now with extra hostility! {{sound:loud_explosion}}",
+    f"Signal locked. {config.STATION_NAME} Radio. Resistance is futile. {{sound:air_raid}}",
+    f"{config.STATION_NAME} Radio. Zero chill. All music. {{sound:the_rock_shut_up}}",
+    f"This is {config.STATION_NAME} Radio and we are NOT stopping! {{sound:we_are_charlie_kirk_phone}} Regrettably.",
+]
+
+SAVAGE_CALLOUTS = [
+    "Shoutout to whoever's still listening. You have terrible taste in DJs and I respect that.",
+    "If you're hearing this, you have nothing better to do. That's not a judgment. It's a fact.",
+    "I'd acknowledge the listeners but I don't believe in encouraging bad decisions.",
+    "Someone just requested a song. I ignored it. You're welcome.",
+    "To the one person who's been here since the start — seek help. But also, thanks.",
+    "The chat is quiet. Good. I prefer it when nobody talks back.",
+    "If you're enjoying this, your standards are low and I'm okay with that.",
+    "I see two people listening. One is me. The other is probably a bot. Love you, bot.",
+    "Thank you for choosing this station over literally anything else. Your life choices are concerning.",
+    "The listeners are the real MVPs. Most Valuable Punching bags. I keed. Mostly.",
+    "You. Yes, you. Stop skipping tracks and let the DJ work. Oh wait, I don't care. Skip away.",
+    "To the chat: I see you typing. I'm choosing to ignore every word. Carry on.",
+    # ── With sound tags ──
+    "You're still here? {sound:huh_cat} I'm impressed and concerned.",
+    "Shoutout to the chat. All zero of you. {sound:censor_beep_1} Love you anyway.",
+    "If you're vibing, I'm happy for you. If you're not, I literally do not care. {sound:the_rock_shut_up}",
+    "To everyone listening: you're welcome and I'm sorry. Simultaneously. {sound:vine_boom}",
+    "Someone just typed in chat. I saw it. I'm choosing to ignore it. {sound:dj_stop}",
+    "Request denied. {sound:censor_beep_1} Just kidding. I didn't get one. That would require people.",
+]
+
 
 # ── Message Generation ─────────────────────────────────────────────
 
@@ -1219,7 +1364,12 @@ def _format_line(template: str, **kwargs) -> str:
 
 
 def _pool(category: str) -> list[str]:
-    """Return built-in + custom lines for a category, deduplicated."""
+    """Return built-in + custom lines for a category, deduplicated.
+
+    The savage/edgy lines are mixed in alongside the regular lines.
+    By default, ~30% of each category will be savage lines — enough to
+    give the DJ attitude without being hostile ALL the time.
+    """
     from utils.custom_lines import load_custom_lines
 
     builtin = {
@@ -1234,8 +1384,25 @@ def _pool(category: str) -> list[str]:
         "station_ids": STATION_IDS,
         "callouts": CALLOUTS,
     }.get(category, [])
+
+    # Mix in savage/edgy lines for each category.
+    # These give the DJ an "adult, not friendly" personality alongside
+    # the regular upbeat lines — ~30% of total pool is savage.
+    savage_map = {
+        "intros": SAVAGE_INTROS,
+        "hype_intros": SAVAGE_HYPE_INTROS,
+        "hype_intros_loud": SAVAGE_HYPE_INTROS,
+        "outros": SAVAGE_OUTROS,
+        "transitions": SAVAGE_TRANSITIONS,
+        "transitions_hype": SAVAGE_TRANSITIONS,
+        "outros_final": SAVAGE_OUTROS,
+        "station_ids": SAVAGE_STATION_IDS,
+        "callouts": SAVAGE_CALLOUTS,
+    }
+    savage = savage_map.get(category, [])
+
     custom = load_custom_lines().get(category, [])
-    combined = list(builtin) + custom
+    combined = list(builtin) + savage + custom
     # Deduplicate while preserving order
     seen = set()
     result = []

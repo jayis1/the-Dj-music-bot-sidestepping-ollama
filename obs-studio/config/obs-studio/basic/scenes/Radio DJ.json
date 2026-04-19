@@ -212,14 +212,13 @@
                     "push-to-talk": false,
                     "render": true,
                     "settings": {
-                        "color": 4278255840,
-                        "height": 30,
-                        "width": 1200
+                        "file": "/tmp/radio_visualizer.png",
+                        "unload": false
                     },
-                    "type": "color_source_v3",
+                    "type": "image_source",
                     "volume": 1.0,
                     "x": 40,
-                    "y": 280
+                    "y": 270
                 },
                 {
                     "balance": 0.5,

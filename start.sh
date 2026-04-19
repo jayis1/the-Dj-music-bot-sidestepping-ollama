@@ -349,6 +349,11 @@ EOF
     echo "Profile=RadioDJ" >> "$OBS_USER_INI"
     echo "ProfileDir=RadioDJ" >> "$OBS_USER_INI"
   fi
+  # Also handle the "Unnamed" profile that OBS 29 sometimes creates
+  if grep -q "^Profile=Unnamed" "$OBS_USER_INI"; then
+    sed -i 's/^Profile=Unnamed/Profile=RadioDJ/' "$OBS_USER_INI"
+    sed -i 's/^ProfileDir=Unnamed/ProfileDir=RadioDJ/' "$OBS_USER_INI"
+  fi
 
   # Verify user.ini is correct before OBS starts
   SC_VAL=$(grep "^SceneCollection=" "$OBS_USER_INI" 2>/dev/null | cut -d= -f2)

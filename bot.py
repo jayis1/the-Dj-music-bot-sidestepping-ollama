@@ -493,6 +493,18 @@ def run_web_server():
             # OBS stores the active collection in [Basic] → SceneCollection.
             # If it says "Untitled" (OBS's default), OBS loads a blank scene
             # even when --collection "Radio DJ" is on the command line.
+            #
+            # CRITICAL: OBS overwrites user.ini on exit with whatever scene
+            # collection it had loaded at shutdown. If OBS was running with
+            # "Untitled" (the default), it writes SceneCollection=Untitled
+            # back to user.ini. This creates a chicken-and-egg problem:
+            # our fix gets overwritten every time OBS exits.
+            #
+            # Strategy: Fix user.ini + delete Untitled.json so OBS has
+            # NOTHING to fall back to. When OBS can't find the Untitled
+            # collection JSON, it creates a blank scene — but our
+            # ensure_scenes_exist() programmatically creates the correct
+            # scene via WebSocket anyway.
             import configparser
             user_ini_path = os.path.expanduser("~/.config/obs-studio/user.ini")
             try:
@@ -509,7 +521,7 @@ def run_web_server():
                     ucfg.set("Basic", "SceneCollection", "Radio DJ")
                     ucfg.set("Basic", "SceneCollectionFile", "Radio DJ.json")
                     changed = True
-                if ucfg.get("Basic", "Profile", fallback="") in ("", "Untitled"):
+                if ucfg.get("Basic", "Profile", fallback="") in ("", "Untitled", "Unnamed"):
                     ucfg.set("Basic", "Profile", "RadioDJ")
                     ucfg.set("Basic", "ProfileDir", "RadioDJ")
                     changed = True
@@ -519,6 +531,20 @@ def run_web_server():
                     logging.info("OBS: Fixed user.ini scene collection → Radio DJ")
             except Exception as e:
                 logging.debug(f"OBS: Could not fix user.ini: {e}")
+
+            # Delete any Untitled scene collection files so OBS can't
+            # fall back to them. This is the most important part — even
+            # if user.ini somehow gets overwritten by OBS, deleting the
+            # Untitled.json prevents OBS from loading a blank scene.
+            obs_scenes_dir = os.path.expanduser("~/.config/obs-studio/basic/scenes")
+            for name in ["Untitled.json", "Untitled.json.bak", "Untitled.json.bak.1"]:
+                untitled_path = os.path.join(obs_scenes_dir, name)
+                if os.path.exists(untitled_path):
+                    try:
+                        os.remove(untitled_path)
+                        logging.info(f"OBS: Deleted stale scene collection: {name}")
+                    except Exception:
+                        pass
 
             # Push stream settings (RTMP server + stream key) to OBS at startup
             # so OBS is ready to stream when the user clicks Start Streaming.

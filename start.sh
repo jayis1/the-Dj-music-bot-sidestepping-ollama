@@ -572,9 +572,13 @@ USERINIEOF
     info "Fixed user.ini for Flatpak OBS dir ($OBS_CONFIG_BASE)"
   fi
 
-  # Sync all config files to BOTH dirs
+  # Sync all config files to the OTHER OBS dir (the one we didn't write to).
+  # Files were written to $OBS_CONFIG_BASE above. We sync them to the apt
+  # dir too because Flatpak OBS migrates from apt on first run.
   for _SYNC_DIR in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
     [ -z "$_SYNC_DIR" ] && continue
+    # Skip the primary dir — we already wrote configs there directly
+    [ "$_SYNC_DIR" = "$OBS_CONFIG_BASE" ] && continue
     _SYNC_SCENES="$_SYNC_DIR/basic/scenes"
     _SYNC_PROFILES="$_SYNC_DIR/basic/profiles/RadioDJ"
     mkdir -p "$_SYNC_SCENES" "$_SYNC_PROFILES" 2>/dev/null || true

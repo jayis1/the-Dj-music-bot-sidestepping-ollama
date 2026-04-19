@@ -408,171 +408,71 @@ EOF
   # which it couldn't load. Remove it so it doesn't fall back to it.
   rm -f "$OBS_SCENES_DIR/Radio DJ.json.bak.1" "$OBS_SCENES_DIR/Radio DJ.json.bak.2" 2>/dev/null
 
-  # Fix OBS's user.ini to point to "Radio DJ" scene collection.
-  # OBS stores the active collection name in [Basic] and if it says
-  # "Untitled", OBS loads the wrong (blank) scene collection even
-  # when --collection "Radio DJ" is passed on the command line.
-  OBS_USER_INI="$OBS_CONFIG_BASE/user.ini"
-  mkdir -p "$(dirname "$OBS_USER_INI")"
-  if [ ! -f "$OBS_USER_INI" ]; then
-    # First run — create user.ini from scratch with correct settings
-    cat > "$OBS_USER_INI" << EOF
-[General]
-[Basic]
-SceneCollection=Radio DJ
-SceneCollectionFile=Radio DJ.json
-Profile=RadioDJ
-ProfileDir=RadioDJ
-EOF
-    success "Created user.ini with Radio DJ scene collection"
-  elif grep -q "^SceneCollection=" "$OBS_USER_INI"; then
-    sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI"
-    sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI"
-  else
-    # Add [Basic] section if missing
-    echo "" >> "$OBS_USER_INI"
-    echo "[Basic]" >> "$OBS_USER_INI"
-    echo "SceneCollection=Radio DJ" >> "$OBS_USER_INI"
-    echo "SceneCollectionFile=Radio DJ.json" >> "$OBS_USER_INI"
-  fi
-  # Also fix Profile/ProfileDir if they point to "Untitled"
-  if grep -q "^Profile=Untitled" "$OBS_USER_INI"; then
-    sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI"
-    sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI"
-  fi
-  # Ensure Profile/ProfileDir exist even if missing
-  if ! grep -q "^Profile=" "$OBS_USER_INI"; then
-    echo "Profile=RadioDJ" >> "$OBS_USER_INI"
-    echo "ProfileDir=RadioDJ" >> "$OBS_USER_INI"
-  fi
-  # Also handle the "Unnamed" profile that OBS 29 sometimes creates
-  if grep -q "^Profile=Unnamed" "$OBS_USER_INI"; then
-    sed -i 's/^Profile=Unnamed/Profile=RadioDJ/' "$OBS_USER_INI"
-    sed -i 's/^ProfileDir=Unnamed/ProfileDir=RadioDJ/' "$OBS_USER_INI"
-  fi
-
-  # Verify user.ini is correct before OBS starts
-  SC_VAL=$(grep "^SceneCollection=" "$OBS_USER_INI" 2>/dev/null | cut -d= -f2)
-  if [ "$SC_VAL" = "Radio DJ" ]; then
-    success "user.ini SceneCollection = Radio DJ ✅"
-  else
-    warn "user.ini SceneCollection = '$SC_VAL' — forcing to 'Radio DJ'"
-    sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI"
-    sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI"
-  fi
-
+  # ── Scene collection strategy ──────────────────────────────────
+  # We ALWAYS copy the minimal OBS 32-compatible template scene
+  # collection. This template has one empty "📺 Overlay Only" scene
+  # with no sources — the bot creates all sources programmatically
+  # via WebSocket after connecting (ensure_scenes_exist +
+  # create_browser_overlay / create_native_overlay + create_audio_source).
+  #
+  # OBS 32 changed the JSON schema and rejects OBS 29-era scene
+  # collection files ("All scene data cleared" + crash). The old
+  # multi-scene collection (️ Now Playing, 🎙️ DJ Speaking, ⏳ Waiting,
+  # 📺 Overlay Only) with text_ft2_source sources causes OBS 32 to
+  # crash on WebSocket connect because it can't enumerate a null scene.
+  #
+  # The template is safe because:
+  #   - It has a valid current_scene ("📺 Overlay Only") — no null pointers
+  #   - It has no sources — no schema incompatibilities
+  #   - It has no transitions — no old transition names (Cut/Fade)
+  #   - The bot creates everything at runtime after OBS stabilizes
+  #
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" "$OBS_SCENES_DIR/Radio DJ.json"
-    # Adapt scene collection to current platform.
-    # Linux: text_ft2_source (OBS internal ID for FreeType2 plugin)
-    # Windows: text_gdiplus_v2 (OBS internal ID for GDI+ plugin)
-    # The scene collection JSON uses OBS INTERNAL IDs (not the versioned
-    # WebSocket API kinds like text_ft2_source_v2 / text_gdiplus_v2).
-    if command -v python3 &>/dev/null; then
-      python3 - "$OBS_SCENES_DIR/Radio DJ.json" <<'PYEOF'
-import json, sys, platform
-fp = sys.argv[1]
-with open(fp) as f: data = json.load(f)
-is_linux = platform.system() == "Linux"
-# Scene collection JSON uses OBS internal source IDs
-want = "text_ft2_source" if is_linux else "text_gdiplus_v2"
-known = ("text_ft2_source", "text_gdiplus_v2")
-changed = False
-for scene in data.get("Items", {}).values():
-    for src in scene.get("sources", []):
-        if src.get("type") in known and src["type"] != want:
-            src["type"] = want
-            s = src.get("settings", {})
-            if is_linux:
-                # Convert GDI+ property names to FreeType2 equivalents
-                # read_from_file → from_file, file → text_file
-                if "read_from_file" in s:
-                    s["from_file"] = s.pop("read_from_file")
-                if "file" in s:
-                    s["text_file"] = s.pop("file")
-                # Remove GDI+-only keys
-                for k in ("bk_color","bk_opacity","chatlog","chatlog_lines",
-                          "custom_font","ext","gradient","gradient_color",
-                          "gradient_dir","gradient_opacity","opacity","vertical"):
-                    s.pop(k, None)
-                # FreeType2 uses color1/color2 + use_color=true (same as GDI+)
-                s["use_color"] = True
-                s["drop_shadow"] = s.get("drop_shadow", False)
-            else:
-                # Convert FreeType2 property names to GDI+ equivalents
-                if "from_file" in s:
-                    s["read_from_file"] = s.pop("from_file")
-                if "text_file" in s:
-                    s["file"] = s.pop("text_file")
-                # Remove FreeType2-only keys
-                for k in ("use_color", "drop_shadow", "custom_width", "word_wrap"):
-                    s.pop(k, None)
-            changed = True
-if changed:
-    with open(fp, "w") as f: json.dump(data, f, indent=4)
-    print("Scene collection adapted for", "Linux (text_ft2_source)" if is_linux else "Windows (GDI+)")
-else:
-    print("Scene collection already compatible")
-PYEOF
-    fi
-    success "Installed 'Radio DJ' scene collection (1 scene + overlay sources + audio)"
+    success "Installed OBS 32-compatible 'Radio DJ' scene collection (minimal — bot creates sources at runtime)"
+  else
+    # Fallback: write the minimal template inline
+    cat > "$OBS_SCENES_DIR/Radio DJ.json" << 'SCENEEOF'
+{
+    "Name": "Radio DJ",
+    "Items": {
+        "📺 Overlay Only": {
+            "fixed_function": false,
+            "id_counter": 1,
+            "name": "📺 Overlay Only",
+            "private_settings": {},
+            "sources": []
+        }
+    },
+    "current_scene": "📺 Overlay Only",
+    "current_program_scene": "📺 Overlay Only",
+    "groups": [],
+    "modules": {},
+    "quick_transitions": [],
+    "scaling_enabled": false,
+    "scaling_level": 0,
+    "transitions": []
+}
+SCENEEOF
+    success "Wrote minimal OBS 32-compatible scene collection (bot creates sources at runtime)"
   fi
 
-  # ── ALSO copy scene collection + profile to apt OBS dir ──────────
-  # When Flatpak OBS starts for the first time, it MIGRATES configs from
-  # the apt OBS dir (~/.config/obs-studio/). If the apt dir has stale
-  # OBS 29 configs (aac encoder, Cut/Fade transitions), OBS 32 crashes.
-  # Fix: ensure BOTH directories have clean OBS 32-compatible configs.
-  if [ "$OBS_FLATPAK_INSTALLED" = true ] && [ "$OBS_CONFIG_BASE" != "$APT_OBS_BASE" ]; then
-    APT_SCENES_DIR="$APT_OBS_BASE/basic/scenes"
-    APT_PROFILES_DIR="$APT_OBS_BASE/basic/profiles"
-    mkdir -p "$APT_SCENES_DIR" "$APT_PROFILES_DIR/RadioDJ" 2>/dev/null || true
-
-    if [ -f "$OBS_SCENES_DIR/Radio DJ.json" ]; then
-      cp "$OBS_SCENES_DIR/Radio DJ.json" "$APT_SCENES_DIR/Radio DJ.json"
-    fi
-    if [ -f "$OBS_PROFILES_DIR/RadioDJ/basic.ini" ]; then
-      cp "$OBS_PROFILES_DIR/RadioDJ/basic.ini" "$APT_PROFILES_DIR/RadioDJ/basic.ini"
-    fi
-    if [ -f "$OBS_PROFILES_DIR/RadioDJ/streamEncoder.json" ]; then
-      cp "$OBS_PROFILES_DIR/RadioDJ/streamEncoder.json" "$APT_PROFILES_DIR/RadioDJ/streamEncoder.json"
-    fi
-    if [ -f "$OBS_PROFILES_DIR/RadioDJ/service.json" ]; then
-      cp "$OBS_PROFILES_DIR/RadioDJ/service.json" "$APT_PROFILES_DIR/RadioDJ/service.json"
-    fi
-    # Fix aac in the apt copy too
-    if [ -f "$APT_PROFILES_DIR/RadioDJ/basic.ini" ]; then
-      sed -i 's/=aac/=ffmpeg_aac/g' "$APT_PROFILES_DIR/RadioDJ/basic.ini" 2>/dev/null || true
-    fi
-    # Fix apt user.ini too
-    APT_USER_INI="$APT_OBS_BASE/user.ini"
-    if [ -f "$APT_USER_INI" ]; then
-      if grep -q "^SceneCollection=" "$APT_USER_INI"; then
-        sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$APT_USER_INI"
-        sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$APT_USER_INI"
-      fi
-    fi
-    success "Synced configs to apt OBS dir (prevents migration corruption)"
-  fi
-
+  # ── Copy OBS profile (basic.ini) from template ──────────────────
+  # The template has ApplyServiceSettings=false, ffmpeg_aac encoder,
+  # keyint_sec=2, Bitrate=3000, and all the video/audio settings.
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
-    # CRITICAL: Ensure ApplyServiceSettings=false in the copied profile.
-    # OBS overwrites this with "true" when it respects YouTube's recommended
-    # settings, which overrides our custom keyint_sec=2 and bitrate=3000
-    # with YouTube defaults (keyint=250, bitrate=2500 → "Poor" stream health).
+    # Safety: ensure ApplyServiceSettings=false even if template was edited
     if grep -q "^ApplyServiceSettings=" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"; then
       sed -i 's/^ApplyServiceSettings=.*/ApplyServiceSettings=false/' "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
     fi
-    # OBS 32+ renamed the AAC encoder from "aac" to "ffmpeg_aac".
-    # If the copied basic.ini still has the old name, fix it.
-    # Without this, OBS 32+ errors: "Encoder ID 'aac' not found"
+    # Safety: fix old encoder name
     sed -i 's/=aac/=ffmpeg_aac/g' "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
     success "Installed 'RadioDJ' OBS profile"
   fi
 
   # ── Copy streamEncoder.json from template ─────────────────────
-  # This file tells OBS 29 to use keyint_sec=2 (keyframes every 2s)
+  # This file tells OBS to use keyint_sec=2 (keyframes every 2s)
   # instead of YouTube's default keyint=250 (8.3s @ 30fps → "Poor" health).
   # OBS reads this at startup — it MUST exist before OBS launches.
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/streamEncoder.json" ]; then
@@ -615,6 +515,109 @@ SVCEOF
     info "Wrote template service.json (stream key will be filled by bot)"
   fi
 
+  # ══════════════════════════════════════════════════════════════════
+  # ── SYNC CONFIGS TO BOTH APT AND FLATPAK OBS DIRS ──────────────
+  # ══════════════════════════════════════════════════════════════════
+  # When Flatpak OBS starts for the first time, it MIGRATES configs
+  # from the apt OBS dir (~/.config/obs-studio/). If the apt dir has
+  # stale OBS 29 configs (aac encoder, Cut/Fade transitions, old
+  # multi-scene JSON), Flatpak OBS 32 crashes.
+  #
+  # Similarly, if the Flatpak dir has stale configs and apt OBS is
+  # being used, apt OBS 29 will crash on the OBS 32 JSON schema.
+  #
+  # Fix: ALWAYS ensure BOTH directories have identical OBS 32-
+  # compatible configs. We sync scene collection, profile, stream
+  # encoder, service, and user.ini to both dirs.
+  # ══════════════════════════════════════════════════════════════════
+
+  # _fix_user_ini: Helper function to create/fix user.ini for an OBS dir.
+  # OBS reads user.ini on startup to determine which scene collection
+  # and profile to load. If it says "Untitled" or doesn't exist, OBS
+  # creates a blank "Scene" and ignores --collection/--profile flags.
+  _fix_user_ini() {
+    local _obs_base="$1"
+    local _user_ini="$_obs_base/user.ini"
+    mkdir -p "$_obs_base" 2>/dev/null || true
+
+    if [ -f "$_user_ini" ]; then
+      # Fix existing file — update Scene/Profile settings
+      sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$_user_ini" 2>/dev/null || true
+      sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$_user_ini" 2>/dev/null || true
+      sed -i 's/^Profile=.*/Profile=RadioDJ/' "$_user_ini" 2>/dev/null || true
+      sed -i 's/^ProfileDir=.*/ProfileDir=RadioDJ/' "$_user_ini" 2>/dev/null || true
+      # ConfigOnNewProfile=true causes OBS to create a new blank profile
+      # every startup, ignoring the --profile flag. Remove it.
+      sed -i '/^ConfigOnNewProfile=/d' "$_user_ini" 2>/dev/null || true
+    else
+      # Create user.ini from scratch
+      cat > "$_user_ini" << USERINIEOF
+[General]
+Pre197TagsInUse=true
+
+[Basic]
+Profile=RadioDJ
+ProfileDir=RadioDJ
+SceneCollection=Radio DJ
+SceneCollectionFile=Radio DJ.json
+USERINIEOF
+    fi
+  }
+
+  # Fix user.ini for BOTH apt and Flatpak OBS dirs
+  _fix_user_ini "$APT_OBS_BASE"
+  info "Fixed user.ini for apt OBS dir ($APT_OBS_BASE)"
+  if [ "$OBS_CONFIG_BASE" != "$APT_OBS_BASE" ]; then
+    _fix_user_ini "$OBS_CONFIG_BASE"
+    info "Fixed user.ini for Flatpak OBS dir ($OBS_CONFIG_BASE)"
+  fi
+
+  # Sync all config files to BOTH dirs
+  for _SYNC_DIR in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
+    [ -z "$_SYNC_DIR" ] && continue
+    _SYNC_SCENES="$_SYNC_DIR/basic/scenes"
+    _SYNC_PROFILES="$_SYNC_DIR/basic/profiles/RadioDJ"
+    mkdir -p "$_SYNC_SCENES" "$_SYNC_PROFILES" 2>/dev/null || true
+
+    # Copy scene collection (OBS 32-compatible minimal template)
+    if [ -f "$OBS_SCENES_DIR/Radio DJ.json" ]; then
+      cp "$OBS_SCENES_DIR/Radio DJ.json" "$_SYNC_SCENES/Radio DJ.json"
+    fi
+
+    # Copy profile files
+    for _pfile in basic.ini streamEncoder.json service.json; do
+      if [ -f "$OBS_PROFILES_DIR/RadioDJ/$_pfile" ]; then
+        cp "$OBS_PROFILES_DIR/RadioDJ/$_pfile" "$_SYNC_PROFILES/$_pfile"
+      fi
+    done
+
+    # Fix encoder name in copied basic.ini
+    if [ -f "$_SYNC_PROFILES/basic.ini" ]; then
+      sed -i 's/=aac/=ffmpeg_aac/g' "$_SYNC_PROFILES/basic.ini" 2>/dev/null || true
+      # Ensure ApplyServiceSettings=false
+      if grep -q "ApplyServiceSettings=true" "$_SYNC_PROFILES/basic.ini"; then
+        sed -i 's/ApplyServiceSettings=true/ApplyServiceSettings=false/' "$_SYNC_PROFILES/basic.ini"
+      fi
+    fi
+
+    # Delete Untitled scene collections (OBS falls back to these)
+    rm -f "$_SYNC_SCENES/Untitled.json" "$_SYNC_SCENES/Untitled.json.bak" \
+          "$_SYNC_SCENES/Untitled.json.bak.1" 2>/dev/null || true
+
+    # Delete any scene collection backups (corrupted from previous runs)
+    rm -f "$_SYNC_SCENES/Radio DJ.json.bak" \
+          "$_SYNC_SCENES/Radio DJ.json.bak.1" \
+          "$_SYNC_SCENES/Radio DJ.json.bak.2" 2>/dev/null || true
+  done
+
+  # Delete global.json migration cache (stores old encoder IDs that
+  # OBS 32 inherits on first run — causes "Encoder ID 'aac' not found")
+  for _SYNC_DIR in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
+    rm -f "$_SYNC_DIR/global.json" 2>/dev/null || true
+  done
+
+  success "Synced OBS 32-compatible configs to both apt + Flatpak dirs"
+
   # ── Start headless OBS via xvfb-run ─────────────────────
   if [ "$OBS_INSTALLED" = true ]; then
     if pgrep -x obs &>/dev/null; then
@@ -639,53 +642,28 @@ SVCEOF
         pactl set-default-sink radio_dj_sink 2>/dev/null || true
       fi
 
-       # Final user.ini verification RIGHT before OBS starts.
-       # OBS reads user.ini on startup and if SceneCollection=Untitled,
-       # it creates a blank scene and ignores --collection "Radio DJ".
-       # This is our last chance to ensure it's correct.
-       OBS_USER_INI_PRE="$OBS_CONFIG_BASE/user.ini"
-       if [ -f "$OBS_USER_INI_PRE" ]; then
-         CURRENT_SC=$(grep "^SceneCollection=" "$OBS_USER_INI_PRE" 2>/dev/null | head -1 | cut -d= -f2)
-         if [ "$CURRENT_SC" != "Radio DJ" ]; then
-           warn "user.ini still says SceneCollection='$CURRENT_SC' — forcing to 'Radio DJ' one last time"
-           sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI_PRE"
-           sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI_PRE"
-           sed -i 's/^Profile=Unnamed/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
-           sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
-           sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
-         fi
-       fi
+      # ══ Final pre-launch config verification ════════════════
+      # These are the LAST chances to fix configs before OBS reads them.
+      # Both apt and Flatpak dirs are verified.
 
-       # CRITICAL: Force ApplyServiceSettings=false in basic.ini RIGHT BEFORE OBS starts.
-       # OBS overwrites this to "true" when it connects to YouTube, which causes
-       # it to use YouTube's recommended encoder settings (keyint=250, bitrate=2500)
-       # instead of our custom ones (keyint_sec=2, bitrate=3000).
-       # By forcing it to "false" right before OBS launches, we ensure OBS reads
-       # our custom encoder values from streamEncoder.json and basic.ini.
-       OBS_BASIC_INI="$OBS_PROFILES_DIR/RadioDJ/basic.ini"
-       if [ -f "$OBS_BASIC_INI" ]; then
-         if grep -q "ApplyServiceSettings=true" "$OBS_BASIC_INI"; then
-           sed -i 's/ApplyServiceSettings=true/ApplyServiceSettings=false/' "$OBS_BASIC_INI"
-           info "Fixed ApplyServiceSettings=false in basic.ini (was true)"
-         elif ! grep -q "ApplyServiceSettings" "$OBS_BASIC_INI"; then
-           # Not present at all — add it after [AdvOut]
-           if grep -q '\[AdvOut\]' "$OBS_BASIC_INI"; then
-             sed -i '/\[AdvOut\]/a ApplyServiceSettings=false' "$OBS_BASIC_INI"
-           else
-             echo "" >> "$OBS_BASIC_INI"
-             echo "[AdvOut]" >> "$OBS_BASIC_INI"
-             echo "ApplyServiceSettings=false" >> "$OBS_BASIC_INI"
-           fi
-           info "Added ApplyServiceSettings=false to basic.ini"
-         fi
-       fi
+      for _PRECHECK_DIR in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
+        # Fix user.ini one last time (OBS may have rewritten it from a previous run)
+        _fix_user_ini "$_PRECHECK_DIR"
 
-      # Delete any Untitled scene backups that OBS may have auto-created
-      # from a previous run — OBS falls back to these if it can't find
-      # the referenced collection.
-      rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json" 2>/dev/null
-      rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json.bak" 2>/dev/null
-      rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json.bak.1" 2>/dev/null
+        # Force ApplyServiceSettings=false in basic.ini
+        _PRECHECK_INI="$_PRECHECK_DIR/basic/profiles/RadioDJ/basic.ini"
+        if [ -f "$_PRECHECK_INI" ]; then
+          if grep -q "ApplyServiceSettings=true" "$_PRECHECK_INI"; then
+            sed -i 's/ApplyServiceSettings=true/ApplyServiceSettings=false/' "$_PRECHECK_INI"
+            info "Fixed ApplyServiceSettings=false in $_PRECHECK_INI"
+          fi
+        fi
+
+        # Delete Untitled scene collections (OBS falls back to them)
+        rm -f "$_PRECHECK_DIR/basic/scenes/Untitled.json" \
+              "$_PRECHECK_DIR/basic/scenes/Untitled.json.bak" \
+              "$_PRECHECK_DIR/basic/scenes/Untitled.json.bak.1" 2>/dev/null || true
+      done
 
       # Start OBS headless
       # Both apt OBS and Flatpak OBS need xvfb for headless rendering
@@ -712,7 +690,7 @@ SVCEOF
         info "WebSocket: ws://localhost:4455  (password: ${OBS_WS_PASSWORD:0:4}***)"
         info "Mission Control will auto-connect to OBS"
       else
-        warn "OBS may not have started. Try: xvfb-run -a obs &"
+        warn "OBS may not have started. Check logs or try: bash start.sh logs"
       fi
     fi
   fi

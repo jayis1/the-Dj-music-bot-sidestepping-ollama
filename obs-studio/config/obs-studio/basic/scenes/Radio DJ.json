@@ -3,48 +3,16 @@
     "Items": {
         "📺 Overlay Only": {
             "fixed_function": false,
-            "id_counter": 10,
+            "id_counter": 1,
             "name": "📺 Overlay Only",
             "private_settings": {},
-            "sources": [
-                {
-                    "balance": 0.5,
-                    "deinterlace_field_order": 0,
-                    "deinterlace_mode": 0,
-                    "enabled": true,
-                    "flags": 0,
-                    "hotkeys": {},
-                    "id": 1,
-                    "locked": false,
-                    "name": "Bot Audio (UDP)",
-                    "private_settings": {},
-                    "push-to-mouse": false,
-                    "push-to-talk": false,
-                    "render": true,
-                    "settings": {
-                        "input": "udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
-                        "input_format": "s16le",
-                        "is_local_file": false,
-                        "ffmpeg_options": "sample_rate=48000 channels=2",
-                        "close_when_inactive": false,
-                        "restart_on_activate": true,
-                        "is_looping": false
-                    },
-                    "type": "ffmpeg_source",
-                    "volume": 1.0,
-                    "x": 0,
-                    "y": 0
-                }
-            ]
+            "sources": []
         }
     },
     "current_scene": "📺 Overlay Only",
     "current_program_scene": "📺 Overlay Only",
     "groups": [],
-    "modules": {
-        "auto-scene-switcher": "off",
-        "scripts-tool": []
-    },
+    "modules": {},
     "quick_transitions": [],
     "scaling_enabled": false,
     "scaling_level": 0,

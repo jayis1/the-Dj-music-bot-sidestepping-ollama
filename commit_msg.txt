@@ -1,0 +1,37 @@
+-- Changes Made — Summary
+1. start.sh — Scene Collection Strategy Fix (Critical)
+Problem: The Flatpak OBS 32 section was writing an empty scene collection JSON ("current_scene": "") which caused OBS 32 to crash because it tried to enumerate a null scene pointer on WebSocket connect.
+Fix: Now ALWAYS copies the OBS 32-compatible minimal template (📺 Overlay Only scene with empty sources, valid current_scene) to BOTH apt and Flatpak dirs. Removed the old multi-scene OBS 29 JSON strategy (which had text_ft2_source, cut_transition, fade_transition that OBS 32 rejects).
+2. start.sh — Config Sync to Both Dirs (Critical)
+Problem: Only synced configs to apt dir when Flatpak was detected, and the sync was one-directional. The Flatpak dir got no user.ini, no profiles.
+Fix: Added a comprehensive sync loop that copies scene collection, basic.ini, streamEncoder.json, service.json, and user.ini to BOTH $HOME/.config/obs-studio/ AND $OBS_CONFIG_BASE/. This prevents the Flatpak→apt migration corruption where OBS 32 inherits old OBS 29 configs.
+3. start.sh — user.ini Fix for Both Dirs (Critical)
+Problem: user.ini only fixed for apt dir, and only if the file already existed. The Flatpak dir got no user.ini, meaning Flatpak OBS would default to "Untitled" profile/collection. Also, ConfigOnNewProfile=true was never removed, causing OBS to create a blank profile every startup.
+Fix: Added _fix_user_ini() helper that creates/fixes user.ini for BOTH dirs, including removing ConfigOnNewProfile=true. Called before OBS starts AND in the pre-launch verification step.
+4. bot.py — WebSocket Readiness Polling (Critical)
+Problem: Used time.sleep(1) before ensure_scenes_exist(). This was way too short for Flatpak OBS 32 which can take 10-30 seconds to initialize. Sending commands too early caused crashes.
+Fix: Replaced with bridge.wait_for_obs(timeout=60, poll_interval=2.0) which polls the WebSocket until OBS actually responds, then waits 3 more seconds for internal initialization, THEN creates scenes.
+5. bot.py — user.ini Fix for Both Dirs
+Problem: Only fixed user.ini in the apt dir (~/.config/obs-studio/user.ini). Flatpak OBS reads from ~/.var/app/com.obsproject.Studio/config/obs-studio/user.ini.
+Fix: Rewrote the user.ini fix code to handle both apt and Flatpak dirs. Extracted a _fix_obs_user_ini() function and called it for both directories.
+6. obs_bridge.py — wait_for_obs() Method (New)
+Added a new wait_for_obs(timeout=60, poll_interval=2.0) method to OBSBridge that:
+- Polls OBS WebSocket until it responds
+- Temporarily reduces CONNECTION_RETRY_INTERVAL for faster startup polling
+- Returns True when connected, False on timeout
+- Logs progress clearly
+7. obs_bridge.py — Default "Scene" Cleanup
+Problem: When OBS 32 starts with a minimal scene collection, it auto-creates a default scene called "Scene". This useless scene causes confusion and the bot might accidentally switch to it.
+Fix: After ensure_scenes_exist() creates our 📺 Overlay Only scene, we now programmatically delete the auto-created "Scene" and "Untitled" scenes via WebSocket (using remove_scene).
+8. Live Config Fix (Immediate)
+Replaced the old OBS 29 multi-scene JSON in ~/.config/obs-studio/basic/scenes/Radio DJ.json with the OBS 32-compatible template. Also fixed user.ini, basic.ini, streamEncoder.json, and service.json in the apt dir so OBS can start correctly right now.
+---
+Remaining: End-to-End Test
+The only remaining step is to actually run bash start.sh and verify:
+1. OBS starts headless (either apt or Flatpak)
+2. WebSocket responds within 60 seconds
+3. ensure_scenes_exist() creates 📺 Overlay Only successfully
+4. Default "Scene" is cleaned up
+5. Browser source or native overlay source is created
+6. UDP audio source is created
+7. YouTube stream health shows Good/Excellent

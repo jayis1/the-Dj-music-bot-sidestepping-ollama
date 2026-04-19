@@ -1942,6 +1942,30 @@ class OBSBridge:
         else:
             log.info(f"OBS Bridge: Scene setup complete ✅ ({len(created)} items)")
 
+        # ── Clean up OBS 32 auto-created "Scene" ──────────────────
+        # When OBS 32 starts with a minimal/empty scene collection, it
+        # auto-creates a default scene called "Scene". This scene is
+        # useless — we use "📺 Overlay Only" instead. Leaving it
+        # causes confusion and the bot might accidentally switch to it.
+        # We remove it programmatically via WebSocket after creating
+        # our real scene.
+        try:
+            status = self.get_status()
+            all_scenes = status.get("scenes", [])
+            current = status.get("current_scene", "")
+            for stale_scene in ("Scene", "Untitled"):
+                if stale_scene in all_scenes:
+                    # Don't remove the current scene (would crash OBS)
+                    if current == stale_scene and "📺 Overlay Only" in all_scenes:
+                        self.set_current_scene("📺 Overlay Only")
+                    if current != stale_scene:
+                        self._safe_call(
+                            lambda c, sn=stale_scene: c.remove_scene(name=sn)
+                        )
+                        log.info(f"OBS Bridge: Removed auto-created '{stale_scene}' scene")
+        except Exception as e:
+            log.debug(f"OBS Bridge: Could not clean up default scene: {e}")
+
         # Initialize /tmp/radio_*.txt files so text_ft2_source_v2 sources
         # with from_file=True have content to display from the first frame.
         # Without these files, the text sources render as blank.
@@ -2046,6 +2070,58 @@ class OBSBridge:
                 pass
 
     # ── Reconnect ─────────────────────────────────────────────────────────
+
+    def wait_for_obs(self, timeout: int = 60, poll_interval: float = 2.0) -> bool:
+        """Wait for OBS to become available via WebSocket.
+
+        Polls OBS WebSocket until it responds or timeout is reached.
+        This is critical for startup — OBS (especially Flatpak OBS 32)
+        can take 10-30 seconds to fully initialize after the process
+        starts. Sending WebSocket commands before OBS is ready causes
+        crashes ("basic_string: construction from null is not valid").
+
+        Args:
+            timeout: Maximum seconds to wait (default 60)
+            poll_interval: Seconds between connection attempts (default 2)
+
+        Returns:
+            True if OBS connected, False if timeout reached.
+        """
+        log.info(f"OBS Bridge: Waiting for OBS to become ready (timeout={timeout}s)...")
+        start_time = time.time()
+
+        # Temporarily reduce the connection retry interval so we can
+        # poll more frequently during startup
+        original_retry_interval = self.CONNECTION_RETRY_INTERVAL
+        self.CONNECTION_RETRY_INTERVAL = poll_interval
+
+        try:
+            while (time.time() - start_time) < timeout:
+                # Clear backoff so each attempt actually tries to connect
+                self._last_connect_fail = 0
+
+                client = self._connect()
+                if client is not None:
+                    # Connection succeeded — OBS is ready
+                    try:
+                        client.disconnect()
+                    except Exception:
+                        pass
+                    elapsed = time.time() - start_time
+                    log.info(f"OBS Bridge: OBS is ready! (connected after {elapsed:.1f}s)")
+                    return True
+
+                # Not ready yet — wait and try again
+                remaining = timeout - (time.time() - start_time)
+                if remaining > 0:
+                    time.sleep(min(poll_interval, remaining))
+
+            log.warning(f"OBS Bridge: Timed out waiting for OBS after {timeout}s")
+            return False
+
+        finally:
+            # Restore original retry interval
+            self.CONNECTION_RETRY_INTERVAL = original_retry_interval
 
     def reconnect(self) -> dict:
         """Force a reconnection by clearing the backoff and status cache."""

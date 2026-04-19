@@ -501,96 +501,115 @@ def run_web_server():
             # back to user.ini. This creates a chicken-and-egg problem:
             # our fix gets overwritten every time OBS exits.
             #
-            # Strategy: Fix user.ini + delete Untitled.json so OBS has
-            # NOTHING to fall back to. When OBS can't find the Untitled
-            # collection JSON, it creates a blank scene — but our
-            # ensure_scenes_exist() programmatically creates the correct
-            # scene via WebSocket anyway.
+            # Strategy: Fix user.ini in BOTH apt and Flatpak dirs + delete
+            # Untitled.json so OBS has NOTHING to fall back to. When OBS
+            # can't find the Untitled collection JSON, it creates a blank
+            # scene — but our ensure_scenes_exist() programmatically creates
+            # the correct scene via WebSocket anyway.
             #
             # CRITICAL: We do NOT use configparser here because it lowercases
             # all option names by default (SceneCollection → scenecollection),
             # which OBS doesn't recognize. We do direct string replacement
             # instead, preserving OBS's mixed-case option names.
-            user_ini_path = os.path.expanduser("~/.config/obs-studio/user.ini")
-            try:
-                # Ensure directory exists (first-run case)
-                os.makedirs(os.path.dirname(user_ini_path), exist_ok=True)
 
-                content = ""
-                if os.path.isfile(user_ini_path):
-                    with open(user_ini_path, "r") as f:
-                        content = f.read()
+            # Detect Flatpak OBS to know the Flatpak config dir
+            _obs_use_flatpak = getattr(config, "OBS_USE_FLATPAK", "auto").lower()
+            if _obs_use_flatpak == "auto":
+                import shutil as _shutil
+                if _shutil.which("flatpak"):
+                    try:
+                        _fp_result = __import__("subprocess").run(
+                            ["flatpak", "list"], capture_output=True, text=True, timeout=5
+                        )
+                        if "com.obsproject.Studio" in _fp_result.stdout:
+                            _obs_use_flatpak = "true"
+                    except Exception:
+                        pass
+            _flatpak_obs_dir = os.path.expanduser(
+                "~/.var/app/com.obsproject.Studio/config/obs-studio"
+            ) if _obs_use_flatpak == "true" else None
 
-                original = content
-                needs_rewrite = False
+            def _fix_obs_user_ini(obs_base_dir):
+                """Fix or create user.ini for an OBS config directory."""
+                user_ini_path = os.path.join(obs_base_dir, "user.ini")
+                try:
+                    os.makedirs(os.path.dirname(user_ini_path), exist_ok=True)
 
-                # Ensure [General] section exists (empty is fine, OBS adds to it)
-                if "[General]" not in content:
-                    content = "[General]\n" + content
-                    needs_rewrite = True
+                    content = ""
+                    if os.path.isfile(user_ini_path):
+                        with open(user_ini_path, "r") as f:
+                            content = f.read()
 
-                # Ensure [Basic] section exists
-                if "[Basic]" not in content:
-                    content = content.rstrip("\n") + "\n\n[Basic]\n"
-                    needs_rewrite = True
+                    original = content
 
-                # Fix SceneCollection and ProfileDir
-                # Use string replacement to preserve OBS's mixed-case keys
-                imports_changed = False
+                    if "[General]" not in content:
+                        content = "[General]\n" + content
 
-                if "SceneCollection=" in content:
-                    # Replace whatever value with "Radio DJ"
+                    if "[Basic]" not in content:
+                        content = content.rstrip("\n") + "\n\n[Basic]\n"
+
+                    # Use string replacement to preserve OBS's mixed-case keys
                     import re
-                    content = re.sub(r'SceneCollection=.*', 'SceneCollection=Radio DJ', content)
-                else:
-                    # Add it after [Basic]
-                    content = content.rstrip("\n") + "\nSceneCollection=Radio DJ\n"
-                    needs_rewrite = True
 
-                if "SceneCollectionFile=" in content:
-                    content = re.sub(r'SceneCollectionFile=.*', 'SceneCollectionFile=Radio DJ.json', content)
-                else:
-                    content = content.rstrip("\n") + "\nSceneCollectionFile=Radio DJ.json\n"
-                    needs_rewrite = True
+                    if "SceneCollection=" in content:
+                        content = re.sub(r'SceneCollection=.*', 'SceneCollection=Radio DJ', content)
+                    else:
+                        content = content.rstrip("\n") + "\nSceneCollection=Radio DJ\n"
 
-                if "Profile=" in content:
-                    val = re.search(r'Profile=(.*)', content)
-                    if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
-                        content = re.sub(r'Profile=.*', 'Profile=RadioDJ', content)
-                        needs_rewrite = True
-                else:
-                    content = content.rstrip("\n") + "\nProfile=RadioDJ\n"
-                    needs_rewrite = True
+                    if "SceneCollectionFile=" in content:
+                        content = re.sub(r'SceneCollectionFile=.*', 'SceneCollectionFile=Radio DJ.json', content)
+                    else:
+                        content = content.rstrip("\n") + "\nSceneCollectionFile=Radio DJ.json\n"
 
-                if "ProfileDir=" in content:
-                    val = re.search(r'ProfileDir=(.*)', content)
-                    if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
-                        content = re.sub(r'ProfileDir=.*', 'ProfileDir=RadioDJ', content)
-                        needs_rewrite = True
-                else:
-                    content = content.rstrip("\n") + "\nProfileDir=RadioDJ\n"
-                    needs_rewrite = True
+                    if "Profile=" in content:
+                        val = re.search(r'Profile=(.*)', content)
+                        if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
+                            content = re.sub(r'Profile=.*', 'Profile=RadioDJ', content)
+                    else:
+                        content = content.rstrip("\n") + "\nProfile=RadioDJ\n"
 
-                if content != original:
-                    with open(user_ini_path, "w") as f:
-                        f.write(content)
-                    logging.info("OBS: Fixed user.ini scene collection → Radio DJ")
-            except Exception as e:
-                logging.debug(f"OBS: Could not fix user.ini: {e}")
+                    if "ProfileDir=" in content:
+                        val = re.search(r'ProfileDir=(.*)', content)
+                        if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
+                            content = re.sub(r'ProfileDir=.*', 'ProfileDir=RadioDJ', content)
+                    else:
+                        content = content.rstrip("\n") + "\nProfileDir=RadioDJ\n"
+
+                    # Remove ConfigOnNewProfile — causes OBS to create blank
+                    # profile every startup, ignoring our --profile flag
+                    content = re.sub(r'^ConfigOnNewProfile=.*\n?', '', content, flags=re.MULTILINE)
+
+                    if content != original:
+                        with open(user_ini_path, "w") as f:
+                            f.write(content)
+                        logging.info(f"OBS: Fixed user.ini → {obs_base_dir}")
+                except Exception as e:
+                    logging.debug(f"OBS: Could not fix user.ini in {obs_base_dir}: {e}")
+
+            # Fix user.ini for apt OBS dir
+            _apt_obs_base = os.path.expanduser("~/.config/obs-studio")
+            _fix_obs_user_ini(_apt_obs_base)
+
+            # Fix user.ini for Flatpak OBS dir too
+            if _flatpak_obs_dir and os.path.isdir(os.path.dirname(_flatpak_obs_dir)):
+                _fix_obs_user_ini(_flatpak_obs_dir)
 
             # Delete any Untitled scene collection files so OBS can't
             # fall back to them. This is the most important part — even
             # if user.ini somehow gets overwritten by OBS, deleting the
             # Untitled.json prevents OBS from loading a blank scene.
-            obs_scenes_dir = os.path.expanduser("~/.config/obs-studio/basic/scenes")
-            for name in ["Untitled.json", "Untitled.json.bak", "Untitled.json.bak.1"]:
-                untitled_path = os.path.join(obs_scenes_dir, name)
-                if os.path.exists(untitled_path):
-                    try:
-                        os.remove(untitled_path)
-                        logging.info(f"OBS: Deleted stale scene collection: {name}")
-                    except Exception:
-                        pass
+            for _obs_base in [_apt_obs_base, _flatpak_obs_dir]:
+                if not _obs_base:
+                    continue
+                _obs_scenes_dir = os.path.join(_obs_base, "basic", "scenes")
+                for name in ["Untitled.json", "Untitled.json.bak", "Untitled.json.bak.1"]:
+                    untitled_path = os.path.join(_obs_scenes_dir, name)
+                    if os.path.exists(untitled_path):
+                        try:
+                            os.remove(untitled_path)
+                            logging.info(f"OBS: Deleted stale scene collection: {name}")
+                        except Exception:
+                            pass
 
             # Push stream settings (RTMP server + stream key) to OBS at startup
             # so OBS is ready to stream when the user clicks Start Streaming.
@@ -697,12 +716,37 @@ def run_web_server():
                     "Set YOUTUBE_STREAM_KEY in .env or Mission Control."
                 )
 
-            # Ensure all required Radio DJ scenes exist in OBS.
-            # OBS may silently drop scenes from the JSON collection if it
-            # can't parse sources — this fixes that by creating them live.
+            # Wait for OBS to become ready before sending scene/source commands.
+            # OBS (especially Flatpak OBS 32) can take 10-30 seconds to fully
+            # initialize after the process starts. Sending WebSocket commands
+            # too early causes crashes ("basic_string: construction from null
+            # is not valid" — OBS tries to enumerate a scene that doesn't
+            # exist yet).
+            #
+            # Instead of a fixed sleep(1), we poll the WebSocket until OBS
+            # actually responds, then wait a few more seconds for OBS's
+            # internal scene loading to complete before creating sources.
             bridge = get_bridge()
             if bridge and bridge.enabled:
-                bridge.ensure_scenes_exist()
+                obs_ready = bridge.wait_for_obs(timeout=60, poll_interval=2.0)
+                if obs_ready:
+                    # Give OBS a few extra seconds to finish loading the scene
+                    # collection and initializing its internal state. Even after
+                    # the WebSocket responds, OBS may still be processing the
+                    # scene collection JSON and trying to create sources.
+                    import time as _time
+                    _time.sleep(3)
+
+                    try:
+                        bridge.ensure_scenes_exist()
+                        logging.info("OBS: Scene setup complete ✅")
+                    except Exception as e:
+                        logging.warning(f"OBS: Scene setup failed (will retry on stream start): {e}")
+                else:
+                    logging.warning(
+                        "OBS: Timed out waiting for OBS WebSocket. "
+                        "Scene setup will be attempted when streaming starts."
+                    )
 
             # Mute OBS's Desktop Audio (PulseAudio capture).
             # The bot sends audio via UDP (ffmpeg_source "Bot Audio (UDP)")

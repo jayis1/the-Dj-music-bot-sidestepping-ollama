@@ -560,6 +560,17 @@ def run_web_server():
                         logging.info("OBS: Muted Desktop Audio (bot audio comes via UDP, not PulseAudio)")
                 except Exception:
                     pass
+
+                # Force-push correct audio source settings early.
+                # OBS may have loaded stale settings from a previous run
+                # (e.g. "ar=48000 ac=2" which is WRONG — causes slow
+                # loud audio). This ensures the UDP source has the correct
+                # "sample_rate=48000 channels=2" before any audio plays.
+                try:
+                    bridge.create_audio_source()
+                    logging.info("OBS: Audio source settings force-updated (sample_rate=48000 channels=2)")
+                except Exception as e:
+                    logging.debug(f"OBS: Audio source pre-update failed (will retry on stream start): {e}")
         except Exception as e:
             logging.warning(f"OBS Bridge initialization failed: {e}")
 

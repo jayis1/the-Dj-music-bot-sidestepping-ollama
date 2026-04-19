@@ -929,7 +929,7 @@ class OBSBridge:
                 )
                 self._safe_call(
                     lambda c, sn=source_name, s=settings: c.set_input_settings(
-                        inputName=sn, inputSettings=s, overlay=True,
+                        name=sn, settings=s, overlay=True,
                     )
                 )
             except Exception:
@@ -1038,8 +1038,8 @@ class OBSBridge:
                     # overlay=True forces OBS to apply changes immediately.
                     try:
                         c.set_input_settings(
-                            inputName=_sn,
-                            inputSettings=_settings,
+                            name=_sn,
+                            settings=_settings,
                             overlay=True,
                         )
                         log.info(f"OBS Bridge: Updated audio source '{_sn}' settings (overlay=True)")
@@ -1055,7 +1055,7 @@ class OBSBridge:
                         ]
                         if _sn not in source_names:
                             log.info(f"OBS Bridge: Adding existing audio source '{_sn}' to scene '{_scene}'")
-                            return c.add_scene_item(sceneName=_scene, sourceName=_sn)
+                            return c.create_scene_item(scene_name=_scene, source_name=_sn)
                     except Exception:
                         pass  # May already be in the scene
                     return existing

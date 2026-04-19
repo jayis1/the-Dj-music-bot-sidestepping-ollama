@@ -290,6 +290,19 @@ EOF
   success "obs-websocket configured (port 4455, password set)"
 
   # ── Copy default scene collection ──────────────────────
+  # CRITICAL: Kill OBS BEFORE copying the scene collection.
+  # If OBS is running, it will overwrite our file on exit with its
+  # in-memory (stale) version that has wrong ffmpeg_options.
+  if pgrep -x obs &>/dev/null; then
+    info "Stopping OBS to update scene collection..."
+    pkill -x obs 2>/dev/null || true
+    sleep 2
+    if pgrep -x obs &>/dev/null; then
+      pkill -9 -x obs 2>/dev/null || true
+      sleep 1
+    fi
+  fi
+
   OBS_SCENES_DIR="$HOME/.config/obs-studio/basic/scenes"
   OBS_PROFILES_DIR="$HOME/.config/obs-studio/basic/profiles"
   mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
@@ -348,7 +361,7 @@ else:
     print("Scene collection already compatible")
 PYEOF
     fi
-    success "Installed 'Radio DJ' scene collection (4 scenes)"
+    success "Installed 'Radio DJ' scene collection (1 scene + overlay sources + audio)"
   fi
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"

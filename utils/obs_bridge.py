@@ -856,6 +856,23 @@ class OBSBridge:
         if not scene_name:
             scene_name = self._get_current_scene_name()
 
+        # Pre-flight: check if the overlay URL is reachable.
+        # The browser source in OBS will silently show a blank page if
+        # the URL is unreachable (e.g., Flatpak sandbox with no network
+        # access, or Flask not started yet). We check now so we can log
+        # a useful warning instead of a mysterious blank stream.
+        try:
+            import urllib.request
+            req = urllib.request.Request(overlay_url, method="HEAD")
+            resp = urllib.request.urlopen(req, timeout=3)
+            log.info(f"OBS Bridge: Overlay URL reachable: {overlay_url} (HTTP {resp.status})")
+        except Exception as e:
+            log.warning(
+                f"OBS Bridge: Overlay URL NOT reachable: {overlay_url} ({e}). "
+                "Browser source will show a blank page. Ensure Flask is running "
+                "and OBS has network access (--share=network for Flatpak)."
+            )
+
         # CSS ensures transparent background so OBS composites correctly
         overlay_css = (
             "body { background-color: transparent !important; "
@@ -1465,6 +1482,22 @@ class OBSBridge:
                     except Exception as e:
                         log.debug(f"OBS Bridge: Could not update audio source settings: {e}")
 
+                    # CRITICAL: Ensure audio routing — set monitor type + track
+                    # When a source is created via WebSocket, OBS defaults to
+                    # monitor_type=0 (None) and no audio tracks assigned.
+                    # Without these, the source exists but its audio goes NOWHERE —
+                    # the stream gets video but no audio.
+                    try:
+                        c.set_input_audio_monitor_type(name=_sn, mon_type=2)
+                        log.info(f"OBS Bridge: Set '{_sn}' audio monitor → Monitor and Output (type 2)")
+                    except Exception as e:
+                        log.debug(f"OBS Bridge: Could not set audio monitor type: {e}")
+                    try:
+                        c.set_input_audio_tracks(name=_sn, track=1)
+                        log.info(f"OBS Bridge: Set '{_sn}' audio track → track 1 (streaming)")
+                    except Exception as e:
+                        log.debug(f"OBS Bridge: Could not set audio tracks: {e}")
+
                     # Ensure the source is added to the target scene
                     try:
                         items = c.get_scene_item_list(name=_scene)
@@ -1483,13 +1516,31 @@ class OBSBridge:
 
             # Source doesn't exist — create it fresh
             log.info(f"OBS Bridge: Creating audio source '{_sn}' (UDP port {_p})")
-            return c.create_input(
+            result = c.create_input(
                 sceneName=_scene,
                 inputKind="ffmpeg_source",
                 inputName=_sn,
                 inputSettings=_settings,
                 sceneItemEnabled=True,
             )
+
+            # CRITICAL: Set audio routing AFTER creating the source.
+            # Without this, the source's audio is not routed to the streaming
+            # output — the stream gets video but NO audio.
+            #   monitor_type=2 → "Monitor and Output" (audio goes to stream + desktop)
+            #   track=1 → assigned to audio track 1 (the streaming track)
+            try:
+                c.set_input_audio_monitor_type(name=_sn, mon_type=2)
+                log.info(f"OBS Bridge: Set '{_sn}' audio monitor → Monitor and Output")
+            except Exception as e:
+                log.warning(f"OBS Bridge: Could not set audio monitor type for '{_sn}': {e}")
+            try:
+                c.set_input_audio_tracks(name=_sn, track=1)
+                log.info(f"OBS Bridge: Set '{_sn}' audio track → track 1 (streaming)")
+            except Exception as e:
+                log.warning(f"OBS Bridge: Could not set audio tracks for '{_sn}': {e}")
+
+            return result
 
         return self._safe_call(_create)
 
@@ -1545,12 +1596,23 @@ class OBSBridge:
             #   bitrate → video bitrate in kbps
             #   rate_control → CBR/CRF/VBR
             #   preset → x264 preset name
+            #   x264opts → raw x264 options (OBS passes verbatim to libx264)
+            #
+            # CRITICAL: x264opts is the NUCLEAR override. OBS's
+            # ApplyServiceSettings logic can override keyint_sec and bitrate
+            # with YouTube defaults (keyint=250, bitrate=2500), but
+            # x264opts is passed directly to libx264 and ALWAYS wins.
+            # "keyint=60:min-keyint=60:bframes=0" forces 2-second keyframes
+            # at 30fps regardless of what OBS thinks YouTube wants.
             updated = dict(current) if isinstance(current, dict) else {}
             updated.update({
                 "keyint_sec": str(keyint_sec),
                 "bitrate": str(bitrate),
                 "rate_control": rate_control,
                 "preset": preset,
+                "profile": "high",
+                "tune": "zerolatency",
+                "x264opts": "keyint=60:min-keyint=60:bframes=0",
             })
 
             # Push via set_stream_encoder_settings

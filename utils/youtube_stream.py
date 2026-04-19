@@ -467,21 +467,23 @@ class YouTubeLiveStreamer:
                     # Non-fatal — we can still try streaming
                 else:
                     # ── Step 5: Create FFmpeg audio source (UDP PCM from bot) ──
+                    _AUDIO_SOURCE = "Bot Audio (UDP)"
+                    _AUDIO_SETTINGS = {
+                        "input": "udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
+                        "is_local_file": False,
+                        "input_format": "s16le",
+                        "ffmpeg_options": "sample_rate=48000 channels=2",
+                        "close_when_inactive": False,
+                        "restart_on_activate": True,
+                    }
                     try:
-                        existing_audio = batch_client.get_input_settings(name="Bot Audio (UDP)")
+                        existing_audio = batch_client.get_input_settings(name=_AUDIO_SOURCE)
                         if existing_audio:
                             # Push correct settings to existing source
                             try:
                                 batch_client.set_input_settings(
-                                    name="Bot Audio (UDP)",
-                                    settings={
-                                        "input": f"udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
-                                        "is_local_file": False,
-                                        "input_format": "s16le",
-                                        "ffmpeg_options": "sample_rate=48000 channels=2",
-                                        "close_when_inactive": False,
-                                        "restart_on_activate": True,
-                                    },
+                                    name=_AUDIO_SOURCE,
+                                    settings=_AUDIO_SETTINGS,
                                     overlay=True,
                                 )
                                 log.info("YouTube Live/OBS: Updated audio source settings (overlay=True)")
@@ -494,20 +496,35 @@ class YouTubeLiveStreamer:
                             batch_client.create_input(
                                 sceneName=overlay_scene,
                                 inputKind="ffmpeg_source",
-                                inputName="Bot Audio (UDP)",
-                                inputSettings={
-                                    "input": "udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
-                                    "is_local_file": False,
-                                    "input_format": "s16le",
-                                    "ffmpeg_options": "sample_rate=48000 channels=2",
-                                    "close_when_inactive": False,
-                                    "restart_on_activate": True,
-                                },
+                                inputName=_AUDIO_SOURCE,
+                                inputSettings=_AUDIO_SETTINGS,
                                 sceneItemEnabled=True,
                             )
                             log.info("YouTube Live/OBS: Audio source created ✅")
                         except Exception as e:
                             log.warning(f"YouTube Live/OBS: Audio source issue: {e}")
+
+                    # ── Step 5.5: Set audio routing (monitor + track) ──
+                    # CRITICAL: When a source is created/updated via WebSocket,
+                    # OBS defaults to monitor_type=0 (None) and no audio tracks.
+                    # This means audio goes NOWHERE — the stream gets video but
+                    # NO audio. We must explicitly set:
+                    #   - monitor_type=2 → "Monitor and Output" (audio to stream)
+                    #   - track=1 → assigned to streaming audio track 1
+                    try:
+                        batch_client.set_input_audio_monitor_type(
+                            name=_AUDIO_SOURCE, mon_type=2,
+                        )
+                        log.info(f"YouTube Live/OBS: Set '{_AUDIO_SOURCE}' → Monitor and Output")
+                    except Exception as e:
+                        log.debug(f"YouTube Live/OBS: Could not set audio monitor type: {e}")
+                    try:
+                        batch_client.set_input_audio_tracks(
+                            name=_AUDIO_SOURCE, track=1,
+                        )
+                        log.info(f"YouTube Live/OBS: Set '{_AUDIO_SOURCE}' → track 1 (streaming)")
+                    except Exception as e:
+                        log.debug(f"YouTube Live/OBS: Could not set audio tracks: {e}")
 
                     # ── Step 6: Mute OBS Desktop Audio ──
                     for mute_name in ["Desktop Audio", "PulseAudio", "Audio Output", "DesktopAudioHandler"]:
@@ -525,7 +542,20 @@ class YouTubeLiveStreamer:
                     except Exception as e:
                         log.debug(f"YouTube Live/OBS: Could not switch scene: {e}")
 
-                    # ── Step 7.5: Push encoder settings (secondary) ──
+                    # ── Step 7.5: Push encoder settings (nuclear override) ──
+                    # YouTube requires keyframes ≤4 seconds. x264 default is
+                    # keyint=250 (8.3s @ 30fps) which gives "Poor" stream health.
+                    #
+                    # We push encoder settings at MULTIPLE levels because OBS is
+                    # stubborn about ignoring them:
+                    #   1. basic.ini (disk) → ApplyServiceSettings=false
+                    #   2. streamEncoder.json (disk) → keyint_sec=2
+                    #   3. OBS WebSocket set_stream_encoder_settings (runtime)
+                    #   4. x264opts string → DIRECT libx264 override (nuclear)
+                    #
+                    # The x264opts "keyint=60:min-keyint=60:bframes=0" is the
+                    # most reliable because it's passed verbatim to libx264 and
+                    # can NOT be overridden by OBS's ApplyServiceSettings logic.
                     try:
                         batch_client.set_stream_encoder_settings(
                             {
@@ -533,15 +563,19 @@ class YouTubeLiveStreamer:
                                 "bitrate": "3000",
                                 "rate_control": "CBR",
                                 "preset": "veryfast",
+                                "profile": "high",
+                                "tune": "zerolatency",
+                                "x264opts": "keyint=60:min-keyint=60:bframes=0",
                             },
                             "obs_x264",
                         )
                         log.info(
-                            "YouTube Live/OBS: Encoder settings pushed (secondary) — "
-                            "keyint_sec=2, bitrate=3000, CBR, veryfast"
+                            "YouTube Live/OBS: Encoder settings pushed — "
+                            "keyint_sec=2, keyint=60, bitrate=3000, CBR, veryfast, "
+                            "tune=zerolatency, x264opts=keyint=60:min-keyint=60:bframes=0"
                         )
                     except Exception as e:
-                        log.debug(f"YouTube Live/OBS: Encoder push (secondary) failed: {e}")
+                        log.debug(f"YouTube Live/OBS: Encoder push failed: {e}")
 
             # ── Step 8: Start OBS streaming ─────────────────────────────
             result = self._obs_bridge.start_streaming()

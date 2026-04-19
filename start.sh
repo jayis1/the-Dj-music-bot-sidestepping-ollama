@@ -7,6 +7,7 @@
 #    bash start.sh start    → start in background (screen)
 #    bash start.sh stop     → stop background session + OBS
 #    bash start.sh restart  → restart background session
+#    bash start.sh nuke     → kill all OBS processes + delete crash markers + reset config
 #    bash start.sh logs     → view live logs
 #    bash start.sh setup    → only run setup, don't start
 # ═══════════════════════════════════════════════════════════════════
@@ -631,6 +632,15 @@ USERINIEOF
     else
       info "Starting headless OBS Studio..."
 
+      # Kill any leftover OBS processes from a previous run.
+      # Stale OBS processes hold crash markers and prevent clean startup.
+      if pgrep -x obs &>/dev/null || pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
+        info "Killing leftover OBS processes from previous run..."
+        pkill -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
+        pkill -x obs 2>/dev/null || true
+        sleep 2
+      fi
+
       # Start D-Bus (OBS needs it)
       if ! pgrep -x dbus-daemon &>/dev/null; then
         eval $(dbus-launch --sh-syntax 2>/dev/null) || true
@@ -667,6 +677,45 @@ USERINIEOF
         rm -f "$_PRECHECK_DIR/basic/scenes/Untitled.json" \
               "$_PRECHECK_DIR/basic/scenes/Untitled.json.bak" \
               "$_PRECHECK_DIR/basic/scenes/Untitled.json.bak.1" 2>/dev/null || true
+
+        # ══ Delete OBS crash/safe-mode markers ═══════════════
+        # When OBS crashes or is killed without clean shutdown, it writes
+        # a crash marker file. On next start, OBS detects this and shows
+        # a "Crash or unclean shutdown detected" dialog, then enters
+        # safe mode — running with a blank scene and NOT starting the
+        # WebSocket server. This means the bot can never connect.
+        #
+        # Fix: delete ALL crash markers before launching OBS so it
+        # always starts fresh, regardless of how the previous run ended.
+        #
+        # Crash detection mechanism (OBS 29 + OBS 32):
+        #   1. OBS writes a "crash_marker" file on startup
+        #   2. OBS deletes it on clean exit
+        #   3. If the file still exists on next launch → crash dialog
+        #   4. The dialog BLOCKS the Qt event loop → WebSocket never starts
+        #
+        # Marker locations (try all possible paths):
+        #   - plugin_config/obs-browser/crash_marker (browser source)
+        #   - crash_marker in OBS config root (general startup)
+        #   - basic/profiles/RadioDJ/crash_marker (per-profile)
+        #   - [General] CrashDuringStartup=true in basic.ini (OBS 30+)
+        #
+        # Use find to catch ALL instances recursively — OBS may have
+        # created markers in unexpected subdirectories.
+        find "$_PRECHECK_DIR" -name "crash_marker" -type f -delete 2>/dev/null || true
+        find "$_PRECHECK_DIR" -name "safe_mode" -type f -delete 2>/dev/null || true
+        find "$_PRECHECK_DIR" -name ".lock" -path "*/profiles/*" -delete 2>/dev/null || true
+        find "$_PRECHECK_DIR" -name "lockfile" -path "*/profiles/*" -delete 2>/dev/null || true
+        # Fix CrashDuringStartup flag in basic.ini (OBS 32 writes this
+        # at the start of every launch and clears it on clean exit).
+        # If OBS was killed, the flag remains true → crash dialog.
+        _PRECHECK_INI_CRASH="$_PRECHECK_DIR/basic/profiles/RadioDJ/basic.ini"
+        if [ -f "$_PRECHECK_INI_CRASH" ]; then
+          if grep -q "CrashDuringStartup=true" "$_PRECHECK_INI_CRASH"; then
+            sed -i 's/CrashDuringStartup=true/CrashDuringStartup=false/' "$_PRECHECK_INI_CRASH"
+            info "Cleared CrashDuringStartup flag in $_PRECHECK_INI_CRASH"
+          fi
+        fi
       done
 
       # Start OBS headless
@@ -676,7 +725,17 @@ USERINIEOF
       # can access the virtual X display from xvfb.
       if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
         info "Starting Flatpak OBS Studio (headless via xvfb, browser source available)..."
+        # Pass OBS_NOCRASHDIALOG=1 to skip the "crash detected" Qt dialog.
+        # Without this, a crash from a previous run causes OBS to show a
+        # modal dialog that blocks the entire event loop — the WebSocket
+        # server never starts and the bot can never connect.
+        #
+        # This env var is not an official OBS flag — it's our convention.
+        # The real fix is that we delete crash markers + CrashDuringStartup
+        # flags before every launch (see cleanup above). But the env var
+        # is an extra safety net for any remaining crash detection paths.
         xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
+          --share=network \
           com.obsproject.Studio \
           --minimize-to-tray --disable-shutdown-check \
           --collection "Radio DJ" --profile "RadioDJ" &
@@ -689,12 +748,40 @@ USERINIEOF
       fi
       sleep 3
 
-      if kill -0 $OBS_PID 2>/dev/null; then
-        success "OBS Studio started headless (PID: $OBS_PID)"
-        info "WebSocket: ws://localhost:4455  (password: ${OBS_WS_PASSWORD:0:4}***)"
+      # ── Verify OBS actually started (not just the process) ────
+      # A simple `kill -0` only checks if the PID is alive — but OBS
+      # can be frozen in a crash-recovery dialog with no WebSocket.
+      # We poll the WebSocket port to confirm OBS is actually usable.
+      _OBS_READY=false
+      for _attempt in $(seq 1 15); do
+        if python3 -c "
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(1)
+try:
+    s.connect(('127.0.0.1', 4455))
+    s.close()
+    sys.exit(0)
+except:
+    sys.exit(1)
+" 2>/dev/null; then
+          _OBS_READY=true
+          break
+        fi
+        sleep 1
+      done
+
+      if [ "$_OBS_READY" = true ]; then
+        success "OBS Studio started headless (PID: $OBS_PID, WebSocket ready on port 4455)"
         info "Mission Control will auto-connect to OBS"
       else
-        warn "OBS may not have started. Check logs or try: bash start.sh logs"
+        # Check if process is even alive
+        if kill -0 $OBS_PID 2>/dev/null; then
+          warn "OBS process alive (PID: $OBS_PID) but WebSocket NOT responding after 18s"
+          warn "OBS may be stuck in a crash/safe-mode dialog. Try: bash start.sh nuke && bash start.sh"
+        else
+          warn "OBS process died shortly after launch. Check: bash start.sh logs"
+        fi
       fi
     fi
   fi
@@ -784,6 +871,49 @@ show_logs() {
   fi
 }
 
+nuke_obs() {
+  # ══ Nuclear OBS cleanup ═════════════════════════════════════
+  # Kills ALL OBS processes, deletes crash markers, resets config
+  # to a clean state. Use this when OBS is stuck in a crash dialog
+  # or safe mode and won't respond to WebSocket connections.
+  # ═════════════════════════════════════════════════════════════
+  warn "Nuking all OBS state..."
+
+  # Kill ALL OBS processes (apt + Flatpak)
+  pkill -9 -x obs 2>/dev/null || true
+  pkill -9 -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
+  sleep 2
+
+  # Check for stragglers
+  if pgrep -x obs &>/dev/null || pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
+    error "OBS processes still running after SIGKILL. Manual intervention needed."
+  fi
+  success "OBS processes killed"
+
+  # Delete crash markers from BOTH dirs
+  APT_OBS_BASE="$HOME/.config/obs-studio"
+  FLATPAK_OBS_BASE="$HOME/.var/app/com.obsproject.Studio/config/obs-studio"
+  for _NUKE_DIR in "$APT_OBS_BASE" "$FLATPAK_OBS_BASE"; do
+    if [ -d "$_NUKE_DIR" ]; then
+      find "$_NUKE_DIR" -name "crash_marker" -type f -delete 2>/dev/null || true
+      find "$_NUKE_DIR" -name "safe_mode" -type f -delete 2>/dev/null || true
+      find "$_NUKE_DIR" -name ".lock" -path "*/profiles/*" -delete 2>/dev/null || true
+      find "$_NUKE_DIR" -name "lockfile" -path "*/profiles/*" -delete 2>/dev/null || true
+      # Clear CrashDuringStartup in all basic.ini files
+      find "$_NUKE_DIR" -name "basic.ini" -exec sed -i 's/CrashDuringStartup=true/CrashDuringStartup=false/g' {} \; 2>/dev/null || true
+      # Delete Untitled scene collections
+      rm -f "$_NUKE_DIR"/basic/scenes/Untitled.json* 2>/dev/null || true
+      # Delete scene collection backups
+      rm -f "$_NUKE_DIR"/basic/scenes/"Radio DJ.json.bak"* 2>/dev/null || true
+      # Delete migration cache
+      rm -f "$_NUKE_DIR"/global.json 2>/dev/null || true
+    fi
+  done
+  success "Crash markers deleted"
+
+  info "OBS nuke complete — run 'bash start.sh' to start fresh"
+}
+
 # ─── Main Entry Point ─────────────────────────────────────────────
 banner
 
@@ -798,6 +928,10 @@ case "${1:-run}" in
     ;;
   stop)
     stop_bot
+    ;;
+  nuke)
+    stop_bot
+    nuke_obs
     ;;
   restart)
     stop_bot

@@ -22,6 +22,26 @@ VENV_PYTHON="$VENV_DIR/bin/python"
 VENV_PIP="$VENV_DIR/bin/pip"
 OBS_WS_CONFIG_DIR="$HOME/.config/obs-studio/plugin_config/obs-websocket"
 
+BOLD="\e[1m"
+GREEN="\e[32m"
+CYAN="\e[36m"
+YELLOW="\e[33m"
+RED="\e[31m"
+RESET="\e[0m"
+
+banner() {
+  echo ""
+  echo -e "${BOLD}${CYAN}  ╔════════════════════════════════════════════╗${RESET}"
+  echo -e "${BOLD}${CYAN}  ║  🏴‍☠️ The Radio DJ Bot v420.0.3            ║${RESET}"
+  echo -e "${BOLD}${CYAN}  ╚════════════════════════════════════════════╝${RESET}"
+  echo ""
+}
+
+info()    { echo -e "${CYAN}[INFO]${RESET}  $*"; }
+success() { echo -e "${GREEN}[OK]${RESET}    $*"; }
+warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
+error()   { echo -e "${RED}[ERROR]${RESET} $*"; exit 1; }
+
 # ── Flatpak OBS detection ──────────────────────────────────────────
 # Flatpak OBS includes the browser_source plugin (obs-browser) which
 # enables the full Mission Control overlay with real-time waveform
@@ -43,26 +63,6 @@ if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
 else
   OBS_CONFIG_BASE="$HOME/.config/obs-studio"
 fi
-
-BOLD="\e[1m"
-GREEN="\e[32m"
-CYAN="\e[36m"
-YELLOW="\e[33m"
-RED="\e[31m"
-RESET="\e[0m"
-
-banner() {
-  echo ""
-  echo -e "${BOLD}${CYAN}  ╔════════════════════════════════════════════╗${RESET}"
-  echo -e "${BOLD}${CYAN}  ║  🏴‍☠️ The Radio DJ Bot v420.0.3            ║${RESET}"
-  echo -e "${BOLD}${CYAN}  ╚════════════════════════════════════════════╝${RESET}"
-  echo ""
-}
-
-info()    { echo -e "${CYAN}[INFO]${RESET}  $*"; }
-success() { echo -e "${GREEN}[OK]${RESET}    $*"; }
-warn()    { echo -e "${YELLOW}[WARN]${RESET}  $*"; }
-error()   { echo -e "${RED}[ERROR]${RESET} $*"; exit 1; }
 
 # ─── STEP 1: System Dependencies ──────────────────────────────────
 install_system_deps() {

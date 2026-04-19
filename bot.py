@@ -496,6 +496,9 @@ def run_web_server():
             import configparser
             user_ini_path = os.path.expanduser("~/.config/obs-studio/user.ini")
             try:
+                # Ensure directory exists (first-run case)
+                os.makedirs(os.path.dirname(user_ini_path), exist_ok=True)
+
                 ucfg = configparser.ConfigParser()
                 ucfg.read(user_ini_path)
                 changed = False
@@ -506,7 +509,7 @@ def run_web_server():
                     ucfg.set("Basic", "SceneCollection", "Radio DJ")
                     ucfg.set("Basic", "SceneCollectionFile", "Radio DJ.json")
                     changed = True
-                if ucfg.get("Basic", "Profile", fallback="") == "Untitled":
+                if ucfg.get("Basic", "Profile", fallback="") in ("", "Untitled"):
                     ucfg.set("Basic", "Profile", "RadioDJ")
                     ucfg.set("Basic", "ProfileDir", "RadioDJ")
                     changed = True

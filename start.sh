@@ -317,22 +317,47 @@ EOF
   # "Untitled", OBS loads the wrong (blank) scene collection even
   # when --collection "Radio DJ" is passed on the command line.
   OBS_USER_INI="$HOME/.config/obs-studio/user.ini"
-  if [ -f "$OBS_USER_INI" ]; then
-    if grep -q "^SceneCollection=" "$OBS_USER_INI"; then
-      sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI"
-      sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI"
-    else
-      # Add if missing
-      echo "" >> "$OBS_USER_INI"
-      echo "[Basic]" >> "$OBS_USER_INI"
-      echo "SceneCollection=Radio DJ" >> "$OBS_USER_INI"
-      echo "SceneCollectionFile=Radio DJ.json" >> "$OBS_USER_INI"
-    fi
-    # Also fix Profile/ProfileDir if they point to "Untitled"
-    if grep -q "^Profile=Untitled" "$OBS_USER_INI"; then
-      sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI"
-      sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI"
-    fi
+  mkdir -p "$(dirname "$OBS_USER_INI")"
+  if [ ! -f "$OBS_USER_INI" ]; then
+    # First run — create user.ini from scratch with correct settings
+    cat > "$OBS_USER_INI" << EOF
+[General]
+[Basic]
+SceneCollection=Radio DJ
+SceneCollectionFile=Radio DJ.json
+Profile=RadioDJ
+ProfileDir=RadioDJ
+EOF
+    success "Created user.ini with Radio DJ scene collection"
+  elif grep -q "^SceneCollection=" "$OBS_USER_INI"; then
+    sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI"
+    sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI"
+  else
+    # Add [Basic] section if missing
+    echo "" >> "$OBS_USER_INI"
+    echo "[Basic]" >> "$OBS_USER_INI"
+    echo "SceneCollection=Radio DJ" >> "$OBS_USER_INI"
+    echo "SceneCollectionFile=Radio DJ.json" >> "$OBS_USER_INI"
+  fi
+  # Also fix Profile/ProfileDir if they point to "Untitled"
+  if grep -q "^Profile=Untitled" "$OBS_USER_INI"; then
+    sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI"
+    sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI"
+  fi
+  # Ensure Profile/ProfileDir exist even if missing
+  if ! grep -q "^Profile=" "$OBS_USER_INI"; then
+    echo "Profile=RadioDJ" >> "$OBS_USER_INI"
+    echo "ProfileDir=RadioDJ" >> "$OBS_USER_INI"
+  fi
+
+  # Verify user.ini is correct before OBS starts
+  SC_VAL=$(grep "^SceneCollection=" "$OBS_USER_INI" 2>/dev/null | cut -d= -f2)
+  if [ "$SC_VAL" = "Radio DJ" ]; then
+    success "user.ini SceneCollection = Radio DJ ✅"
+  else
+    warn "user.ini SceneCollection = '$SC_VAL' — forcing to 'Radio DJ'"
+    sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI"
+    sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI"
   fi
 
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
@@ -417,6 +442,30 @@ PYEOF
         sleep 1
         pactl set-default-sink radio_dj_sink 2>/dev/null || true
       fi
+
+      # Final user.ini verification RIGHT before OBS starts.
+      # OBS reads user.ini on startup and if SceneCollection=Untitled,
+      # it creates a blank scene and ignores --collection "Radio DJ".
+      # This is our last chance to ensure it's correct.
+      OBS_USER_INI_PRE="$HOME/.config/obs-studio/user.ini"
+      if [ -f "$OBS_USER_INI_PRE" ]; then
+        CURRENT_SC=$(grep "^SceneCollection=" "$OBS_USER_INI_PRE" 2>/dev/null | head -1 | cut -d= -f2)
+        if [ "$CURRENT_SC" != "Radio DJ" ]; then
+          warn "user.ini still says SceneCollection='$CURRENT_SC' — forcing to 'Radio DJ' one last time"
+          sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI_PRE"
+          sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI_PRE"
+          sed -i 's/^Profile=Unnamed/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
+          sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
+          sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
+        fi
+      fi
+
+      # Delete any Untitled scene backups that OBS may have auto-created
+      # from a previous run — OBS falls back to these if it can't find
+      # the referenced collection.
+      rm -f "$HOME/.config/obs-studio/basic/scenes/Untitled.json" 2>/dev/null
+      rm -f "$HOME/.config/obs-studio/basic/scenes/Untitled.json.bak" 2>/dev/null
+      rm -f "$HOME/.config/obs-studio/basic/scenes/Untitled.json.bak.1" 2>/dev/null
 
       # Start OBS headless via xvfb-run (handles Xvfb lifecycle automatically)
       xvfb-run -a obs --minimize-to-tray --disable-shutdown-check --collection "Radio DJ" --profile "RadioDJ" &

@@ -1750,13 +1750,24 @@ class OBSBridge:
         # ⏳ Waiting) have been removed — they caused problems because
         # switching to them would lose all overlay sources (station name,
         # ticker, etc) that only exist on the Overlay Only scene.
+        # Determine the background source type based on whether logo.png exists
+        logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png"
+        )
+        use_logo = os.path.isfile(logo_path)
+
+        if use_logo:
+            bg_source = ("image_source", "Overlay Background", {
+                "file": logo_path, "unload": False,
+            })
+        else:
+            bg_source = ("color_source_v3", "Overlay Background", {
+                "color": 4278190080, "width": 1280, "height": 720,
+            })
+
         scenes = {
             "📺 Overlay Only": {
-                "sources": [
-                    ("color_source_v3", "Overlay Background", {
-                        "color": 4278190080, "width": 1280, "height": 720,
-                    }),
-                ],
+                "sources": [bg_source],
             },
         }
 

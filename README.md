@@ -86,12 +86,13 @@ open http://localhost:8080
 
 ### 🎬 OBS Studio Integration
 - Headless OBS Studio with **obs-websocket 5.x** control from Mission Control
-- **4 default scenes** for radio broadcast (Now Playing, DJ Speaking, Waiting, Overlay Only)
-- **Auto scene switching** — bot switches scenes based on playback state
-- **Start Streaming** button configures RTMP + stream key, creates browser overlay + audio sources, switches to overlay scene, and starts streaming — all in one click
+- **Single scene architecture** — `📺 Overlay Only` with a State text source (🎵/🎙️/⏳), no scene switching needed
+- **Native OBS overlay** — logo.png background, dynamic text sources (station name, now playing, DJ speaking, ticker), song thumbnail, GIF overlays, and SFX reaction GIFs
+- **UDP PCM audio pipe** — bot sends s16le 48kHz stereo audio via PCMBroadcaster → UDP port 12345 → OBS FFmpeg source
+- **Start Streaming** button configures RTMP + stream key, creates native overlay + audio sources, starts streaming — all in one click
 - **Stream key management** — save your YouTube stream key on the OBS page; it's pushed to OBS automatically
+- **Custom encoder settings** — `keyint_sec=2`, `bitrate=3000` for Good/Excellent YouTube stream health (≤2s keyframe intervals)
 - Streaming, recording, replay buffer, virtual camera — all from the web dashboard
-- Browser source overlay — OBS can embed the Mission Control overlay page
 
 ---
 
@@ -284,29 +285,39 @@ OBS Studio runs **headlessly via Xvfb** and is fully controlled from Mission Con
 
 The OBS page has a **📺 YouTube Live Stream Key** section where you configure your stream key. When you click **Start Streaming**:
 
-1. Mission Control pushes the RTMP server URL + stream key to OBS
-2. Creates a browser overlay source (if not already present) pointing to the overlay page
-3. Creates an FFmpeg audio source (if not already present) capturing the bot's audio via UDP
-4. Switches to the "📺 Overlay Only" scene
-5. Starts OBS streaming
+1. Mission Control writes the RTMP server URL + stream key to OBS's `service.json` and `basic.ini`
+2. Writes encoder settings to `streamEncoder.json` (`keyint_sec=2`, `bitrate=3000`) for Good/Excellent YouTube stream health
+3. Configures stream settings via the OBS WebSocket API
+4. Creates a native overlay scene (`📺 Overlay Only`) with:
+   - **Logo background** — `assets/logo.png` scaled to fill 1280×720
+   - **Text sources** — State indicator (🎵/🎙️/⏳), station name, now-playing title, DJ speaking text, ticker — all reading from `/tmp/radio_*.txt` for live updates
+   - **Song thumbnail** — `image_source` reading from `/tmp/radio_thumbnail.jpg`
+   - **Bottom GIF banner** — `sounds.gif` or `sound.gif` spanning the full width
+   - **SFX reaction GIF** — `dans trollface.gif` always visible, flashes to a random alternate troll face when a sound effect plays
+5. Creates an FFmpeg audio source reading raw PCM (s16le, 48kHz, stereo) from `udp://127.0.0.1:12345` (the bot's PCMBroadcaster output)
+6. Mutes Desktop Audio (PulseAudio capture) — bot audio comes only via the UDP source
+7. Starts OBS streaming
 
 The stream key is also pushed to OBS at startup and whenever you save it, so OBS always has the latest key.
 
-### Default Scene Collection
+### Default Scene Architecture
 
-| Scene | When it's used |
-|---|---|
-| ️ **Now Playing** | A song is currently playing |
-| 🎙️ **DJ Speaking** | The DJ (or AI side host) is delivering a voice break |
-| ⏳ **Waiting** | The queue is empty — station is in idle |
-| 📺 **Overlay Only** | YouTube Live overlay / browser source is active |
+The bot uses a **single scene** — `📺 Overlay Only` — for the entire stream lifecycle. Instead of switching between scenes for different states, a **State text source** displays the current state emoji:
 
-### Auto Scene Switching
+| State Emoji | Overlay Text | When shown |
+|---|---|---|
+| 🎵 | `🎵 Now Playing` | A song is currently playing |
+| 🎙️ | `🎙️ DJ Speaking` | The DJ or AI side host is talking |
+| ⏳ | `⏳ Waiting` | The queue is empty — station is idle |
 
-Set `OBS_AUTO_SCENES=true` in `.env` and the bot automatically switches scenes based on playback state:
+All other overlay elements (station name, now-playing title, DJ text, ticker, thumbnail, GIFs) are persistent sources that update dynamically via `/tmp/radio_*.txt` files — no scene switching needed.
+
+### Auto Scene Switching (Legacy)
+
+Set `OBS_AUTO_SCENES=true` in `.env` and the bot will switch scenes based on playback state. **Note:** The current recommended setup uses a single scene with a State text source instead.
 
 | Playback state | Scene selected |
-|---|---|
+|---|---||
 | Song playing | ️ "Now Playing" |
 | DJ speaking | 🎙️ "DJ Speaking" |
 | Queue empty | ⏳ "Waiting" |
@@ -625,7 +636,9 @@ nano .env           # Paste your DISCORD_TOKEN
 | Bot appears stuck in voice after crash | Restart bot — `on_ready` forces disconnect from all stale voice sessions |
 | OBS not connected in Mission Control | Run `bash start.sh` — it installs and starts OBS automatically. Or install manually: `sudo apt install obs-studio` then start: `xvfb-run -a obs &` |
 | OBS connection refused spam in logs | OBS is not running or WebSocket is not enabled. The bridge backs off for 30s after a failed connection. Start OBS with `bash start.sh`. |
-| OBS "Start Streaming" doesn't stream to YouTube | The Start Streaming button now automatically configures RTMP server + stream key, creates browser overlay + audio sources, switches to the Overlay scene, then starts streaming. Make sure your YouTube stream key is saved on the OBS page first. |
+| OBS "Start Streaming" doesn't stream to YouTube | The Start Streaming button now automatically configures RTMP server + stream key, creates native overlay + UDP audio sources, mutes Desktop Audio, then starts streaming. Make sure your YouTube stream key is saved on the OBS page first. |
+| YouTube stream health shows "Poor" | OBS may be using YouTube's default encoder settings (keyint=250, bitrate=2500) instead of our custom ones (keyint_sec=2, bitrate=3000). Make sure `streamEncoder.json` is in the profile directory and `ApplyServiceSettings=false` is in `basic.ini` BEFORE OBS starts. Run `bash start.sh stop` then `bash start.sh` for a fresh OBS start. |
+| No audio on YouTube stream | Audio comes via UDP port 12345 (not PulseAudio). Make sure Desktop Audio is muted in OBS (bot handles this automatically). If audio plays at wrong speed/double volume, check the ffmpeg_source has `input_format=s16le` and `ffmpeg_options=sample_rate=48000 channels=2`. |
 | Stream key shows as web password | Fixed in v420.0.3 — stream key input now has `autocomplete="new-password"` to prevent browser auto-fill with saved credentials. |
 | "Already playing audio" errors | Fixed in v420.0.3 — the central audio dispatcher now auto-stops any currently playing source, waits 150ms, then starts new audio. |
 | CSRF token validation failed | Reload the Mission Control page — the CSRF token in your session may have expired |

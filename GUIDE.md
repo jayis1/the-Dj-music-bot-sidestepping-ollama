@@ -1,6 +1,6 @@
 # MBot v420.0.3 — Comprehensive Technical Guide
 
-> **Last Updated:** 2026-04-18
+> **Last Updated:** 2026-04-19
 > **Version:** v420.0.3
 > **License:** MIT
 
@@ -262,6 +262,22 @@ The bot now integrates with OBS Studio via obs-websocket 5.x for full radio stat
 
 - **`start.sh` auto-setup** — The setup wizard now installs OBS Studio (`apt install obs-studio`), installs headless support packages (xvfb, dbus, pulseaudio), generates a random WebSocket password and writes it to `.env`, configures obs-websocket 5.x (writes both `config.json` and `global.ini`), copies the default "Radio DJ" scene collection and profile, and starts headless OBS via `xvfb-run -a obs`.
 
+### 🎬 OBS Native Overlay & YouTube Live (Updated)
+
+The OBS integration has been redesigned from the ground up for YouTube Live streaming:
+
+- **Single-scene architecture** — Instead of switching between 4 scenes (which caused black frames and audio glitches), the bot uses one scene (`📺 Overlay Only`) with a State text source showing the current state emoji (🎵/🎙️/⏳).
+- **Native OBS overlay** — All overlay elements are native OBS sources (image_source, text_ft2_source_v2, ffmpeg_source), not browser sources. Text sources read from `/tmp/radio_*.txt` files updated by the bot in real time.
+- **UDP PCM audio pipe** — `PCMBroadcaster` sends raw s16le 48kHz stereo audio via UDP port 12345. OBS captures it via an `ffmpeg_source` (NOT PulseAudio/Desktop Audio). Desktop Audio is muted at startup.
+- **GIF overlays** — `sounds.gif` spans the full width at the bottom of the canvas as a visual beat wave. No audio visualizer/waveform is used (removed for performance — it was slowing down stream quality).
+- **SFX reaction GIFs** — `dans trollface.gif` is always visible on stream. When a sound effect plays, it flashes to a random alternate troll face for 3 seconds, then reverts.
+- **Song thumbnail** — An `image_source` displays the current song's album art in the top-right corner.
+- **Custom encoder config** — `streamEncoder.json` (keyint_sec=2, bitrate=3000) and `basic.ini` (ApplyServiceSettings=false) are written to the OBS profile directory before OBS starts, ensuring Good/Excellent YouTube stream health (≤2s keyframe intervals).
+- **`_batch()` context manager** — OBS Bridge batches multiple WebSocket operations into a single connection, dramatically reducing the "connection storm" that overwhelmed OBS during overlay creation.
+- **`configparser` lowercasing bug fix** — Python's `configparser.ConfigParser()` lowercases all INI option names by default, which broke `ApplyServiceSettings`. Replaced with regex-based string replacement that preserves OBS's mixed-case names.
+- **`user.ini` fix** — OBS stores `SceneCollection=Untitled` on exit, loading a blank scene on next start. `start.sh` and `bot.py` now fix this before OBS launches.
+- **No OBS restart mid-session** — An earlier attempt to restart OBS to apply encoder settings killed the UDP audio source. The current approach writes correct config files BEFORE OBS starts (in `start.sh`) and relies on OBS reading them at startup.
+
 ### 🔒 CSRF Protection (New)
 
 The Mission Control web dashboard now has CSRF (Cross-Site Request Forgery) protection on all POST/PUT/DELETE/PATCH endpoints.
@@ -437,9 +453,16 @@ this2.0/
 │   └── dj_scratch.wav # Turntable motor spin-up
 │
 ├── assets/
-│   └── moss_voices/        # MOSS-TTS-Nano prompt audio files (voice cloning references)
-│       ├── en_warm_female.wav  # Default DJ voice (warm female)
-│       └── en_news_male.wav    # Default AI side host voice (news male)
+│   ├── logo.png               ← 640×640 station logo (OBS overlay background)
+│   ├── sounds.gif             ← 500×281, 100 frames — PRIMARY bottom banner GIF
+│   ├── sound.gif              ← 450×450, 79 frames — FALLBACK bottom banner GIF
+│   ├── dans trollface.gif     ← 240×320, 16 frames — DEFAULT always-visible SFX GIF
+│   ├── dans trolface2.gif     ← 400×400, 10 frames — SFX alternate #1
+│   ├── mad troll.gif          ← 300×300, 63 frames — SFX alternate #2
+│   ├── lol troll.gif          ← 476×306, 11 frames — SFX alternate #3
+│   └── moss_voices/           ← MOSS-TTS-Nano prompt audio files (voice cloning references)
+│       ├── en_warm_female.wav ← Default DJ voice (warm female)
+│       └── en_news_male.wav   ← Default AI side host voice (news male)
 │
 ├── moss-tts-server/        # MOSS-TTS-Nano Docker server
 │   └── Dockerfile          # Docker build for MOSS TTS server
@@ -524,7 +547,15 @@ utils/obs_bridge.py
     ├── uses → obsws_python.ReqClient (named methods, NOT generic call)
     ├── called by → web/app.py (19 OBS API routes under /api/obs/*)
     ├── called by → cogs/music.py (auto scene switching via _obs_switch_scene)
-    ├── stateless → connects, sends request, disconnects
+    ├── called by → utils/youtube_stream.py (YouTube Live streaming — overlay creation, encoder config, stream lifecycle)
+    ├── creates → native OBS overlay (single scene: 📺 Overlay Only)
+    │   ├── image_source: logo.png background (scaled 2× to fill 1280×720)
+    │   ├── text_ft2_source_v2: State, Station Name, Now Playing, DJ Speaking, Ticker (reading from /tmp/radio_*.txt)
+    │   ├── image_source: Song Thumbnail (reading from /tmp/radio_thumbnail.jpg)
+    │   ├── ffmpeg_source: GIF Overlay (sounds.gif spanning full width at bottom)
+    │   └── ffmpeg_source: SFX GIF (dans trollface.gif always visible, flashes on sound effects)
+    ├── audio → ffmpeg_source: Bot Audio (UDP) — raw PCM s16le 48kHz stereo from udp://127.0.0.1:12345
+    ├── batching → _batch() context manager for single-connection WebSocket operations
     └── gracefully degrades → returns {connected: false} when OBS is down
 ```
 
@@ -2476,16 +2507,110 @@ A **stateless** WebSocket bridge connecting to obs-websocket 5.x for full radio 
 
 The bot integrates with OBS Studio via obs-websocket 5.x, enabling full visual radio broadcast control from Mission Control. OBS runs headlessly (no physical display needed) and is controlled entirely through the web dashboard.
 
+### Architecture Overview
+
+The YouTube Live stream uses a **single-scene architecture**:
+
+- **Scene:** `📺 Overlay Only` — ALL overlay elements live on this one scene
+- **State indicator:** A `State` text source shows 🎵 (playing), 🎙️ (DJ speaking), or ⏳ (waiting) — no scene switching needed
+- **Dynamic text:** All text sources read from `/tmp/radio_*.txt` files, updated by the bot in real time
+- **Audio:** Raw PCM via UDP pipe — `PCMBroadcaster` → `udp://127.0.0.1:12345` → OBS `ffmpeg_source`
+
+**Why single scene?** Switching scenes destroys and recreates all sources, causing brief black frames and audio glitches. A single scene with dynamic text updates is seamless — the viewer never sees a glitch.
+
+### OBS Overlay Sources
+
+| Source | Type | Content | Position/Size |
+|---|---|---|---|
+| **Overlay Background** | `image_source` | `assets/logo.png` (640×640) scaled 2× to fill canvas | (0, 0), 1280×1280 (crops to 720 height) |
+| **State** | `text_ft2_source_v2` | Emoji state: 🎵/🎙️/⏳ (reads `/tmp/radio_state.txt`) | (40, 30), 28px white |
+| **Station Name** | `text_ft2_source_v2` | Station name + "Radio" (reads `/tmp/radio_station.txt`) | (40, 80), 42px white |
+| **Now Playing** | `text_ft2_source_v2` | Current song title (reads `/tmp/radio_title.txt`) | (40, 140), 56px gold |
+| **DJ Speaking** | `text_ft2_source_v2` | DJ/AI spoken text (reads `/tmp/radio_dj.txt`) | (40, 210), 36px cyan-green |
+| **Ticker** | `text_ft2_source_v2` | Waiting/scrolling text (reads `/tmp/radio_waiting.txt`) | (40, 640), 24px white |
+| **Song Thumbnail** | `image_source` | Album art (reads `/tmp/radio_thumbnail.jpg`) | (1060, 85), 150×150px |
+| **GIF Overlay** | `ffmpeg_source` | `sounds.gif` or `sound.gif` (animated beat wave) | (0, 640), full width |
+| **SFX GIF** | `ffmpeg_source` | `dans trollface.gif` (always visible, flashes on SFX) | (1040, 400), ~160×210px |
+| **Bot Audio (UDP)** | `ffmpeg_source` | Raw PCM s16le 48kHz stereo via UDP | Audio-only (no visual) |
+
+### Audio Pipeline
+
+Bot audio reaches OBS through a UDP pipe, NOT through PulseAudio/Desktop Audio capture:
+
+```
+PCMBroadcaster (bot process)
+  → sends s16le 48kHz stereo PCM to 127.0.0.1:12345
+  → OBS ffmpeg_source reads: udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1
+  → input_format=s16le, ffmpeg_options=sample_rate=48000 channels=2
+  → close_when_inactive=False (CRITICAL: True breaks audio)
+```
+
+**Desktop Audio is muted** at startup and before streaming — bot audio comes exclusively via the UDP source.
+
+> **CRITICAL:** `ffmpeg_options` uses AVFormat-level option names (`sample_rate`, `channels`), NOT AVCodec-level names (`ar`, `ac`). Using the wrong names silently ignores them, causing audio to play at ~0.92× speed and double volume (FFmpeg defaults to 44100Hz mono).
+
+### SFX GIF System
+
+The SFX GIF (`dans trollface.gif`) is **always visible** on the stream overlay. When a sound effect plays:
+
+1. OBS Bridge's `cycle_sfx_gif()` picks a random alternate troll GIF
+2. Updates the SFX GIF source via WebSocket (`set_input_settings overlay=True`)
+3. Schedules a revert timer (3 seconds) via `threading.Timer`
+4. After 3 seconds, reverts back to `dans trollface.gif`
+
+**Alternate GIFs** (randomly selected on each SFX):
+- `dans trolface2.gif` (400×400, 10 frames)
+- `mad troll.gif` (300×300, 63 frames)
+- `lol troll.gif` (476×306, 11 frames)
+
+### Encoder Configuration (YouTube Stream Health)
+
+YouTube Live requires keyframes ≤4 seconds apart for "Good" or "Excellent" stream health. The default OBS settings (keyint=250 at 30fps = 8.3s keyframe interval) cause "Poor" health.
+
+**Our custom settings:**
+```ini
+# basic.ini
+[AdvOut]
+ApplyServiceSettings=false
+keyint_sec=2
+Bitrate=3000
+BufferSize=3000
+Preset=veryfast
+Profile=high
+
+# streamEncoder.json
+{
+    "obs_x264": {
+        "rate_control": "CBR",
+        "bitrate": 3000,
+        "buffer_size": 3000,
+        "keyint_sec": 2,
+        "preset": "veryfast",
+        "profile": "high",
+        "tune": "zerolatency",
+        "x264opts": "keyint=60:min-keyint=60:bframes=0"
+    }
+}
+```
+
+**Known issue — OBS overwrites `ApplyServiceSettings`:** When OBS connects to YouTube, it may set `ApplyServiceSettings=true` in `basic.ini`, which causes OBS to override our custom encoder settings with YouTube's recommended defaults (keyint=250, bitrate=2500). The fix: `start.sh` writes `ApplyServiceSettings=false` to `basic.ini` BEFORE OBS starts, and `streamEncoder.json` is written to the profile directory. OBS reads both files at startup. If the stream health shows "Poor", do a clean restart: `bash start.sh stop` then `bash start.sh`.
+
+> **Python `configparser` lowercasing bug:** Python's `configparser.ConfigParser()` lowercases all INI option names by default. `ApplyServiceSettings` becomes `applyservicesettings`, which OBS doesn't recognize. Our code uses regex-based string replacement instead of `configparser` to preserve OBS's mixed-case option names.
+
 ### OBS Bridge (`utils/obs_bridge.py`)
 
-A **stateless** WebSocket bridge that connects to obs-websocket 5.x on demand. Each API call connects, sends the request, and disconnects — no persistent WebSocket session.
+A **stateless** WebSocket bridge that connects to obs-websocket 5.x on demand. Uses `_batch()` context manager for single-connection WebSocket operations during overlay creation and stream setup.
 
 **Key design decisions:**
 - Uses `obsws_python.ReqClient` with **named methods** (e.g., `client.start_stream()`, `client.set_current_program_scene(sceneName=...)`), NOT the generic `client.call(request_type, data)` pattern which doesn't exist on `ReqClient`.
 - Lambda-based named method dispatch in `_safe_call()` ensures each OBS action calls the correct method with the correct parameters.
+- **`_batch()` context manager** — Opens a single WebSocket connection, runs multiple operations, then disconnects. Used by `create_native_overlay()` (creates all sources + positions them in one connection), `_update_existing_text_sources()`, and `_start_obs_stream()` (batched stream setup steps).
+- **`_get_scene_item_id_from_client()`** — Resolves scene item IDs using an existing batch connection (avoids opening new connections inside a batch).
 - **Connection backoff:** After a failed connection attempt, the bridge waits 30 seconds (`CONNECTION_RETRY_INTERVAL`) before trying again. This prevents log spam when OBS is down — the dashboard polls OBS status every 10 seconds, which would otherwise generate 6+ full Python tracebacks per minute.
 - **Graceful degradation:** All methods return `{"connected": False, "error": "..."}` when OBS is unreachable. The bot **never crashes** due to OBS being down — the web dashboard shows "OBS Disconnected" status and all OBS controls are greyed out.
 - **Library logging suppression:** `logging.getLogger("obsws_python").setLevel(logging.CRITICAL)` suppresses the library's verbose connection error logging.
+- **Cross-platform text source types:** Linux uses `text_ft2_source_v2` (FreeType2), Windows uses `text_gdiplus_v2`. The `_text_settings()` helper builds the correct settings dict for the current platform.
+- **Empty text = invisible:** FreeType2 renders empty strings as zero-height invisible text. All `/tmp/radio_*.txt` files must have at least a space `" "` to remain visible.
 
 **Public API methods:**
 
@@ -2504,9 +2629,11 @@ A **stateless** WebSocket bridge that connects to obs-websocket 5.x on demand. E
 | `start_virtual_camera()` / `stop_virtual_camera()` | Virtual camera control |
 | `take_source_screenshot(source_name)` | Capture a screenshot of a source |
 
-### Auto Scene Switching
+### Auto Scene Switching (Legacy)
 
 When `OBS_AUTO_SCENES=true`, the bot automatically switches OBS scenes based on playback state. Scene switches run in **daemon threads** (non-blocking, fire-and-forget) so they never delay song playback or DJ speech.
+
+> **Note:** The current recommended setup uses a **single scene** (`📺 Overlay Only`) with a State text source instead of scene switching. Scene switching causes brief black frames and audio glitches because all sources are recreated on the new scene.
 
 | Playback State | Default Scene Name | Config Variable |
 |---|---|---|
@@ -2528,10 +2655,7 @@ A self-contained headless OBS container for running OBS on servers without a phy
 - **obs-websocket 5.x** — Configured with password from `OBS_WEBSOCKET_PASSWORD` env var
 
 **Default scene collection ("Radio DJ"):**
-- "️ Now Playing" — Main scene with song display
-- "🎙️ DJ Speaking" — Scene shown when the DJ is talking
-- "⏳ Waiting" — Idle/waiting scene
-- "📺 Overlay Only" — YouTube Live overlay scene
+- "📺 Overlay Only" — Single scene with native overlay (logo background, dynamic text sources, thumbnail, GIFs, UDP audio). A State text source shows 🎵/🎙️/⏳ for playback state.
 
 **Platform:** amd64 only (OBS + VNC on arm64 is impractical in Debian bookworm).
 
@@ -2560,7 +2684,11 @@ The `start.sh` setup wizard now automatically:
 3. Generates a random WebSocket password and writes it to `.env` as `OBS_WEBSOCKET_PASSWORD`
 4. Configures obs-websocket 5.x (writes both `config.json` and `global.ini`)
 5. Copies the default "Radio DJ" scene collection and profile into `~/.config/obs-studio/`
-6. Starts headless OBS via `xvfb-run -a obs --collection 'Radio DJ'`
+6. Writes `streamEncoder.json` to the RadioDJ profile (keyint_sec=2, bitrate=3000, x264 opts)
+7. Writes `ApplyServiceSettings=false` to `basic.ini` BEFORE OBS starts (prevents OBS from overriding our encoder settings with YouTube defaults)
+8. Fixes `user.ini` to point to the "Radio DJ" scene collection (OBS defaults to "Untitled")
+9. Deletes stale "Untitled" scene collection backups
+10. Starts headless OBS via `xvfb-run -a obs --collection 'Radio DJ' --profile 'RadioDJ'`
 
 If OBS is not available (e.g., non-Debian systems), the setup gracefully skips these steps and logs a warning.
 

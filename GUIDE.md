@@ -289,6 +289,54 @@ The Mission Control web dashboard now has CSRF (Cross-Site Request Forgery) prot
 - DJ Lines HTML forms include a hidden `_csrf_token` field
 - Returns 403 JSON for API endpoints, 403 HTML for pages
 
+### 📺 Radio Commercial Breaks (New)
+
+The bot now has a **commercial break system** that plays AI-generated absurdist fake ads between songs for that authentic 24/7 radio feel.
+
+**How it works:**
+
+1. After every N songs (configurable, default 3+), there's a random chance (default 15%) to insert a commercial break before the DJ intro for the next song
+2. The commercial text is either AI-generated (via Ollama) for maximum variety, or randomly picked from ~40 pre-written absurdist templates
+3. Each commercial picks a random voice from a pool of 3 "announcer" voices so consecutive ads sound like different spokespersons
+4. Commercials use the same TTS → sound effects → playback pipeline as DJ lines — `{sound:name}` tags are fully supported
+5. The chance of a commercial increases over time (2× after 6 songs, 3× after 10 songs) to prevent long stretches without breaks
+
+**Flow:**
+```
+[Song A ends] → should_play_commercial() → True?
+  → YES → generate_commercial() → _dj_speak(commercial, voice=random_from_3)
+  → After commercial finishes → DJ intro for next song → Song B
+  → NO → Normal DJ intro → Song B
+```
+
+**6 ad categories:**
+
+| Category | Description | Example |
+|---|---|---|
+| `sponsor_fake` | Fake product endorsements | "WinBitch Coffee — brewed in a Debian container. Start your kernel, start your day." |
+| `local_business` | Shady local business parody | "Dave's Questionable Auto Repair — 60% of the time, every time." |
+| `tech_product` | Absurd tech product announcements | "iBrick Pro Max Ultra — it's just a brick. But it's OUR brick." |
+| `stream_meta` | Self-referential stream humor | "Are you still listening? Good. Don't touch that dial." |
+| `absurdist` | Pure nonsense services | "First National Bank of Your Cousin's Garage — competitive rates, absolutely no questions." |
+| `emergency` | Emergency broadcast parody | "This is a test of the Emergency Radio System. If this were actual, you'd hear me screaming." |
+
+**3 rotating voices:** By default, commercials use `am_adam`, `bf_emma`, and `bm_george` (three distinct Kokoro voices). Each commercial randomly picks one, so ads are delivered by different "announcers" rather than the DJ reading ad copy in her own voice.
+
+**Discord commands:**
+- `?commercials` — Toggle commercial breaks on/off for this server
+- `?commercial` — Preview a random commercial immediately in voice
+- `?commercial emergency` — Preview a commercial from a specific category
+
+**Configuration:**
+```env
+COMMERCIAL_ENABLED=true                              # Master switch
+COMMERCIAL_CHANCE=0.15                               # 15% base chance per eligible transition
+COMMERCIAL_MIN_SONGS=3                               # Min songs between breaks
+COMMERCIAL_MAX_DURATION=30                           # Max TTS seconds (truncated)
+COMMERCIAL_MIN_QUEUE=2                               # Don't play if queue < 2
+COMMERCIAL_VOICES=am_adam,bf_emma,bm_george          # 3 rotating announcer voices
+```
+
 ### 🐛 Bug Fixes
 
 - **`login_required` not defined** — The `@login_required` decorator was used on 19 OBS API routes but never defined, crashing the entire web dashboard on import with `NameError`. Fixed by removing the redundant decorators — `require_login()` already handles auth globally via `@app.before_request`.
@@ -323,18 +371,21 @@ The Mission Control web dashboard now has CSRF (Cross-Site Request Forgery) prot
 8. [Music Cog: cogs/music.py](#8-music-cog-cogsmusicpy)
 9. [DJ Mode: utils/dj.py](#9-dj-mode-utilsdjpy--music-cog-integration)
 10. [AI Side Host: utils/llm_dj.py](#10-ai-side-host-utilsllm_djpy--the-studio-joker)
-11. [Admin Cog: cogs/admin.py](#11-admin-cog-cogsadminpy)
-12. [Logging Cog: cogs/logging.py](#12-logging-cog-cogsloggingpy)
-13. [Utility Modules](#13-utility-modules)
-14. [OBS Studio Integration](#14-obs-studio-integration)
-15. [CSRF Protection](#15-csrf-protection)
-16. [Web Dashboard: Mission Control](#16-web-dashboard-mission-control)
-17. [Soundboard System](#17-soundboard-system)
-18. [DJ Custom Lines](#18-dj-custom-lines)
-19. [Test Suite](#19-test-suite)
-20. [Launcher Scripts](#20-launcher-scripts)
-21. [Complete Command Reference](#21-complete-command-reference)
-22. [Troubleshooting & Known Issues](#22-troubleshooting--known-issues)
+11. [Radio Commercial Breaks: utils/commercials.py](#11-radio-commercial-breaks-utilscommercialspy)
+11.5. [Station Wars: Frequency Hijack](#115-station-wars-frequency-hijack-dimensional-bleed)
+12. [Admin Cog: cogs/admin.py](#12-admin-cog-cogsadminpy)
+13. [Logging Cog: cogs/logging.py](#13-logging-cog-cogsloggingpy)
+14. [Utility Modules](#14-utility-modules)
+15. [OBS Studio Integration](#15-obs-studio-integration)
+16. [CSRF Protection](#16-csrf-protection)
+17. [Web Dashboard: Mission Control](#17-web-dashboard-mission-control)
+18. [Soundboard System](#18-soundboard-system)
+19. [DJ Custom Lines](#19-dj-custom-lines)
+20. [Test Suite](#20-test-suite)
+21. [Launcher Scripts](#21-launcher-scripts)
+22. [Complete Command Reference](#22-complete-command-reference)
+23. [Troubleshooting & Known Issues](#23-troubleshooting--known-issues)
+24. [Development Guide](#24-development-guide)
 23. [Development Guide](#23-development-guide)
 
 ---
@@ -2158,7 +2209,228 @@ Pull before use: `ollama pull gemma4:latest`
 
 ---
 
-## 11. Admin Cog: `cogs/admin.py`
+## 11. Radio Commercial Breaks: `utils/commercials.py`
+
+The commercial break system plays AI-generated absurdist fake ads between songs, giving the stream that authentic 24/7 radio feel. Each commercial is delivered by a randomly chosen "announcer" voice from a pool of 3, so consecutive ads sound like different spokespersons.
+
+### How It Works
+
+```
+Song A finishes → Commercial chance roll (15% base, scales up over time)
+  → YES → Commercial plays via _dj_speak() with random announcer voice
+         → Then DJ intro plays for Song B
+         → Then Song B starts
+  → NO → Normal DJ intro → Song B starts
+```
+
+The commercial break plays **before** the DJ intro for the next song, so the listener hears: `[Song A] → [Commercial] → [DJ: "Up next, Song B!"] → [Song B]`.
+
+### Commercial Generation
+
+**Primary: AI generation (Ollama)**
+
+Uses the same Ollama infrastructure as the AI side host. The system prompt instructs the model to write short (15-25 second) fake radio commercials with absurd products, ridiculous claims, and memorable taglines. The output supports `{sound:name}` tags for sound effects.
+
+**Fallback: Pre-written templates (~40 absurdist scripts)**
+
+When Ollama is unavailable or times out, the system randomly picks from ~40 pre-written commercial scripts across 6 categories. Template variables (`{station_name}`) are interpolated at runtime.
+
+### Commercial Categories
+
+| Category | Key | Description | Example |
+|---|---|---|---|
+| Fake Sponsors | `sponsor_fake` | Absurd product endorsements | "WinBitch Coffee — brewed in a Debian container. Start your kernel, start your day. {sound:dj_drop}" |
+| Local Business | `local_business` | Shady businesses with terrible service | "Dave's Questionable Auto Repair. We fix your car 60% of the time, every time." |
+| Tech Products | `tech_product` | Absurd gadgets and apps | "iBrick Pro Max Ultra — it's just a brick. But it's OUR brick." |
+| Stream Meta | `stream_meta` | Self-referential humor about the radio | "Are you still listening? Good. Don't touch that dial." |
+| Absurdist | `absurdist` | Nonsense services | "First National Bank of Your Cousin's Garage. Apply today." |
+| Emergency | `emergency` | Parody emergency broadcasts | "This is a test of the Emergency Radio System. If this were actual, you'd hear me screaming. {sound:air_raid}" |
+
+### Timing & Probability
+
+Commercials only play when:
+1. **DJ mode is ON** — Commercials are part of the DJ personality, they don't play when DJ is off
+2. **Minimum songs between breaks** — Default: 3 songs must play before another commercial can trigger (prevents ad overload)
+3. **Minimum queue size** — Default: queue must have ≥ 2 songs left (commercials before the last song feel anticlimactic)
+4. **Random chance** — Base 15% probability per eligible transition, scaling up over time:
+   - After 3 songs: 15% (base)
+   - After 6 songs: 30% (2× multiplier)
+   - After 10 songs: 45% (3× multiplier)
+   - Hard cap at 60% to avoid every break being a commercial
+
+### 3-Voice Rotation
+
+Each commercial randomly picks a voice from `COMMERCIAL_VOICES`:
+
+| Engine | Default Commercial Voices |
+|---|---|
+| Kokoro | `am_adam`, `bf_emma`, `bm_george` |
+| MOSS | Override in `.env` with MOSS voice names |
+| Edge TTS | Override in `.env` with Edge voice names |
+
+This means consecutive commercials sound like **different spokespersons** — not Nova reading ad copy in her own voice. If `COMMERCIAL_VOICES` is empty, the DJ voice is used as fallback (not recommended — it breaks the radio illusion).
+
+### Per-Guild State
+
+| Dictionary | Key | Value | Purpose |
+|---|---|---|---|
+| `commercials_enabled` | `guild_id` | `bool` | Whether commercial breaks are on for this guild (toggled via `?commercials`) |
+| `songs_since_last` | `guild_id` | `int` | Songs played since the last commercial break |
+
+### Module API (`utils/commercials.py`)
+
+| Function | Purpose |
+|---|---|
+| `should_play_commercial(guild_id, queue_size)` | Roll the dice — True if a commercial should play now |
+| `record_song_played(guild_id)` | Increment the song counter (called by `_start_song_playback`) |
+| `record_commercial_played(guild_id)` | Reset the song counter after a commercial |
+| `generate_commercial(station_name, ...)` | Generate commercial text via Ollama or template fallback. Returns `str` or `None`. |
+| `get_commercial_voice(guild_id)` | Pick a random voice from `COMMERCIAL_VOICES`. Returns `str` or `None`. |
+| `toggle_commercials(guild_id, enabled)` | Toggle commercials on/off. Returns new state. |
+| `is_commercial_enabled(guild_id)` | Check if commercials are enabled for this guild |
+| `get_commercial_state(guild_id)` | Get full state dict (for dashboard/API) |
+
+### Configuration
+
+```env
+# ── Radio Commercial Breaks ────────────────────────────────────────────
+COMMERCIAL_ENABLED=true               # Master switch
+COMMERCIAL_CHANCE=0.15                # 15% base chance per eligible transition
+COMMERCIAL_MIN_SONGS=3                # Min songs between commercial breaks
+COMMERCIAL_MAX_DURATION=30            # Max TTS seconds (truncated at sentence)
+COMMERCIAL_MIN_QUEUE=2                # Don't play if queue < 2 songs
+COMMERCIAL_VOICES=am_adam,bf_emma,bm_george  # 3 rotating announcer voices
+```
+
+### Discord Commands
+
+| Command | Description |
+|---|---|
+| `?commercials` | Toggle commercial breaks on/off — shows chance, min songs, voice pool, songs since last break |
+| `?commercial` | Preview a random commercial immediately (plays in voice with a random announcer voice) |
+| `?commercial sponsor_fake` | Preview a commercial from a specific category |
+
+### Integration with DJ Flow
+
+The commercial system integrates at the beginning of `play_next()` in `cogs/music.py`, right before the DJ intro check:
+
+```python
+# In play_next(), after queue.get() and before DJ intro check:
+if should_play_commercial(guild_id, queue_size=queue.qsize()):
+    commercial_text = await generate_commercial(station_name=config.STATION_NAME, ...)
+    if commercial_text:
+        commercial_voice = get_commercial_voice(guild_id)  # random from 3
+        spoke = await self._dj_speak(vc, commercial_text, guild_id, voice=commercial_voice)
+        if spoke:
+            self._commercial_pending_intro[guild_id] = True
+            return  # _on_tts_done → _play_song_after_dj → plays DJ intro → then song
+```
+
+When `_play_song_after_dj()` detects `_commercial_pending_intro[guild_id]`, it plays the DJ intro for the next song (since the commercial just played but the DJ hasn't introduced the next song yet), then plays the song.
+
+---
+
+## 11.5. Station Wars: Frequency Hijack (Dimensional Bleed)
+
+Station Wars is a radio feature where transmissions from **other dimensions/kosmos** randomly bleed onto the stream frequency for ~15 seconds, replacing a normal commercial break. The DJ then cuts back in with a recovery line, followed by the normal DJ intro and the next song.
+
+### How It Works
+
+```
+Song A finishes → Station Wars check (5% base chance, before commercial check)
+  → HIJACK → Dimensional transmission plays via _dj_speak() with random commercial voice (from another kosmos)
+             → DJ recovery line plays ("What the— who gave them our frequency?! That's the THIRD kosmos this week!")
+             → DJ intro plays for Song B
+             → Song B starts
+  → NO HIJACK → Normal commercial check (15% chance)
+  → NO COMMERCIAL → Normal DJ intro → Song B starts
+```
+
+### Key Design Decisions
+
+**Same voices, another kosmos:** The hijack voices are the SAME 3 commercial voices (`am_adam`, `bf_emma`, `bm_george`). But they're from another dimension — same vocal cords, wrong reality. No separate `RADIO_HIJACK_VOICE` config is needed because the alien feeling comes from the *content* (interdimensional station names, cosmic vibes), not from a different TTS voice.
+
+**Checked before commercials:** `should_play_hijack()` is called before `should_play_commercial()` in `play_next()`. If a hijack triggers, the commercial break is skipped entirely — the listener gets one or the other, never both in a row.
+
+**Shares commercial timing:** Hijacks use the same `COMMERCIAL_MIN_SONGS` and `COMMERCIAL_MIN_QUEUE` thresholds as commercials. After a hijack, the song counter resets via `record_commercial_played()`, just like after a commercial.
+
+### Dimensional Station Templates (10)
+
+| Station | Dimension | Vibe |
+|---|---|---|
+| Smooth Jazz FM | Dimension K-7 | Time moves backwards, everyone is slightly too relaxed |
+| Pirate Radio 404 | The Void | No bodies, only vibes, broadcasting from a boat between dimensions |
+| Corporate Radio MAX | Kosmos Sigma-9 | Soulless corporate compliance from the future |
+| Truth Frequency Radio | Mirror Dimension | Paranoid conspiracies where everything is real AND not real |
+| Nostalgia Overload Radio | The Timeline That Wasn't | Only plays music from a year that doesn't exist |
+| AutoRadio 5000 | The Machine Kosmos | Broken AI that keeps apologizing to beings it can't see |
+| Underground Frequency | Below | Only broadcasts between dimensions, respects reality leaks |
+| Quiet FM | Null Kosmos | Silence is illegal, so here's an airhorn |
+| EXTREME VOLUME RADIO | The Screaming Dimension | One setting: LOUDER THAN YOUR REALITY |
+| Bingo Night Radio | Kosmos B-12 | Eternal community center, Gerald has been asleep for 600 years |
+
+### AI-Generated Dimensional Stations
+
+When Ollama is available, `generate_hijack()` uses `_HIJACK_SYSTEM_PROMPT` to create unique station IDs from random kosmos vibes. The AI is instructed to:
+- Create a station name from another dimension
+- Give it a vibe that feels *almost* like this reality, but wrong
+- Keep it under 30 words (15 seconds on air)
+- Never mention the real station name
+- Include `{sound:name}` tags for sound effects
+
+### DJ Recovery Lines
+
+After a dimensional bleed, the DJ cuts back in with a recovery line from `_HIJACK_RECOVERY_LINES`. Examples:
+- "What the— who gave them our frequency?! That's the THIRD kosmos this week!"
+- "Frequency stabilized. For now. The walls between kosmos are thin today."
+- "We're back from the void. Don't touch that dial."
+- "That was NOT a crossover event. That was a dimensional bleed."
+
+### Module API (`utils/commercials.py`)
+
+| Function | Purpose |
+|---|---|
+| `should_play_hijack(guild_id, queue_size)` | Roll the dice — True if a dimensional bleed should happen now |
+| `generate_hijack(station_name, dj_name, force_template)` | Generate hijack text via Ollama or template fallback. Returns `str` or `None`. |
+| `get_hijack_voice(guild_id)` | Pick a random voice from `COMMERCIAL_VOICES` (same pool, another kosmos). Returns `str` or `None`. |
+| `get_recovery_line()` | Pick a random DJ recovery line. Returns `str`. |
+
+### Integration with DJ Flow
+
+The hijack system integrates in `play_next()` in `cogs/music.py`, **before** the commercial check:
+
+```python
+# In play_next(), after queue.get() and BEFORE commercial check:
+if is_commercial_enabled(guild_id) and should_play_hijack(guild_id, queue_size=queue.qsize()):
+    hijack_text = await generate_hijack(station_name=config.STATION_NAME, dj_name=config.DJ_NAME)
+    if hijack_text:
+        hijack_voice = get_hijack_voice(guild_id)  # random from commercial pool
+        spoke = await self._dj_speak(vc, f"📡 {hijack_text}", guild_id, voice=hijack_voice)
+        if spoke:
+            self._hijack_pending_recovery[guild_id] = True
+            return  # _on_tts_done → _play_song_after_dj → recovery line → DJ intro → song
+```
+
+When `_play_song_after_dj()` detects `_hijack_pending_recovery[guild_id]`, it plays the DJ recovery line, then sets `_commercial_pending_intro[guild_id]` so the DJ intro plays next. The flow is: **Hijack → Recovery line → DJ intro → Song**.
+
+### Configuration
+
+```env
+# ── Station Wars: Frequency Hijack ──────────────────────────────────
+RADIO_HIJACK_ENABLED=true         # Master switch for dimensional bleeds
+RADIO_HIJACK_CHANCE=0.05           # 5% chance per eligible song transition
+# Hijack voices share COMMERCIAL_VOICES — same voices, another kosmos. No separate config needed.
+```
+
+### Discord Commands
+
+| Command | Description |
+|---|---|
+| `?hijack` | Preview a Station Wars dimensional frequency hijack — hear a transmission from another kosmos, then the DJ recovery line |
+
+---
+
+## 12. Admin Cog: `cogs/admin.py`
 
 Owner-only commands for bot management. All commands use `@commands.is_owner()` which checks `BOT_OWNER_ID` (or the bot's application owner in the Discord Developer Portal).
 
@@ -2211,7 +2483,7 @@ domain\tflag\tpath\tsecure\texpiration\tname\tvalue
 
 ---
 
-## 12. Logging Cog: `cogs/logging.py`
+## 13. Logging Cog: `cogs/logging.py`
 
 **Not auto-loaded** by `bot.py` (explicitly excluded on line 63). Can be loaded manually if needed.
 
@@ -2229,7 +2501,7 @@ Creates its own `FileHandler` writing to `bot_activity.log` in write mode (`mode
 
 ---
 
-## 13. Utility Modules
+## 14. Utility Modules
 
 ### `utils/discord_log_handler.py` — DiscordLogHandler
 
@@ -2503,7 +2775,7 @@ A **stateless** WebSocket bridge connecting to obs-websocket 5.x for full radio 
 
 ---
 
-## 14. OBS Studio Integration
+## 15. OBS Studio Integration
 
 The bot integrates with OBS Studio via obs-websocket 5.x, enabling full visual radio broadcast control from Mission Control. OBS runs headlessly (no physical display needed) and is controlled entirely through the web dashboard.
 
@@ -2707,7 +2979,7 @@ When OBS is disconnected, all controls show "OBS Disconnected" and are greyed ou
 
 ---
 
-## 15. CSRF Protection
+## 16. CSRF Protection
 
 The Mission Control web dashboard now has CSRF (Cross-Site Request Forgery) protection on all mutating endpoints (POST, PUT, DELETE, PATCH). This prevents malicious websites from making unauthorized requests to the dashboard on behalf of an authenticated user.
 
@@ -2789,7 +3061,7 @@ The CSRF token is generated once per session and **never rotates** for the lifet
 
 ---
 
-## 16. Web Dashboard: Mission Control
+## 17. Web Dashboard: Mission Control
 
 The Flask web dashboard runs alongside the Discord bot in a background thread, providing a browser-based "Mission Control" interface for remote control.
 
@@ -3027,7 +3299,7 @@ Discord guild IDs are 64-bit integers (snowflakes) that exceed JavaScript's `Num
 
 ---
 
-## 17. Soundboard System
+## 18. Soundboard System
 
 The soundboard lets users play sound effects in the bot's voice channel. It works both from the web dashboard and from `{sound:name}` tags in DJ lines.
 
@@ -3096,7 +3368,7 @@ The soundboard page uses a hidden `<input type="file">` with `position:absolute;
 
 ---
 
-## 18. DJ Custom Lines
+## 19. DJ Custom Lines
 
 Users can add custom DJ lines alongside the 172 built-in ones. Custom lines are persisted in `dj_custom_lines.json` and merged at runtime.
 
@@ -3143,7 +3415,7 @@ The `_pool(category)` function in `utils/dj.py` merges built-in + custom lines a
 
 ---
 
-## 19. Test Suite
+## 20. Test Suite
 
 ### `tests/test_playlist.py`
 
@@ -3189,7 +3461,7 @@ venv/bin/python -m pytest tests/test_suno.py -v
 
 ---
 
-## 20. Launcher Scripts
+## 21. Launcher Scripts
 
 ### `launch.sh`
 
@@ -3262,7 +3534,7 @@ A one-shot setup script that installs everything including systemd services for 
 
 ---
 
-## 21. Complete Command Reference
+## 22. Complete Command Reference
 
 **Default prefix:** `?` (configurable in `config.py`)
 
@@ -3328,7 +3600,7 @@ A one-shot setup script that installs everything including systemd services for 
 
 ---
 
-## 22. Troubleshooting & Known Issues
+## 23. Troubleshooting & Known Issues
 
 ### Common Problems
 
@@ -3413,7 +3685,7 @@ A one-shot setup script that installs everything including systemd services for 
 
 ---
 
-## 23. Development Guide
+## 24. Development Guide
 
 ### Adding a New Cog
 

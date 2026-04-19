@@ -317,3 +317,76 @@ OBS_SCENE_NOW_PLAYING = os.environ.get("OBS_SCENE_NOW_PLAYING", "️ Now Playing
 OBS_SCENE_DJ_SPEAKING = os.environ.get("OBS_SCENE_DJ_SPEAKING", "🎙️ DJ Speaking")
 OBS_SCENE_WAITING = os.environ.get("OBS_SCENE_WAITING", "⏳ Waiting")
 OBS_SCENE_OVERLAY = os.environ.get("OBS_SCENE_OVERLAY", "📺 Overlay Only")
+
+# ── Radio Commercial Breaks ────────────────────────────────────────────
+# AI-generated "fake" radio commercials that play between songs for
+# that authentic 24/7 radio feel. Uses Ollama for unique ad copy each
+# time, with ~40 pre-written absurdist templates as fallback.
+#
+# Commercials play BEFORE the DJ intro for the next song:
+#   [Song A ends] → [Commercial Break] → [DJ: "Up next, Song B!"] → [Song B]
+#
+# The chance of a commercial increases the longer it's been since the
+# last one (base chance after MIN_SONGS, 2× after 6 songs, 3× after 10).
+
+# Master switch — enable/disable commercial breaks globally.
+# Per-guild toggle via ?commercials command overrides this.
+COMMERCIAL_ENABLED = os.environ.get("COMMERCIAL_ENABLED", "true").lower() == "true"
+
+# Probability of a commercial break per eligible song transition.
+# 0.15 = ~15% chance, evaluated after each COMMERCIAL_MIN_SONGS songs.
+COMMERCIAL_CHANCE = float(os.environ.get("COMMERCIAL_CHANCE", "0.15"))
+
+# Minimum number of songs between commercial breaks.
+# A commercial will never play if fewer than this many songs have played
+# since the last commercial. Prevents ad overload.
+COMMERCIAL_MIN_SONGS = int(os.environ.get("COMMERCIAL_MIN_SONGS", "3"))
+
+# Maximum commercial duration in seconds. TTS output longer than this
+# is truncated at a sentence boundary.
+COMMERCIAL_MAX_DURATION = int(os.environ.get("COMMERCIAL_MAX_DURATION", "30"))
+
+# Don't play commercials if the queue has fewer than this many songs.
+# A commercial before the last song feels anticlimactic.
+COMMERCIAL_MIN_QUEUE = int(os.environ.get("COMMERCIAL_MIN_QUEUE", "2"))
+
+# TTS voices for commercials — 3 rotating "announcer" voices.
+# Each commercial picks a random voice from this list so ads sound like
+# different spokespersons, not the same DJ reading ad copy.
+#
+# Kokoro voices:  af_bella, af_sky, am_adam, am_michael, bf_emma, bf_isabella, bm_george, bm_lewis
+# MOSS voices:    en_warm_female, en_news_male (or any .wav in assets/moss_voices/)
+# Edge TTS:       en-US-AriaNeural, en-US-GuyNeural, en-GB-SoniaNeural
+#
+# If empty, the DJ voice is used for all commercials (not recommended —
+# it sounds like Nova is reading ads, which kills the illusion).
+_COMMERCIAL_VOICES_RAW = os.environ.get("COMMERCIAL_VOICES", "")
+if _COMMERCIAL_VOICES_RAW:
+    COMMERCIAL_VOICES = [v.strip() for v in _COMMERCIAL_VOICES_RAW.split(",") if v.strip()]
+else:
+    # Default: 3 distinct Kokoro voices that don't overlap with the DJ
+    # (af_bella is the default DJ voice, so we use different ones)
+    COMMERCIAL_VOICES = ["am_adam", "bf_emma", "bm_george"]
+
+# ── Station Wars: Frequency Hijack ──────────────────────────────────
+# Instead of a normal commercial, a transmission from another dimension/kosmos
+# "bleeds" onto the frequency for ~15 seconds. Then the DJ cuts back in
+# with a recovery line. The hijack voices are the SAME 3 commercial voices
+# — but they're from another kosmos, so they sound alien and wrong on your
+# frequency.
+#
+# Station Wars is checked BEFORE normal commercials. If a hijack triggers,
+# it replaces the commercial break entirely. If not, the normal commercial
+# logic runs as usual.
+#
+# Flow: [Song A ends] → [Dimensional hijack] → [DJ recovery line] → [DJ intro] → [Song B]
+
+# Master switch — enable/disable Station Wars frequency hijacks globally.
+RADIO_HIJACK_ENABLED = os.environ.get("RADIO_HIJACK_ENABLED", "true").lower() == "true"
+
+# Probability of a frequency hijack per eligible song transition.
+# 0.05 = ~5% chance, evaluated before normal commercials. Rare = never gets old.
+RADIO_HIJACK_CHANCE = float(os.environ.get("RADIO_HIJACK_CHANCE", "0.05"))
+
+# Hijack voices share the same COMMERCIAL_VOICES pool — same 3 voices, but
+# they're from another dimension. No separate voice config needed.

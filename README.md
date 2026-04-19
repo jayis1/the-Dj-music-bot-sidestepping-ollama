@@ -83,6 +83,8 @@ open http://localhost:8080
 - **Per-guild toggle** — `?dj` on/off per server, voice changeable with `?djvoice`
 - Works with **all four TTS engines** — Kokoro, MOSS, VibeVoice, or Edge TTS
 - **🤖 AI Side Host** — a second radio personality powered by a local LLM (Ollama) that writes its own spontaneous banter, hot takes, and shoutouts alongside the main DJ
+- **📺 Radio Commercial Breaks** — AI-generated absurdist fake ads that play between songs for that authentic 24/7 radio feel, with 3 rotating "announcer" voices so each ad sounds like a different spokesperson
+- **📡 Station Wars** — Transmissions from other dimensions/kosmos randomly bleed onto the frequency for ~15 seconds, then the DJ cuts back in with a recovery line — 5% base chance keeps it rare and surprising
 
 ### 🎬 OBS Studio Integration
 - Headless OBS Studio with **obs-websocket 5.x** control from Mission Control
@@ -93,6 +95,25 @@ open http://localhost:8080
 - **Stream key management** — save your YouTube stream key on the OBS page; it's pushed to OBS automatically
 - **Custom encoder settings** — `keyint_sec=2`, `bitrate=3000` for Good/Excellent YouTube stream health (≤2s keyframe intervals)
 - Streaming, recording, replay buffer, virtual camera — all from the web dashboard
+
+### 📺 Radio Commercial Breaks
+- **AI-generated absurdist ads** — Ollama writes unique fake commercials every time, with ~40 pre-written templates as fallback
+- **6 ad categories** — fake sponsors, shady local businesses, absurd tech products, stream meta humor, nonsense services, emergency broadcast parodies
+- **3 rotating "announcer" voices** — each commercial picks a random voice so consecutive ads sound like different spokespersons, not the DJ reading ad copy
+- **Smart timing** — configurable chance (default 15%), minimum songs between breaks (default 3), increasing probability the longer it's been since the last ad
+- **Same TTS + SFX pipeline** — commercials use `{sound:name}` tags and play through the same audio pipeline as DJ lines, so they sound like part of the broadcast
+- **Per-guild toggle** — `?commercials` on/off per server; `?commercial` to preview one immediately
+
+### 📡 Station Wars — Frequency Hijack
+- **Transmissions from other dimensions/kosmos** — instead of a normal commercial, a completely different radio station from another reality bleeds onto the stream for ~15 seconds
+- **10 pre-written dimensional stations** — Smooth Jazz FM from Dimension K-7, Pirate Radio 404 from the Void, Corporate Radio MAX from Kosmos Sigma-9, Truth Frequency Radio from the Mirror Dimension, Nostalgia Overload Radio from the Timeline That Wasn't, AutoRadio 5000 from the Machine Kosmos, Underground Frequency from Below, Quiet FM from the Null Kosmos, EXTREME VOLUME RADIO from the Screaming Dimension, Bingo Night Radio from Kosmos B-12
+- **AI-generated dimensional stations** — Ollama creates unique station IDs each time with random interdimensional personality cues
+- **DJ recovery lines** — After the dimensional bleed, the DJ cuts back in ("What the— who gave them our frequency?! That's the THIRD kosmos this week!", "Frequency stabilized. For now. The walls between kosmos are thin today.", etc.)
+- **Same voice pool as commercials** — hijack voices are the SAME 3 commercial voices (`am_adam`, `bf_emma`, `bm_george`) — but they're from **another kosmos**. Same vocal cords, different dimension
+- **5% base chance** — hijacks are checked before normal commercials; rare enough to never get old, frequent enough to be exciting
+- **Same TTS + SFX pipeline** — hijacks use `{sound:name}` tags for airhorns, DJ drops, air raids, etc.
+- **Full broadcast flow:** `[Song A] → [Dimensional bleed] → [DJ: "We're back from the void!"] → [DJ: "Up next, Song B!"] → [Song B]`
+- **Per-guild toggle via `?commercials`** — hijacks replace commercials; if commercials are off, hijacks are off too
 
 ---
 
@@ -464,6 +485,17 @@ NOWPLAYING_CHANNEL_ID=0
 | `?aidj` | Toggle AI side host on/off — shows model, voice, chime-in chance |
 | `?aidjvoice [name]` | Show or set the AI side host's separate TTS voice |
 
+### 📺 Commercial Break Commands
+| Command | Description |
+|---|---|
+| `?commercials` | Toggle radio commercial breaks on/off — shows chance, min songs, voice pool |
+| `?commercial [category]` | Preview a random commercial immediately (optional: sponsor_fake, local_business, tech_product, stream_meta, absurdist, emergency) |
+
+### 📡 Station Wars Commands
+| Command | Description |
+|---|---|
+| `?hijack` | Preview a Station Wars dimensional frequency hijack — hear a transmission from another kosmos, then the DJ recovery line |
+
 ### 📺 YouTube Live Commands
 | Command | Description |
 |---|---|
@@ -536,7 +568,24 @@ OLLAMA_DJ_ENABLED=false           # Set to true to activate
 OLLAMA_HOST=http://localhost:11434
 OLLAMA_MODEL=gemma4:latest        # Recommended: phi3:mini for low VRAM
 OLLAMA_DJ_CHANCE=0.25             # Chime-in chance per transition (0.0–1.0)
-OLLAMA_DJ_TIMEOUT=15             # Seconds before skipping if Ollama is slow
+OLLAMA_DJ_TIMEOUT=15              # Seconds before skipping if Ollama is slow
+```
+
+### Optional — Radio Commercial Breaks
+```env
+COMMERCIAL_ENABLED=true           # Master switch for commercial breaks
+COMMERCIAL_CHANCE=0.15            # 15% chance per eligible song transition
+COMMERCIAL_MIN_SONGS=3            # Minimum songs between commercial breaks
+COMMERCIAL_MAX_DURATION=30        # Max TTS seconds (truncated at sentence)
+COMMERCIAL_MIN_QUEUE=2             # Don't play if queue has fewer than N songs
+COMMERCIAL_VOICES=am_adam,bf_emma,bm_george  # 3 rotating "announcer" voices (comma-separated)
+```
+
+### Optional — Station Wars (Frequency Hijack)
+```env
+RADIO_HIJACK_ENABLED=true         # Master switch for Station Wars dimensional hijacks
+RADIO_HIJACK_CHANCE=0.05           # 5% chance per eligible song transition (rare = never gets old)
+# Hijack voices share COMMERCIAL_VOICES — same voices, another kosmos. No separate config needed.
 ```
 
 ### Optional — OBS Studio
@@ -641,6 +690,10 @@ nano .env           # Paste your DISCORD_TOKEN
 | No audio on YouTube stream | Audio comes via UDP port 12345 (not PulseAudio). Make sure Desktop Audio is muted in OBS (bot handles this automatically). If audio plays at wrong speed/double volume, check the ffmpeg_source has `input_format=s16le` and `ffmpeg_options=sample_rate=48000 channels=2`. |
 | Stream key shows as web password | Fixed in v420.0.3 — stream key input now has `autocomplete="new-password"` to prevent browser auto-fill with saved credentials. |
 | "Already playing audio" errors | Fixed in v420.0.3 — the central audio dispatcher now auto-stops any currently playing source, waits 150ms, then starts new audio. |
+| Commercials not playing | Make sure DJ mode is ON (`?dj`) and commercials are enabled (`?commercials`). Commercials only play between songs when DJ mode is active. Check `COMMERCIAL_MIN_SONGS` (default 3) — you need at least that many songs between breaks. |
+| Commercials sound like the DJ | Set `COMMERCIAL_VOICES` in `.env` to 3 different TTS voices (comma-separated). Defaults: `am_adam,bf_emma,bm_george`. If empty, commercials use the DJ voice. |
+| Station Wars hijacks not happening | Make sure `RADIO_HIJACK_ENABLED=true` and commercials are enabled (`?commercials`). Hijacks replace normal commercials, so if commercials are off, hijacks are off too. The default chance is only 5% — it's supposed to be rare. |
+| Hijack sounds like a regular commercial | That's by design — hijack voices are the SAME 3 commercial voices, but from another kosmos. The content (station name, interdimensional vibe) makes it feel alien, not the voice being different. If you want a completely different voice, add a 4th voice to `COMMERCIAL_VOICES` — hijacks use the same pool but pick randomly, so a new voice will sometimes get used. |
 | CSRF token validation failed | Reload the Mission Control page — the CSRF token in your session may have expired |
 
 ---

@@ -1361,7 +1361,181 @@ class Music(commands.Cog):
                     )
                     return
 
-            # ── DJ Mode: Speak an intro before the song ────────────
+            # ── Station Wars: Frequency Hijack ─────────────────────────
+            # Before checking for a normal commercial, see if a transmission
+            # from another dimension/kosmos bleeds onto the frequency. If so,
+            # the hijack replaces the commercial break. After the hijack, the
+            # DJ speaks a recovery line, then the normal DJ intro, then the song.
+            hijack_played = False
+            if (
+                self.dj_enabled.get(guild_id, False)
+                and TTS_AVAILABLE
+                and not self.dj_playing_tts.get(guild_id, False)
+            ):
+                try:
+                    from utils.commercials import (
+                        should_play_hijack,
+                        generate_hijack,
+                        get_hijack_voice,
+                        get_recovery_line,
+                        is_commercial_enabled,
+                        record_commercial_played,
+                    )
+
+                    if (
+                        is_commercial_enabled(guild_id)
+                        and should_play_hijack(guild_id, queue_size=queue.qsize())
+                    ):
+                        # Generate the hijack text
+                        hijack_text = await generate_hijack(
+                            station_name=getattr(config, "STATION_NAME", "MBot"),
+                            dj_name=getattr(config, "DJ_NAME", "Nova"),
+                        )
+
+                        if hijack_text:
+                            # Store the pending song so _on_tts_done can pick it up
+                            if not hasattr(self, "_dj_pending"):
+                                self._dj_pending = {}
+                            self._dj_pending[guild_id] = (ctx, data, ctx.channel.id)
+
+                            # Mark that a hijack just happened —
+                            # _play_song_after_dj will:
+                            #   1. Play DJ recovery line
+                            #   2. Then set _commercial_pending_intro
+                            #   3. Then play DJ intro
+                            #   4. Then play the song
+                            if not hasattr(self, "_hijack_pending_recovery"):
+                                self._hijack_pending_recovery = {}
+                            self._hijack_pending_recovery[guild_id] = True
+
+                            # Use the hijack voice — same pool as commercial voices,
+                            # but they're from another kosmos
+                            hijack_voice = get_hijack_voice(guild_id)
+
+                            # Prefix with a "frequency interference" marker
+                            # so it sounds like a real station bleed
+                            hijack_full = f"📡 {hijack_text}"
+
+                            spoke = await self._dj_speak(
+                                ctx.voice_client, hijack_full, guild_id,
+                                voice=hijack_voice,
+                            )
+                            if spoke:
+                                await self._obs_scene_dj_speaking()
+                                record_commercial_played(guild_id)
+                                hijack_played = True
+                                logging.info(
+                                    f"Station Wars: Frequency hijack played for guild {guild_id}"
+                                )
+                                # TTS started — _on_tts_done will fire,
+                                # which calls _play_song_after_dj.
+                                # That method checks _hijack_pending_recovery
+                                # and plays the DJ recovery line.
+                                return
+                            else:
+                                # Hijack TTS failed — clean up marker
+                                self._hijack_pending_recovery.pop(guild_id, None)
+                                logging.warning(
+                                    f"Station Wars: TTS failed for guild {guild_id}, "
+                                    f"falling through to normal flow"
+                                )
+                except ImportError:
+                    logging.debug("Station Wars: commercials module not available")
+                except Exception as e:
+                    logging.debug(f"Station Wars: Error checking/playing hijack: {e}")
+
+            # ── Commercial Break: Play before DJ intro ────────────────
+            # Commercial breaks are inserted between songs for that
+            # authentic 24/7 radio feel. They play BEFORE the DJ intro.
+            commercial_played = False
+            if (
+                self.dj_enabled.get(guild_id, False)
+                and TTS_AVAILABLE
+                and not self.dj_playing_tts.get(guild_id, False)
+            ):
+                try:
+                    from utils.commercials import (
+                        should_play_commercial,
+                        generate_commercial,
+                        record_commercial_played,
+                        is_commercial_enabled,
+                        get_commercial_voice,
+                    )
+
+                    if (
+                        is_commercial_enabled(guild_id)
+                        and should_play_commercial(guild_id, queue_size=queue.qsize())
+                    ):
+                        # Generate the commercial text
+                        prev_song = self.current_song.get(guild_id)
+                        prev_title = prev_song.title if prev_song else ""
+                        listener_count = 0
+                        try:
+                            vc = ctx.voice_client
+                            if vc and vc.channel:
+                                listener_count = sum(
+                                    1 for m in vc.channel.members if not m.bot
+                                )
+                        except Exception:
+                            pass
+
+                        commercial_text = await generate_commercial(
+                            station_name=getattr(config, "STATION_NAME", "MBot"),
+                            song_title=data.title,
+                            prev_title=prev_title,
+                            queue_size=queue.qsize(),
+                            listener_count=listener_count,
+                        )
+
+                        if commercial_text:
+                            # Prefix with a "commercial break" marker
+                            # so it sounds like a real ad break on radio
+                            commercial_text = f"🎙️ And now, a word from our sponsors. {commercial_text}"
+
+                            # Store the pending song so _on_tts_done can pick it up
+                            if not hasattr(self, "_dj_pending"):
+                                self._dj_pending = {}
+                            self._dj_pending[guild_id] = (ctx, data, ctx.channel.id)
+
+                            # Mark this as a commercial so we know to play
+                            # the DJ intro AFTER it (not skip to song)
+                            if not hasattr(self, "_commercial_pending_intro"):
+                                self._commercial_pending_intro = {}
+                            self._commercial_pending_intro[guild_id] = True
+
+                            # Rotate between 3 commercial voices so each ad
+                            # sounds like a different spokesperson
+                            commercial_voice = get_commercial_voice(guild_id)
+
+                            spoke = await self._dj_speak(
+                                ctx.voice_client, commercial_text, guild_id,
+                                voice=commercial_voice,
+                            )
+                            if spoke:
+                                await self._obs_scene_dj_speaking()
+                                record_commercial_played(guild_id)
+                                commercial_played = True
+                                logging.info(
+                                    f"Commercial: Break played for guild {guild_id}"
+                                )
+                                # TTS started — _on_tts_done will fire,
+                                # which calls _play_song_after_dj.
+                                # That method checks _commercial_pending_intro
+                                # and plays the DJ intro before the song.
+                                return
+                            else:
+                                # Commercial TTS failed — clean up marker
+                                self._commercial_pending_intro.pop(guild_id, None)
+                                logging.warning(
+                                    f"Commercial: TTS failed for guild {guild_id}, "
+                                    f"falling through to normal DJ intro"
+                                )
+                except ImportError:
+                    logging.debug("Commercial: commercials module not available")
+                except Exception as e:
+                    logging.debug(f"Commercial: Error checking/playing commercial: {e}")
+
+            # ── DJ Mode: Speak an intro before the song ───────────
             if (
                 self.dj_enabled.get(guild_id, False)
                 and TTS_AVAILABLE
@@ -1951,6 +2125,10 @@ class Music(commands.Cog):
             if ai_task and not ai_task.done():
                 ai_task.cancel()
 
+            # Clean up hijack/commercial recovery flags (skip breaks the chain)
+            getattr(self, "_hijack_pending_recovery", {}).pop(guild_id, None)
+            getattr(self, "_commercial_pending_intro", {}).pop(guild_id, None)
+
             skipped_dj_intro = True
 
         if vc and vc.is_playing():
@@ -2015,6 +2193,10 @@ class Music(commands.Cog):
         if tts_path:
             cleanup_tts_file(tts_path)
             self._current_tts_path[guild_id] = None
+
+        # Clean up hijack/commercial recovery flags
+        getattr(self, "_hijack_pending_recovery", {}).pop(guild_id, None)
+        getattr(self, "_commercial_pending_intro", {}).pop(guild_id, None)
 
         queue = await self.get_queue(ctx.guild.id)
         if not queue.empty():
@@ -2508,6 +2690,288 @@ class Music(commands.Cog):
             )
         )
 
+    # ── Commercial Break Commands ───────────────────────────────────────
+
+    @commands.command(name="commercials")
+    async def commercials_toggle(self, ctx):
+        """Toggle radio commercial breaks on/off for this server.
+
+        Commercial breaks are AI-generated absurdist fake ads that play
+        between songs for that authentic 24/7 radio feel. Each commercial
+        uses a randomly chosen voice from the commercial voice pool so
+        different ads sound like different spokespersons.
+
+        Commercials only play when DJ mode is ON and only between songs
+        (never during playback). They play BEFORE the DJ intro for the
+        next song, so the flow is:
+          [Song A] → [Commercial] → [DJ: "Up next, Song B!"] → [Song B]
+        """
+        guild_id = ctx.guild.id
+
+        try:
+            from utils.commercials import toggle_commercials, is_commercial_enabled, get_commercial_state
+        except ImportError:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📺 Commercials",
+                    f"{config.ERROR_EMOJI} Commercial system not available.",
+                    discord.Color.red(),
+                )
+            )
+
+        new_state = toggle_commercials(guild_id)
+        state = get_commercial_state(guild_id)
+
+        voices = getattr(config, "COMMERCIAL_VOICES", [])
+        voice_str = ", ".join(f"`{v}`" for v in voices[:5]) if voices else "same as DJ"
+
+        status = "ON" if new_state else "OFF"
+        embed = self.create_embed(
+            "📺 Radio Commercials",
+            f"{config.SUCCESS_EMOJI} Commercial breaks are now **{status}**.",
+        )
+        if new_state:
+            embed.add_field(
+                name="How it works",
+                value=f"Every **{state['min_songs']}+** songs, there's a "
+                      f"**{int(state['chance'] * 100)}%** chance of a commercial break. "
+                      f"Ads use rotating voices: {voice_str}.",
+                inline=False,
+            )
+            embed.add_field(
+                name="Songs since last ad",
+                value=f"{state['songs_since_last']}",
+                inline=True,
+            )
+        await ctx.send(embed=embed)
+
+    @commands.command(name="commercial")
+    async def commercial_preview(self, ctx, *, category: str = None):
+        """Preview a random commercial break. Plays immediately in voice.
+
+        Optional categories: sponsor_fake, local_business, tech_product,
+        stream_meta, absurdist, emergency
+
+        Use ?commercials to toggle commercial breaks on/off.
+        """
+        guild_id = ctx.guild.id
+
+        # Must be in a voice channel
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📺 Commercials",
+                    f"{config.ERROR_EMOJI} Join a voice channel first!",
+                    discord.Color.red(),
+                )
+            )
+
+        # Connect to voice if not already
+        if not ctx.voice_client:
+            await ctx.author.voice.channel.connect(self_deaf=True)
+        elif not ctx.voice_client.is_connected():
+            await ctx.voice_client.disconnect(force=True)
+            await asyncio.sleep(0.5)
+            await ctx.author.voice.channel.connect(self_deaf=True)
+
+        if not TTS_AVAILABLE:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📺 Commercials",
+                    f"{config.ERROR_EMOJI} TTS engine not available.",
+                    discord.Color.red(),
+                )
+            )
+
+        try:
+            from utils.commercials import generate_commercial, get_commercial_voice
+        except ImportError:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📺 Commercials",
+                    f"{config.ERROR_EMOJI} Commercial system not available.",
+                    discord.Color.red(),
+                )
+            )
+
+        async with ctx.typing():
+            # Validate category
+            valid_categories = [
+                "sponsor_fake", "local_business", "tech_product",
+                "stream_meta", "absurdist", "emergency",
+            ]
+            if category and category.lower() not in valid_categories:
+                return await ctx.send(
+                    embed=self.create_embed(
+                        "📺 Commercials",
+                        f"{config.ERROR_EMOJI} Unknown category `{category}`.\n"
+                        f"Valid: {', '.join(valid_categories)}",
+                        discord.Color.red(),
+                    )
+                )
+
+            listener_count = 0
+            try:
+                listener_count = sum(
+                    1 for m in ctx.voice_client.channel.members if not m.bot
+                )
+            except Exception:
+                pass
+
+            # Generate commercial (may use Ollama or template)
+            commercial_text = await generate_commercial(
+                station_name=getattr(config, "STATION_NAME", "MBot"),
+                category=category.lower() if category else None,
+                song_title=getattr(self.current_song.get(guild_id), "title", ""),
+                queue_size=len(getattr(self.song_queues.get(guild_id, asyncio.Queue()), "_queue", [])),
+                listener_count=listener_count,
+            )
+
+            if not commercial_text:
+                return await ctx.send(
+                    embed=self.create_embed(
+                        "📺 Commercials",
+                        f"{config.ERROR_EMOJI} Failed to generate a commercial. Try again.",
+                        discord.Color.red(),
+                    )
+                )
+
+            # Pick a random commercial voice
+            commercial_voice = get_commercial_voice(guild_id)
+
+            # Add the intro prefix
+            preview_text = f"And now, a word from our sponsors. {commercial_text}"
+
+            # Speak it
+            self.dj_enabled[guild_id] = self.dj_enabled.get(guild_id, False)
+            spoke = await self._dj_speak(
+                ctx.voice_client, preview_text, guild_id, voice=commercial_voice,
+            )
+
+            if spoke:
+                await ctx.send(
+                    embed=self.create_embed(
+                        "📺 Commercial Break",
+                        f"🎙️ *Playing commercial break...*\n\n"
+                        f"> {commercial_text}\n\n"
+                        f"Voice: `{commercial_voice or 'DJ voice'}`",
+                    )
+                )
+            else:
+                await ctx.send(
+                    embed=self.create_embed(
+                        "📺 Commercials",
+                        f"{config.ERROR_EMOJI} TTS failed to play the commercial.",
+                        discord.Color.red(),
+                    )
+                )
+
+    # ── Station Wars: Frequency Hijack Command ──────────────────────────
+
+    @commands.command(name="hijack")
+    async def hijack_preview(self, ctx):
+        """Preview a Station Wars dimensional frequency hijack. Plays immediately in voice.
+
+        Simulates a transmission from another dimension/kosmos bleeding onto
+        the frequency, then the DJ cutting back in with a recovery line. For
+        testing/preview only.
+
+        Station Wars hijacks normally trigger automatically with a 5%
+        chance per eligible song transition (before normal commercials).
+        The hijack voices are the SAME as the commercial voices — but
+        they're from another kosmos. Use this command to preview what a
+        dimensional bleed sounds like.
+        """
+        guild_id = ctx.guild.id
+
+        # Must be in a voice channel
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📡 Station Wars",
+                    f"{config.ERROR_EMOJI} Join a voice channel first!",
+                    discord.Color.red(),
+                )
+            )
+
+        # Connect to voice if not already
+        if not ctx.voice_client:
+            await ctx.author.voice.channel.connect(self_deaf=True)
+        elif not ctx.voice_client.is_connected():
+            await ctx.voice_client.disconnect(force=True)
+            await asyncio.sleep(0.5)
+            await ctx.author.voice.channel.connect(self_deaf=True)
+
+        if not TTS_AVAILABLE:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📡 Station Wars",
+                    f"{config.ERROR_EMOJI} TTS engine not available.",
+                    discord.Color.red(),
+                )
+            )
+
+        try:
+            from utils.commercials import (
+                generate_hijack,
+                get_hijack_voice,
+                get_recovery_line,
+            )
+        except ImportError:
+            return await ctx.send(
+                embed=self.create_embed(
+                    "📡 Station Wars",
+                    f"{config.ERROR_EMOJI} Station Wars system not available.",
+                    discord.Color.red(),
+                )
+            )
+
+        async with ctx.typing():
+            # Generate the hijack text
+            hijack_text = await generate_hijack(
+                station_name=getattr(config, "STATION_NAME", "MBot"),
+                dj_name=getattr(config, "DJ_NAME", "Nova"),
+            )
+
+            if not hijack_text:
+                return await ctx.send(
+                    embed=self.create_embed(
+                        "📡 Station Wars",
+                        f"{config.ERROR_EMOJI} Failed to generate a hijack. Try again.",
+                        discord.Color.red(),
+                    )
+                )
+
+            # Get the hijack voice (same pool as commercials, but from another kosmos)
+            hijack_voice = get_hijack_voice(guild_id)
+
+            # Speak the hijack (transmission from another dimension)
+            self.dj_enabled[guild_id] = self.dj_enabled.get(guild_id, False)
+            spoke = await self._dj_speak(
+                ctx.voice_client, f"📡 {hijack_text}", guild_id,
+                voice=hijack_voice,
+            )
+
+            if spoke:
+                # Wait for the hijack TTS to finish, then play the recovery line
+                await ctx.send(
+                    embed=self.create_embed(
+                        "📡 Station Wars",
+                        f"📻 *Transmission from another kosmos...*\n\n"
+                        f"> {hijack_text}\n\n"
+                        f"Voice: `{hijack_voice or 'DJ voice'}`\n\n"
+                        f"🎙️ DJ recovery line coming next...",
+                    )
+                )
+            else:
+                await ctx.send(
+                    embed=self.create_embed(
+                        "📡 Station Wars",
+                        f"{config.ERROR_EMOJI} TTS failed to play the hijack.",
+                        discord.Color.red(),
+                    )
+                )
+
     @commands.command(name="djvoice")
     async def dj_voice_cmd(self, ctx, *, voice_name: str = None):
         """Set the DJ's TTS voice. Use ?djvoices to see available voices."""
@@ -2984,6 +3448,17 @@ class Music(commands.Cog):
         was already dequeued but held until the intro was spoken.
         'pending_song' is stored on the guild before TTS starts.
 
+        Handles two special transitions:
+        1. Station Wars hijack → DJ recovery line → DJ intro → song
+           If _hijack_pending_recovery is set, a transmission from another
+           kosmos just bled onto the frequency. The DJ speaks a recovery
+           line (e.g. "We're back from the void."), then sets
+           _commercial_pending_intro for the DJ intro.
+
+        2. Commercial → DJ Intro → song
+           If _commercial_pending_intro is set, the DJ intro plays before
+           the actual song, so the listener knows what's coming next.
+
         Args:
             guild_id: The guild ID
             skip_ai: If True, skip the AI side host check (used when
@@ -3001,6 +3476,81 @@ class Music(commands.Cog):
             return
 
         ctx, data, channel_id = pending
+
+        # ── Station Wars: Hijack → DJ Recovery Line ──────────────────────
+        # If a dimensional frequency hijack just played, the listener heard
+        # a transmission from another kosmos but hasn't heard the DJ take
+        # back the frequency yet. Play the DJ recovery line NOW, then set
+        # _commercial_pending_intro so the DJ intro plays next, then the song.
+        hijack_recovery = getattr(self, "_hijack_pending_recovery", {}).pop(guild_id, False)
+        if hijack_recovery:
+            logging.info(f"Station Wars: playing DJ recovery line for guild {guild_id}")
+            try:
+                from utils.commercials import get_recovery_line
+                recovery_line = get_recovery_line()
+            except ImportError:
+                recovery_line = "We're back. Don't touch that dial."
+
+            # Speak the recovery line in the DJ's own voice
+            spoke = await self._dj_speak(vc, recovery_line, guild_id)
+            if spoke:
+                # Recovery line started — _on_tts_done will call
+                # _play_song_after_dj again. Set the commercial intro
+                # flag so the DJ intro plays next.
+                self._dj_pending[guild_id] = (ctx, data, channel_id)
+                self._hijack_pending_recovery.pop(guild_id, None)
+                if not hasattr(self, "_commercial_pending_intro"):
+                    self._commercial_pending_intro = {}
+                self._commercial_pending_intro[guild_id] = True
+                return
+            else:
+                # Recovery TTS failed — fall through to commercial intro
+                # check (which will play DJ intro if needed)
+                logging.warning(
+                    f"Station Wars: Recovery TTS failed for guild {guild_id}, "
+                    f"falling through"
+                )
+                # Still set the commercial intro flag so the DJ intro plays
+                if not hasattr(self, "_commercial_pending_intro"):
+                    self._commercial_pending_intro = {}
+                self._commercial_pending_intro[guild_id] = True
+
+        # ── Commercial → DJ Intro transition ──────────────────────────
+        # If a commercial just played, the listener heard an ad but hasn't
+        # heard the DJ intro for the next song yet. Play the DJ intro now
+        # before the AI side host check and the actual song.
+        commercial_intro = getattr(self, "_commercial_pending_intro", {}).pop(guild_id, False)
+        if commercial_intro:
+            logging.info(f"Commercial: playing DJ intro after commercial break for guild {guild_id}")
+            # Generate the DJ intro for this song
+            prev_song = self.current_song.get(guild_id)
+            if prev_song:
+                intro_text = generate_outro(
+                    prev_song.title,
+                    has_next=True,
+                    next_title=data.title,
+                    queue_size=0,  # Queue was already popped
+                )
+            else:
+                intro_text = generate_intro(data.title, queue_size=0)
+
+            spoke = await self._dj_speak(vc, intro_text, guild_id)
+            if spoke:
+                # DJ intro started — _on_tts_done will call
+                # _play_song_after_dj again (skip_ai=True this time)
+                # which will then play the actual song.
+                # Re-store the pending song for the next callback.
+                self._dj_pending[guild_id] = (ctx, data, channel_id)
+                # Don't skip AI after a commercial — the AI side host
+                # hasn't spoken yet, so it should still get a chance.
+                self._commercial_pending_intro.pop(guild_id, None)
+                return
+            else:
+                # DJ intro TTS failed — fall through to play the song.
+                logging.warning(
+                    f"Commercial: DJ intro TTS failed for guild {guild_id}, "
+                    f"playing song directly"
+                )
 
         # ── AI Side Host: chime in after the main DJ, before the song ──
         # Only if skip_ai is False (we haven't just played an AI line)
@@ -3254,6 +3804,13 @@ class Music(commands.Cog):
         where the play command was invoked (channel_id).
         """
         guild_id = ctx.guild.id
+
+        # Track song count for commercial break timing
+        try:
+            from utils.commercials import record_song_played
+            record_song_played(guild_id)
+        except Exception:
+            pass
 
         # Resolve the now-playing channel: use configured channel if set,
         # otherwise fall back to the channel the command was invoked in.

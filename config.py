@@ -5,7 +5,7 @@
 import os
 import warnings
 
-BOT_VERSION = "v420.0.3"
+BOT_VERSION = "v420.0.4"
 
 try:
     from dotenv import load_dotenv

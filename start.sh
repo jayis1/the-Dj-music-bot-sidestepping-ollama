@@ -1,6 +1,6 @@
 #!/bin/bash
 # ═══════════════════════════════════════════════════════════════════
-#  The Radio DJ Bot v420.0.3 — Self-Setup Launcher
+#  The Radio DJ Bot v420.0.4 — Self-Setup Launcher
 #
 #  Usage:
 #    bash start.sh          → setup + run (first time or re-run)
@@ -50,9 +50,10 @@ error()   { echo -e "${RED}[ERROR]${RESET} $*"; exit 1; }
 #
 # When Flatpak OBS is detected:
 #   - Config dir: ~/.var/app/com.obsproject.Studio/config/obs-studio/
-#   - Launch: flatpak run com.obsproject.Studio (no xvfb — Flatpak
-#     runs in its own sandbox with QT_QPA_PLATFORM=offscreen)
+#   - Launch: xvfb-run + flatpak run --socket=x11 --socket=dbus
+#     --nosocket=wayland --share=network com.obsproject.Studio
 #   - WebSocket: accessible on localhost (Flatpak allows by default)
+#   - D-Bus: requires --socket=dbus for host session bus access
 OBS_FLATPAK_INSTALLED=false
 if command -v flatpak &>/dev/null && flatpak list 2>/dev/null | grep -q "com.obsproject.Studio"; then
   OBS_FLATPAK_INSTALLED=true
@@ -253,7 +254,7 @@ setup_obs() {
 
   # ── Install headless support packages ──────────────────
   if [ "$OBS_INSTALLED" = true ]; then
-    for pkg in xvfb dbus pulseaudio pulseaudio-utils chromium; do
+    for pkg in xvfb dbus-x11 pulseaudio pulseaudio-utils chromium; do
       if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
         info "Installing $pkg for headless OBS + YouTube Live overlay..."
         $SUDO apt-get install -y -qq "$pkg" 2>/dev/null || warn "$pkg install failed"
@@ -641,10 +642,66 @@ USERINIEOF
         sleep 2
       fi
 
-      # Start D-Bus (OBS needs it)
-      if ! pgrep -x dbus-daemon &>/dev/null; then
-        eval $(dbus-launch --sh-syntax 2>/dev/null) || true
-        export DBUS_SESSION_BUS_ADDRESS
+      # ── Start D-Bus session daemon (OBS + Flatpak need it) ───────
+      # OBS and Flatpak OBS both require a D-Bus session bus.
+      # Without it, Flatpak OBS fails with:
+      #   "Could not create dbus connection: Failed to execute child
+      #    process 'dbus-launch' (No such file or directory)"
+      #
+      # We start a user-session dbus-daemon and export the address so
+      # that both xvfb-run children AND the Flatpak sandbox (via
+      # --socket=dbus) can reach it.
+      #
+      # dbus-x11 provides dbus-launch (fallback method).
+      # dbus-daemon with --session is the preferred method.
+      if [ -z "$DBUS_SESSION_BUS_ADDRESS" ] || ! pgrep -x dbus-daemon &>/dev/null; then
+        # Method 1: Use dbus-launch (from dbus-x11 package)
+        # This is the simplest and most portable approach — dbus-launch
+        # starts a dbus-daemon and outputs the connection address.
+        # We prefer this over manual dbus-daemon because it handles
+        # all the config/session setup automatically.
+        if command -v dbus-launch &>/dev/null; then
+          eval $(dbus-launch --sh-syntax) 2>/dev/null || true
+          if [ -n "$DBUS_SESSION_BUS_ADDRESS" ]; then
+            export DBUS_SESSION_BUS_ADDRESS
+            info "D-Bus session started via dbus-launch at $DBUS_SESSION_BUS_ADDRESS"
+          fi
+        fi
+
+        # Method 2: If dbus-launch failed, try dbus-daemon directly
+        if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+          _DBUS_SOCKET_DIR="/tmp/radio-dj-dbus"
+          mkdir -p "$_DBUS_SOCKET_DIR"
+          _DBUS_SOCKET="$_DBUS_SOCKET_DIR/session_bus_socket"
+
+          if ! pgrep -x dbus-daemon &>/dev/null; then
+            dbus-daemon --session --address="unix:path=$_DBUS_SOCKET" \
+              --print-pid="$_DBUS_SOCKET_DIR/dbus-daemon.pid" --nofork &
+            _dbus_wait=0
+            while [ ! -S "$_DBUS_SOCKET" ] && [ $_dbus_wait -lt 10 ]; do
+              sleep 0.5
+              _dbus_wait=$((_dbus_wait + 1))
+            done
+            if [ -S "$_DBUS_SOCKET" ]; then
+              export DBUS_SESSION_BUS_ADDRESS="unix:path=$_DBUS_SOCKET"
+              info "D-Bus session started at $DBUS_SESSION_BUS_ADDRESS"
+            else
+              warn "Could not start D-Bus session. OBS may fail to start."
+            fi
+          fi
+        fi
+
+        # Method 3: Try the system bus as last resort
+        if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
+          if [ -S "/run/user/$(id -u)/bus" ]; then
+            export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+            info "Using system D-Bus session bus at $DBUS_SESSION_BUS_ADDRESS"
+          else
+            warn "No D-Bus session available. OBS/Flatpak may fail."
+          fi
+        fi
+      else
+        info "D-Bus session already active at $DBUS_SESSION_BUS_ADDRESS"
       fi
 
       # Start PulseAudio with null sink for virtual audio
@@ -680,7 +737,7 @@ USERINIEOF
 
         # ══ Delete OBS crash/safe-mode markers ═══════════════
         # When OBS crashes or is killed without clean shutdown, it writes
-        # a crash marker file. On next start, OBS detects this and shows
+        # a crash sentinel file. On next start, OBS detects this and shows
         # a "Crash or unclean shutdown detected" dialog, then enters
         # safe mode — running with a blank scene and NOT starting the
         # WebSocket server. This means the bot can never connect.
@@ -689,19 +746,25 @@ USERINIEOF
         # always starts fresh, regardless of how the previous run ended.
         #
         # Crash detection mechanism (OBS 29 + OBS 32):
-        #   1. OBS writes a "crash_marker" file on startup
+        #   1. OBS writes a ".sentinel" file in the config root on startup
+        #      (e.g. ~/.config/obs-studio/.sentinel or
+        #       ~/.var/app/com.obsproject.Studio/config/obs-studio/.sentinel)
         #   2. OBS deletes it on clean exit
         #   3. If the file still exists on next launch → crash dialog
         #   4. The dialog BLOCKS the Qt event loop → WebSocket never starts
         #
-        # Marker locations (try all possible paths):
+        # OBS 29 and some OBS 30+ builds also use "crash_marker" files
+        # in plugin directories. We delete both to be safe.
+        #
+        # Marker locations:
+        #   - .sentinel in OBS config root (OBS 32+ primary mechanism)
+        #   - crash_marker in plugin dirs (OBS 29 browser source)
         #   - plugin_config/obs-browser/crash_marker (browser source)
-        #   - crash_marker in OBS config root (general startup)
-        #   - basic/profiles/RadioDJ/crash_marker (per-profile)
         #   - [General] CrashDuringStartup=true in basic.ini (OBS 30+)
         #
         # Use find to catch ALL instances recursively — OBS may have
         # created markers in unexpected subdirectories.
+        find "$_PRECHECK_DIR" -name ".sentinel" -type f -delete 2>/dev/null || true
         find "$_PRECHECK_DIR" -name "crash_marker" -type f -delete 2>/dev/null || true
         find "$_PRECHECK_DIR" -name "safe_mode" -type f -delete 2>/dev/null || true
         find "$_PRECHECK_DIR" -name ".lock" -path "*/profiles/*" -delete 2>/dev/null || true
@@ -725,28 +788,58 @@ USERINIEOF
       # can access the virtual X display from xvfb.
       if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
         info "Starting Flatpak OBS Studio (headless via xvfb, browser source available)..."
-        # Pass OBS_NOCRASHDIALOG=1 to skip the "crash detected" Qt dialog.
-        # Without this, a crash from a previous run causes OBS to show a
-        # modal dialog that blocks the entire event loop — the WebSocket
-        # server never starts and the bot can never connect.
+        # ── Flatpak OBS headless launch flags ──────────────────────
+        # --socket=x11:    Allow access to xvfb's X11 display (OBS needs real OpenGL)
+        # --nosocket=wayland: Prevent Wayland detection (we're using Xvfb)
+        # --socket=dbus:   Allow access to host D-Bus session (prevents
+        #                   "Could not create dbus connection" error)
+        # --share=network: Allow browser source to reach localhost:8080
         #
-        # This env var is not an official OBS flag — it's our convention.
-        # The real fix is that we delete crash markers + CrashDuringStartup
-        # flags before every launch (see cleanup above). But the env var
-        # is an extra safety net for any remaining crash detection paths.
+        # NOTE: --disable-shutdown-check does NOT exist in OBS 32.
+        # Crash dialog is prevented by deleting .sentinel files before launch
+        # (see cleanup above). --safe-mode DISABLES WebSocket, so never use it.
+        #
+        # DBUS_SESSION_BUS_ADDRESS is exported above from our dbus-daemon — the
+        # --socket=dbus flag lets the Flatpak sandbox inherit it.
         xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
-          --share=network \
+          --socket=dbus --share=network \
           com.obsproject.Studio \
-          --minimize-to-tray --disable-shutdown-check \
+          --minimize-to-tray \
           --collection "Radio DJ" --profile "RadioDJ" &
         OBS_PID=$!
       else
         info "Starting headless OBS Studio (apt, no browser source)..."
-        xvfb-run -a obs --minimize-to-tray --disable-shutdown-check \
+        # NOTE: --disable-shutdown-check does NOT exist in OBS 32.
+        # Crash dialog prevention relies on .sentinel file deletion.
+        xvfb-run -a obs --minimize-to-tray \
           --collection "Radio DJ" --profile "RadioDJ" &
         OBS_PID=$!
       fi
       sleep 3
+
+      # ── Sentinel cleanup watchdog ───────────────────────────────
+      # OBS creates a .sentinel file at the START of its launch, then
+      # deletes it on clean exit. If OBS crashes DURING startup (e.g.
+      # d-bus failure), the sentinel remains and triggers the crash
+      # dialog on the NEXT launch — even though we deleted all sentinels
+      # before launch.
+      #
+      # This watchdog runs in the background and periodically deletes
+      # .sentinel files while OBS is starting up. This ensures that even
+      # if OBS crashes during startup, the sentinel won't persist to
+      # block the next launch attempt.
+      #
+      # It runs for up to 20 seconds (longer than OBS startup), then
+      # exits automatically.
+      (
+        for _sw_iter in $(seq 1 20); do
+          for _sw_dir in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
+            [ -d "$_sw_dir" ] && find "$_sw_dir" -name ".sentinel" -type f -delete 2>/dev/null || true
+          done
+          sleep 1
+        done
+      ) &
+      _SENTINEL_WATCHDOG_PID=$!
 
       # ── Verify OBS actually started (not just the process) ────
       # A simple `kill -0` only checks if the PID is alive — but OBS
@@ -778,11 +871,35 @@ except:
         # Check if process is even alive
         if kill -0 $OBS_PID 2>/dev/null; then
           warn "OBS process alive (PID: $OBS_PID) but WebSocket NOT responding after 18s"
-          warn "OBS may be stuck in a crash/safe-mode dialog. Try: bash start.sh nuke && bash start.sh"
+          # Check if crash sentinel exists (OBS is stuck in crash dialog)
+          _sentinel_found=false
+          for _sd in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
+            if [ -f "$_sd/.sentinel" ]; then
+              _sentinel_found=true
+              warn "Crash sentinel found: $_sd/.sentinel — OBS is stuck in crash dialog"
+            fi
+          done
+          if [ "$_sentinel_found" = true ]; then
+            warn "OBS detected a previous unclean shutdown and is showing a blocking dialog."
+            warn "The WebSocket server cannot start while this dialog is open."
+            warn "Try: bash start.sh nuke && bash start.sh"
+          else
+            warn "OBS may be stuck in a crash/safe-mode dialog or loading slowly."
+            warn "Try: bash start.sh nuke && bash start.sh"
+          fi
         else
           warn "OBS process died shortly after launch. Check: bash start.sh logs"
+          # Show last few lines of OBS log if available
+          _latest_obs_log=$(ls -t "$OBS_CONFIG_BASE/logs/"*.txt 2>/dev/null | head -1)
+          if [ -n "$_latest_obs_log" ] && [ -f "$_latest_obs_log" ]; then
+            warn "Last OBS log entries:"
+            tail -5 "$_latest_obs_log" 2>/dev/null | while read line; do warn "  $line"; done
+          fi
         fi
       fi
+
+      # Kill the sentinel watchdog if still running
+      kill $_SENTINEL_WATCHDOG_PID 2>/dev/null || true
     fi
   fi
 
@@ -852,6 +969,13 @@ stop_bot() {
   fi
   if [ "$OBS_STOPPED" = true ]; then
     success "OBS stopped."
+    # Clean up crash sentinel files immediately after killing OBS.
+    # When OBS is killed (SIGTERM/SIGKILL), it doesn't get a chance
+    # to delete its own .sentinel file. This means the next startup
+    # would trigger the crash dialog. We delete them proactively.
+    for _stop_dir in "$HOME/.config/obs-studio" "$HOME/.var/app/com.obsproject.Studio/config/obs-studio"; do
+      [ -d "$_stop_dir" ] && find "$_stop_dir" -name ".sentinel" -type f -delete 2>/dev/null || true
+    done
   fi
 }
 
@@ -895,6 +1019,7 @@ nuke_obs() {
   FLATPAK_OBS_BASE="$HOME/.var/app/com.obsproject.Studio/config/obs-studio"
   for _NUKE_DIR in "$APT_OBS_BASE" "$FLATPAK_OBS_BASE"; do
     if [ -d "$_NUKE_DIR" ]; then
+      find "$_NUKE_DIR" -name ".sentinel" -type f -delete 2>/dev/null || true
       find "$_NUKE_DIR" -name "crash_marker" -type f -delete 2>/dev/null || true
       find "$_NUKE_DIR" -name "safe_mode" -type f -delete 2>/dev/null || true
       find "$_NUKE_DIR" -name ".lock" -path "*/profiles/*" -delete 2>/dev/null || true

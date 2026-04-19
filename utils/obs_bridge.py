@@ -431,17 +431,11 @@ class OBSBridge:
             except Exception:
                 pass
 
-            # Get current scene
-            try:
-                resp = client.get_current_program_scene()
-                if hasattr(resp, "scene_name"):
-                    result["current_scene"] = resp.scene_name
-                elif isinstance(resp, dict):
-                    result["current_scene"] = resp.get("currentProgramSceneName", "")
-            except Exception:
-                pass
-
-            # Get scene list
+            # Get scene list FIRST — before querying current scene.
+            # When OBS starts after crash dialog dismissal with "All scene
+            # data cleared", it has NO scenes. Calling
+            # get_current_program_scene() on a null current scene pointer
+            # crashes OBS with "basic_string: construction from null".
             try:
                 resp = client.get_scene_list()
                 if hasattr(resp, "scenes"):
@@ -455,6 +449,20 @@ class OBSBridge:
                     ]
             except Exception:
                 pass
+
+            # Only query current scene if OBS has scenes loaded.
+            # If the scene list is empty (e.g., after crash dialog where
+            # "All scene data cleared"), get_current_program_scene() will
+            # crash OBS. We skip it and leave current_scene="" instead.
+            if result["scenes"]:
+                try:
+                    resp = client.get_current_program_scene()
+                    if hasattr(resp, "scene_name"):
+                        result["current_scene"] = resp.scene_name
+                    elif isinstance(resp, dict):
+                        result["current_scene"] = resp.get("currentProgramSceneName", "")
+                except Exception:
+                    pass
 
             # Get transition list
             try:
@@ -544,18 +552,30 @@ class OBSBridge:
     def create_scene(self, scene_name: str) -> dict:
         """Create a new scene in OBS. No-op if it already exists.
         
+        CRASH-SAFE: When OBS has no scenes (e.g., after crash dialog
+        where "All scene data cleared"), calling get_current_program_scene()
+        crashes OBS with "basic_string: construction from null is not valid".
+        This method queries the scene LIST first (safe) and only checks
+        current scene if scenes exist.
+        
         Includes a retry mechanism because Flatpak OBS 32 can return
         success when creating a scene but its internal state may still
-        be null (especially after crash dialog dismissal). Verifying
-        the scene actually exists after creation prevents null pointer
-        crashes when adding sources to the scene.
+        be null. Verifying the scene actually exists after creation
+        prevents null pointer crashes when adding sources.
         """
-        # Check if scene already exists — skip if so (idempotent)
+        # Check the scene LIST (safe — never dereferences null current scene)
         try:
-            status = self.get_status()
-            existing_scenes = status.get("scenes", [])
-            if scene_name in existing_scenes:
-                return {"connected": True, "status": "ok", "data": {"scene_name": scene_name, "already_exists": True}}
+            resp_list = self._safe_call(lambda c: c.get_scene_list())
+            if resp_list.get("connected"):
+                scenes_raw = resp_list.get("data", {})
+                if hasattr(scenes_raw, "scenes"):
+                    existing = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                elif isinstance(scenes_raw, dict):
+                    existing = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                else:
+                    existing = []
+                if scene_name in existing:
+                    return {"connected": True, "status": "ok", "data": {"scene_name": scene_name, "already_exists": True}}
         except Exception:
             pass
 
@@ -564,46 +584,87 @@ class OBSBridge:
             lambda c, sn=scene_name: c.create_scene(name=sn)
         )
         
-        # Wait a beat and verify the scene actually exists in OBS's
-        # internal state. After crash dialog dismissal, OBS may report
-        # successful scene creation but its internal pointer is still
-        # null. Verifying prevents "basic_string: construction from
-        # null is not valid" crashes when adding sources.
+        # Wait and verify the scene actually exists in OBS's internal
+        # state. After crash dialog, OBS may report successful creation
+        # but internal pointer is still null.
         if result.get("connected") and not result.get("error"):
-            time.sleep(1)  # Let OBS process the scene creation
+            time.sleep(1)
             for _verify in range(3):
                 try:
-                    status = self.get_status()
-                    existing_scenes = status.get("scenes", [])
-                    if scene_name in existing_scenes:
-                        return result
-                    # Scene not visible yet — retry creation
-                    log.debug(f"OBS Bridge: Scene '{scene_name}' not found after creation, retrying...")
+                    resp_list = self._safe_call(lambda c: c.get_scene_list())
+                    if resp_list.get("connected"):
+                        scenes_raw = resp_list.get("data", {})
+                        if hasattr(scenes_raw, "scenes"):
+                            existing = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                        elif isinstance(scenes_raw, dict):
+                            existing = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                        else:
+                            existing = []
+                        if scene_name in existing:
+                            return result
+                    log.debug(f"OBS Bridge: Scene '{scene_name}' not in list after creation, retrying...")
                     result = self._safe_call(
                         lambda c, sn=scene_name: c.create_scene(name=sn)
                     )
-                    time.sleep(1)
+                    time.sleep(2)
                 except Exception:
-                    time.sleep(1)
-            log.warning(f"OBS Bridge: Scene '{scene_name}' created but not visible in scene list after 3 retries")
+                    time.sleep(2)
+            log.warning(f"OBS Bridge: Scene '{scene_name}' created but not visible after 3 retries")
         
         return result
 
     def set_current_scene(self, scene_name: str) -> dict:
-        """Switch to a different OBS scene."""
+        """Switch to a different OBS scene.
+        
+        CRASH-SAFE: If the target scene doesn't exist, this is a no-op
+        to prevent OBS from crashing when trying to set a null scene.
+        """
+        # Verify the scene exists before switching — prevents crash
+        try:
+            resp_list = self._safe_call(lambda c: c.get_scene_list())
+            if resp_list.get("connected"):
+                scenes_raw = resp_list.get("data", {})
+                if hasattr(scenes_raw, "scenes"):
+                    existing = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                elif isinstance(scenes_raw, dict):
+                    existing = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                else:
+                    existing = []
+                if scene_name not in existing:
+                    log.warning(f"OBS Bridge: Cannot set scene to '{scene_name}' — not in scene list {existing}")
+                    return {"error": f"Scene '{scene_name}' not found", "connected": True}
+        except Exception:
+            pass  # Scene list query failed — try switching anyway
+        
         return self._safe_call(
             lambda c, sn=scene_name: c.set_current_program_scene(name=sn)
         )
 
     def _get_current_scene_name(self) -> str:
-        """Get the name of the current OBS scene. Falls back to '📺 Overlay Only'."""
+        """Get the name of the current OBS scene. Falls back to '📺 Overlay Only'.
+        
+        CRASH-SAFE: Uses get_scene_list() which is safe even when OBS
+        has no current scene (null pointer). Never calls
+        get_current_program_scene() directly because that crashes OBS
+        when there's no current scene set.
+        """
         try:
-            status = self.get_status()
-            scene = status.get("current_scene", "")
-            # Return our overlay scene if current scene is empty, null, or
-            # OBS's auto-created default "Scene" (which has no sources).
-            if scene and scene not in ("", "Scene", "Untitled"):
-                return scene
+            # Query scene list (safe — never dereferences null current scene)
+            resp_list = self._safe_call(lambda c: c.get_scene_list())
+            if resp_list.get("connected"):
+                scenes_raw = resp_list.get("data", {})
+                if hasattr(scenes_raw, "scenes"):
+                    scenes = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                elif isinstance(scenes_raw, dict):
+                    scenes = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                else:
+                    scenes = []
+                # If our target scene exists, use it
+                if "📺 Overlay Only" in scenes:
+                    return "📺 Overlay Only"
+                # Otherwise return first scene if any
+                if scenes:
+                    return scenes[0]
         except Exception:
             pass
         return "📺 Overlay Only"
@@ -1990,7 +2051,7 @@ class OBSBridge:
         }
 
         for scene_name, scene_def in scenes.items():
-            # Create the scene (idempotent)
+            # Create the scene (idempotent + crash-safe)
             result = self.create_scene(scene_name)
             if result.get("error") and not result.get("data", {}).get("already_exists"):
                 errors.append(f"scene:{scene_name}: {result['error']}")
@@ -2007,8 +2068,25 @@ class OBSBridge:
             except Exception:
                 log.debug(f"OBS Bridge: Could not set current scene to '{scene_name}' before source creation")
             
-            # Brief pause to let OBS set the current scene internally
+            # Verify the scene actually exists before creating sources.
+            # create_scene() verifies internally, but let's double-check.
             time.sleep(0.5)
+            try:
+                resp_list = self._safe_call(lambda c: c.get_scene_list())
+                if resp_list.get("connected"):
+                    scenes_raw = resp_list.get("data", {})
+                    if hasattr(scenes_raw, "scenes"):
+                        existing_scenes = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                    elif isinstance(scenes_raw, dict):
+                        existing_scenes = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                    else:
+                        existing_scenes = []
+                    if scene_name not in existing_scenes:
+                        errors.append(f"scene:{scene_name}: Scene not visible after creation, skipping source creation")
+                        log.warning(f"OBS Bridge: Scene '{scene_name}' not in scene list {existing_scenes}, skipping source creation")
+                        continue
+            except Exception:
+                pass  # Scene list query failed — proceed optimistically
 
             # Create each source in the scene
             for input_kind, source_name, settings in scene_def["sources"]:

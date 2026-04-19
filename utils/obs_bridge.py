@@ -166,6 +166,12 @@ class OBSBridge:
         self._viz_scene_name = None
         self._viz_item_id = -1
         self._viz_positioned = False
+        # SFX GIF cycling — always shows dans trollface, briefly flashes
+        # to another troll when a sound plays, then reverts back
+        self._sfx_gif_index = 0
+        self._sfx_gif_paths = self._resolve_sfx_gif_paths()
+        self._sfx_default_path = self._resolve_default_sfx_gif()
+        self._sfx_revert_timer = None
 
         if self.enabled:
             obsws = _get_obsws()
@@ -863,11 +869,12 @@ class OBSBridge:
         viz_path = "/tmp/radio_visualizer.png"
         self._render_waveform_image([0.02] * 64, viz_path)
 
-        # Resolve GIF path
+        # Resolve GIF path — prefer sounds.gif (wider, 500x281) over sound.gif (450x450)
         if not gif_path or not os.path.isfile(gif_path):
-            assets_gif = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "assets", "giphy.gif"
-            )
+            assets_dir = os.path.dirname(os.path.dirname(__file__))
+            assets_gif = os.path.join(assets_dir, "assets", "sounds.gif")
+            if not os.path.isfile(assets_gif):
+                assets_gif = os.path.join(assets_dir, "assets", "sound.gif")
             gif_path = assets_gif if os.path.isfile(assets_gif) else ""
 
         # ── Batch: Create ALL sources + position them in ONE connection ──
@@ -1082,6 +1089,48 @@ class OBSBridge:
             else:
                 results["gif"] = {"error": "No GIF file found", "connected": True}
 
+            # ── 9.5 SFX GIF source (troll face — always visible, flashes on SFX) ──
+            if self._sfx_default_path:
+                initial_sfx_gif = self._sfx_default_path
+                try:
+                    try:
+                        existing = client.get_input_settings(name="SFX GIF")
+                        if existing:
+                            try:
+                                client.set_input_settings(
+                                    name="SFX GIF",
+                                    settings={
+                                        "is_local_file": True,
+                                        "local_file": initial_sfx_gif,
+                                        "looping": True,
+                                        "restart_on_activate": True,
+                                        "close_when_inactive": False,
+                                    },
+                                    overlay=True,
+                                )
+                            except Exception:
+                                pass
+                            results["sfx_gif"] = {"connected": True, "status": "ok"}
+                        else:
+                            raise Exception("create")
+                    except Exception:
+                        client.create_input(
+                            sceneName=scene_name,
+                            inputKind="ffmpeg_source",
+                            inputName="SFX GIF",
+                            inputSettings={
+                                "is_local_file": True,
+                                "local_file": initial_sfx_gif,
+                                "looping": True,
+                                "restart_on_activate": True,
+                                "close_when_inactive": False,
+                            },
+                            sceneItemEnabled=True,
+                        )
+                        results["sfx_gif"] = {"connected": True, "status": "ok"}
+                except Exception as e:
+                    results["sfx_gif"] = {"error": str(e), "connected": True}
+
             # ── 10. Position ALL scene items in the same connection ─────
             # Background positioning
             try:
@@ -1135,23 +1184,42 @@ class OBSBridge:
             except Exception as e:
                 log.debug(f"OBS Bridge: Failed to position visualizer: {e}")
 
-            # GIF positioning — full width at bottom
+            # GIF positioning — full width at bottom (sounds.gif: 500x281 or sound.gif: 450x450)
             if gif_path:
                 try:
                     gif_item_id = self._get_scene_item_id_from_client(client, scene_name, "GIF Overlay")
                     if gif_item_id >= 0:
+                        # Pick scale based on which GIF file
+                        gif_scale = 2.56 if "sounds.gif" in gif_path else 2.84
                         client.set_scene_item_transform(
                             scene_name=scene_name, item_id=gif_item_id,
                             transform={
-                                # Full width: 1280/360 ≈ 3.56, bottom of canvas
+                                # Full width at bottom of canvas
                                 "positionX": 0,
                                 "positionY": 640,
-                                "scaleX": 3.56,
-                                "scaleY": 3.56,
+                                "scaleX": gif_scale,
+                                "scaleY": gif_scale,
                             },
                         )
                 except Exception as e:
                     log.debug(f"OBS Bridge: Failed to position GIF: {e}")
+
+            # SFX GIF positioning (lower-right, ~200px wide)
+            if self._sfx_default_path:
+                try:
+                    sfx_item_id = self._get_scene_item_id_from_client(client, scene_name, "SFX GIF")
+                    if sfx_item_id >= 0:
+                        client.set_scene_item_transform(
+                            scene_name=scene_name, item_id=sfx_item_id,
+                            transform={
+                                "positionX": 1040,
+                                "positionY": 400,
+                                "scaleX": 0.4,
+                                "scaleY": 0.4,
+                            },
+                        )
+                except Exception as e:
+                    log.debug(f"OBS Bridge: Failed to position SFX GIF: {e}")
 
         # ── Post-batch: invalidate cache ──
         # Scene items have been repositioned inside the batch — reset
@@ -1269,11 +1337,12 @@ class OBSBridge:
           │  (40,80)  Station Name                                │Thumb│  │
           │  (40,140) Now Playing title                           │150px│  │
           │  (40,210) DJ Speaking text                            └────┘  │
-          │  (40,270) ▁▂▃▅▇█▇▅▃▂▁ Sound Wave Visualizer              │
-          │                                                                │
-          │  (40,640) Ticker                                                │
+          │  (40,270) ▁▂▃▅▇█▇▅▃▂▁ Sound Wave Visualizer   ┌─────┐  │
+          │                                                    │SFX  │  │
+          │                                                    │ GIF │  │
+          │  (40,640) Ticker                                    └─────┘  │
           │  ████████████████████████████████████████████████████████████  │
-          │  (0,640)  ──── GIF Overlay spanning full width ────────────── │
+          │  (0,640)  ──── sounds.gif spanning full width ─────────────── │
           └────────────────────────────────────────────────────────────────┘
 
         Visual sources (background, thumbnail, visualizer, GIF) are positioned
@@ -2064,7 +2133,7 @@ class OBSBridge:
         above the black background, adding visual energy to the stream.
 
         Args:
-            gif_path: Path to the GIF file. Falls back to assets/giphy.gif.
+            gif_path: Path to the GIF file. Falls back to assets/sound.gif.
             scene_name: Scene to add the source to (empty = current scene)
         """
         if not self.enabled:
@@ -2073,17 +2142,18 @@ class OBSBridge:
         if not scene_name:
             scene_name = self._get_current_scene_name()
 
-        # Resolve GIF path — fall back to assets/giphy.gif
+        # Resolve GIF path — prefer sounds.gif (500x281) over sound.gif (450x450)
         if not gif_path or not os.path.isfile(gif_path):
-            assets_path = os.path.join(
-                os.path.dirname(os.path.dirname(__file__)), "assets", "giphy.gif"
-            )
-            if os.path.isfile(assets_path):
-                gif_path = assets_path
-            else:
+            assets_dir = os.path.dirname(os.path.dirname(__file__))
+            for name in ("sounds.gif", "sound.gif"):
+                candidate = os.path.join(assets_dir, "assets", name)
+                if os.path.isfile(candidate):
+                    gif_path = candidate
+                    break
+            if not gif_path:
                 log.warning(
                     "OBS Bridge: No GIF file found (set YOUTUBE_STREAM_GIF in .env "
-                    "or place assets/giphy.gif). Skipping GIF source."
+                    "or place assets/sounds.gif). Skipping GIF source."
                 )
                 return {"error": "No GIF file found", "connected": True}
 
@@ -2130,26 +2200,48 @@ class OBSBridge:
         return result
 
     def _position_gif(self, scene_name: str):
-        """Position the GIF overlay at the bottom of the video, spanning the full width.
+        """Position the sound/sounds GIF overlay at the bottom, spanning the full width.
 
-        The GIF is a beat/wave animation that should stretch across the entire
-        1280px width as a decorative bar at the bottom of the stream.
-        Original GIF is 360x360 — scaled to fill 1280px wide × ~80px tall.
-        Positioned at (0, 640) so it sits at the very bottom of the canvas.
+        The GIF is a beat/wave animation for the bottom of the stream.
+        Two variants supported:
+          - sounds.gif: 500x281 (wider, more frames) — scaleX=2.56
+          - sound.gif:  450x450 (square) — scaleX=2.84
+        Positioned at (0, 640) so it sits at the bottom edge of the 720 canvas.
         """
         item_id = self._get_scene_item_id(scene_name, "GIF Overlay")
         if item_id < 0:
             return
+
+        # Detect which GIF we're using to get the right scale
+        try:
+            resp = self._safe_call(
+                lambda c: c.get_input_settings(name="GIF Overlay")
+            )
+            settings = resp.get("data", {})
+            if isinstance(settings, dict) and hasattr(settings, "get"):
+                current_file = settings.get("local_file", settings.get("input", ""))
+            elif isinstance(settings, dict):
+                current_file = settings.get("local_file", settings.get("input", ""))
+            else:
+                current_file = ""
+        except Exception:
+            current_file = ""
+
+        # Choose scale based on file: sounds.gif=500w → 2.56, sound.gif=450w → 2.84
+        if "sounds.gif" in str(current_file):
+            scale_x = 2.56  # 1280 / 500
+        else:
+            scale_x = 2.84  # 1280 / 450
+
         try:
             self._safe_call(
-                lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
+                lambda c, sn=scene_name, iid=item_id, sx=scale_x: c.set_scene_item_transform(
                     scene_name=sn, item_id=iid,
                     transform={
-                        # Full width: 1280 / 360 ≈ 3.56
                         "positionX": 0,
                         "positionY": 640,
-                        "scaleX": 3.56,
-                        "scaleY": 3.56,
+                        "scaleX": sx,
+                        "scaleY": sx,
                     }
                 )
             )
@@ -2397,6 +2489,212 @@ class OBSBridge:
         except Exception as e:
             log.debug(f"OBS Auto Scene: Exception switching to '{scene_name}': {e}")
             return False
+
+    # ── SFX GIF Cycling ───────────────────────────────────────────────
+
+    @staticmethod
+    def _resolve_sfx_gif_paths() -> list:
+        """Resolve the 3 NON-default SFX GIF paths (for cycling on sound play).
+
+        Returns only paths to files that actually exist on disk.
+        The default GIF (dans trollface) is NOT in this list — it's the
+        always-present face that we revert back to.
+        """
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+        candidates = [
+            "dans trolface2.gif",
+            "mad troll.gif",
+            "lol troll.gif",
+        ]
+        paths = []
+        for name in candidates:
+            full = os.path.join(assets_dir, name)
+            if os.path.isfile(full):
+                paths.append(full)
+        if paths:
+            log.info(f"OBS Bridge: Found {len(paths)} SFX GIFs for cycling")
+        else:
+            log.debug("OBS Bridge: No SFX GIFs found in assets/")
+        return paths
+
+    @staticmethod
+    def _resolve_default_sfx_gif() -> str:
+        """Resolve the default always-visible SFX GIF path.
+
+        The default is 'dans trollface.gif' — this is always present on the
+        stream overlay. When a sound effect plays, the GIF briefly changes
+        to one of the other troll faces, then reverts back to this one.
+        """
+        assets_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+        default = os.path.join(assets_dir, "dans trollface.gif")
+        if os.path.isfile(default):
+            log.info("OBS Bridge: Default SFX GIF → dans trollface.gif")
+            return default
+        # Fallback: use the first available SFX GIF if dans trollface is missing
+        for name in ("dans trolface2.gif", "mad troll.gif", "lol troll.gif"):
+            alt = os.path.join(assets_dir, name)
+            if os.path.isfile(alt):
+                log.info(f"OBS Bridge: Default SFX GIF → {name} (fallback)")
+                return alt
+        return ""
+
+    def create_sfx_gif_source(self, scene_name: str = "") -> dict:
+        """Create an ffmpeg_source for the SFX GIF (dans trollface — always visible).
+
+        The SFX GIF source always shows dans trollface.gif. When a sound
+        effect plays, it briefly flashes to another troll face for ~3s,
+        then reverts back to dans trollface.
+
+        Falls back gracefully if no SFX GIFs are found.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not self._sfx_default_path:
+            return {"error": "No SFX GIFs found", "connected": True}
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        # Always start with the default (dans trollface)
+        initial_gif = self._sfx_default_path
+
+        def _create(c, _scene=scene_name, _gif=initial_gif):
+            try:
+                existing = c.get_input_settings(name="SFX GIF")
+                if existing:
+                    try:
+                        c.set_input_settings(
+                            name="SFX GIF",
+                            settings={
+                                "is_local_file": True,
+                                "local_file": _gif,
+                                "looping": True,
+                                "restart_on_activate": True,
+                                "close_when_inactive": False,
+                            },
+                            overlay=True,
+                        )
+                    except Exception:
+                        pass
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="ffmpeg_source",
+                inputName="SFX GIF",
+                inputSettings={
+                    "is_local_file": True,
+                    "local_file": _gif,
+                    "looping": True,
+                    "restart_on_activate": True,
+                    "close_when_inactive": False,
+                },
+                sceneItemEnabled=True,
+            )
+
+        result = self._safe_call(_create)
+        if not result.get("error"):
+            self._position_sfx_gif(scene_name)
+            log.info("OBS Bridge: SFX GIF source created ✅")
+        return result
+
+    def _position_sfx_gif(self, scene_name: str):
+        """Position the SFX GIF in the lower-right area of the canvas.
+
+        Always shows dans trollface.gif. Flashes to another troll face
+        when a sound effect plays, then reverts back after 3 seconds.
+        Placed at (1040, 400), scale 0.4 (~120-190px).
+        """
+        item_id = self._get_scene_item_id(scene_name, "SFX GIF")
+        if item_id < 0:
+            return
+        try:
+            self._safe_call(
+                lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
+                    scene_name=sn, item_id=iid,
+                    transform={
+                        "positionX": 1040,
+                        "positionY": 400,
+                        "scaleX": 0.4,
+                        "scaleY": 0.4,
+                    }
+                )
+            )
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to position SFX GIF: {e}")
+
+    def cycle_sfx_gif(self) -> dict:
+        """Flash the SFX GIF to a random troll face, then revert to dans trollface.
+
+        Called each time a sound effect plays. Picks one of the 3 alternate
+        troll GIFs at random, shows it for ~3 seconds, then reverts back
+        to the default (dans trollface.gif) which is always visible on stream.
+
+        The revert uses a background thread with a 3-second sleep —
+        non-blocking, fire-and-forget.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not self._sfx_gif_paths or not self._sfx_default_path:
+            return {"error": "No SFX GIFs found", "connected": True}
+
+        # Pick a random alternate GIF (not the default)
+        import random
+        flash_gif = random.choice(self._sfx_gif_paths)
+
+        # Cancel any pending revert timer
+        if self._sfx_revert_timer and self._sfx_revert_timer.is_alive():
+            self._sfx_revert_timer.cancel()
+
+        # Flash to the alternate troll face
+        def _flash(c, _gif=flash_gif):
+            c.set_input_settings(
+                name="SFX GIF",
+                settings={
+                    "is_local_file": True,
+                    "local_file": _gif,
+                    "looping": True,
+                    "restart_on_activate": True,
+                    "close_when_inactive": False,
+                },
+                overlay=True,
+            )
+
+        try:
+            result = self._safe_call(_flash)
+            log.info(f"OBS Bridge: SFX GIF flashed → {os.path.basename(flash_gif)}")
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to flash SFX GIF: {e}")
+
+        # Schedule revert back to default after 3 seconds
+        import threading
+        def _revert():
+            try:
+                self._safe_call(
+                    lambda c, _gif=self._sfx_default_path: c.set_input_settings(
+                        name="SFX GIF",
+                        settings={
+                            "is_local_file": True,
+                            "local_file": _gif,
+                            "looping": True,
+                            "restart_on_activate": True,
+                            "close_when_inactive": False,
+                        },
+                        overlay=True,
+                    )
+                )
+                log.debug(f"OBS Bridge: SFX GIF reverted → {os.path.basename(self._sfx_default_path)}")
+            except Exception:
+                pass
+
+        self._sfx_revert_timer = threading.Timer(3.0, _revert)
+        self._sfx_revert_timer.daemon = True
+        self._sfx_revert_timer.start()
+
+        return {"connected": True, "status": "ok"}
 
 
 # ══════════════════════════════════════════════════════════════════════════

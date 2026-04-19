@@ -260,6 +260,13 @@ class YouTubeLiveStreamer:
     async def play_sfx(self, sfx_path: str, label: str = ""):
         self.update_hud(dj="SFX: " + label)
 
+        # Cycle the SFX GIF on the OBS overlay when a sound effect plays
+        if self._obs_bridge and self._obs_bridge.enabled:
+            try:
+                self._obs_bridge.cycle_sfx_gif()
+            except Exception:
+                pass
+
     async def play_waiting(self, message: str = ""):
         self.update_hud(waiting=message)
 
@@ -309,7 +316,9 @@ class YouTubeLiveStreamer:
     def _resolve_gif(self) -> str | None:
         if self.stream_gif and os.path.isfile(self.stream_gif):
             return self.stream_gif
-        assets_gif = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "giphy.gif")
+        assets_gif = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "sounds.gif")
+        if not os.path.isfile(assets_gif):
+            assets_gif = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "sound.gif")
         if os.path.isfile(assets_gif):
             return assets_gif
         return None

@@ -614,12 +614,14 @@ SVCEOF
       rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json.bak.1" 2>/dev/null
 
       # Start OBS headless
-      # Flatpak OBS: QT_QPA_PLATFORM=offscreen (xvfb doesn't work with Flatpak sandbox)
-      # apt OBS:      xvfb-run (needs Xvfb for headless rendering)
+      # Both apt OBS and Flatpak OBS need xvfb for headless rendering
+      # (OBS requires a real OpenGL context — QT_QPA_PLATFORM=offscreen
+      # doesn't work). Flatpak OBS needs --socket=x11 so the sandbox
+      # can access the virtual X display from xvfb.
       if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
-        info "Starting Flatpak OBS Studio (headless, browser source available)..."
-        QT_QPA_PLATFORM=offscreen \
-        flatpak run com.obsproject.Studio \
+        info "Starting Flatpak OBS Studio (headless via xvfb, browser source available)..."
+        xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
+          com.obsproject.Studio \
           --minimize-to-tray --disable-shutdown-check \
           --collection "Radio DJ" --profile "RadioDJ" &
         OBS_PID=$!

@@ -143,6 +143,13 @@ class OBSBridge:
     # Don't retry connection for this many seconds after a failure
     CONNECTION_RETRY_INTERVAL = 30
 
+    # Minimum time between WebSocket connections (seconds).
+    # Prevents rapid connect/disconnect cycles from overwhelming
+    # OBS's internal event loop, which causes audio glitches.
+    # Burst connections during startup are allowed, but steady-state
+    # polling should respect this limit.
+    MIN_CONNECT_INTERVAL = 0.2  # max ~5 WebSocket connections/sec
+
     def __init__(self, host: str = "localhost", port: int = 4455, password: str = "", enabled: bool = True):
         self.host = host
         self.port = port
@@ -152,6 +159,7 @@ class OBSBridge:
         self._last_status_time = 0
         self._status_cache_ttl = 5  # seconds
         self._last_connect_fail = 0  # timestamp of last failed connection
+        self._last_connect_time = 0  # timestamp of last successful connection
         self._connection_logged = False  # Only log "configured" once
 
         if self.enabled:
@@ -179,6 +187,12 @@ class OBSBridge:
           - obsws-python is not installed
           - OBS is not reachable (connection refused, timeout, etc.)
           - We're in a connection-backoff period
+          - We're in a rate-limit period (too many connections per second)
+
+        Rate limiting: MIN_CONNECT_INTERVAL prevents rapid connect/disconnect
+        cycles from overwhelming OBS's event loop, which causes audio glitches
+        and dropouts. During burst operations (startup setup), calls that
+        exceed the rate limit simply block briefly rather than fail.
         """
         obsws = _get_obsws()
         if obsws is None:
@@ -187,6 +201,14 @@ class OBSBridge:
         # Check connection backoff — don't spam failed connects
         if not self._should_try_connect():
             return None
+
+        # Rate limit: throttle WebSocket connections to prevent
+        # overwhelming OBS's internal event loop.
+        elapsed = time.time() - self._last_connect_time
+        if elapsed < self.MIN_CONNECT_INTERVAL:
+            # Brief sleep to respect the rate limit during bursts
+            # (e.g., startup creates ~30 sources in quick succession)
+            time.sleep(self.MIN_CONNECT_INTERVAL - elapsed)
 
         # Suppress the library's own verbose logging during connect
         obsws_logger = logging.getLogger("obsws_python")
@@ -200,8 +222,9 @@ class OBSBridge:
                 password=self.password,
                 timeout=5,
             )
-            # Success — reset backoff
+            # Success — reset backoff and record connection time
             self._last_connect_fail = 0
+            self._last_connect_time = time.time()
             if not self._connection_logged:
                 log.info(f"OBS Bridge: Connected to {self.host}:{self.port}")
                 self._connection_logged = True
@@ -948,6 +971,9 @@ class OBSBridge:
         # settings to ensure they switch to file-reading mode.
         self._update_existing_text_sources()
 
+        # Invalidate visualizer cache since scene items may have changed
+        self.invalidate_visualizer_cache()
+
         return {"connected": True, "status": "ok", "sources_created": list(results.keys()), "errors": errors or None}
 
     def _update_existing_text_sources(self):
@@ -1438,12 +1464,16 @@ class OBSBridge:
 
         We keep scaleY at 1.0 so the bar height stays constant.
         Position is preserved (left-anchored at x=40, y=280).
+
+        PERFORMANCE: This method is called frequently by the visualizer
+        polling loop. To avoid flooding OBS with WebSocket connections,
+        it uses a cached scene item ID and scene name (resolved once,
+        then reused). It also skips WebSocket calls entirely when the
+        level hasn't changed significantly (< 2% delta), avoiding
+        connect→request→disconnect overhead for sub-pixel bar movement.
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
-
-        if not scene_name:
-            scene_name = self._get_current_scene_name()
 
         # Clamp level to [0.0, 1.0]
         level = max(0.0, min(1.0, level))
@@ -1451,9 +1481,32 @@ class OBSBridge:
         # A small minimum (2%) so the bar is always faintly visible
         scale_x = max(0.02, level)
 
-        item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
+        # Skip update if the change is negligible — avoids WebSocket spam.
+        # A 2% threshold means we only send an update when the bar would
+        # move by ~20 pixels on a 1000px-wide bar. Below that, the visual
+        # difference is imperceptible.
+        last_scale = getattr(self, '_viz_last_scale', 0.0)
+        if abs(scale_x - last_scale) < 0.02:
+            return {"connected": True, "status": "ok", "data": {"skipped": True}}
+        self._viz_last_scale = scale_x
+
+        # Use cached scene name and item ID (resolved once, then reused).
+        # This avoids 2 extra WebSocket connections per tick (get_status +
+        # get_scene_item_list) which would flood OBS.
+        if not scene_name:
+            scene_name = getattr(self, '_viz_scene_name', "📺 Overlay Only")
+
+        item_id = getattr(self, '_viz_item_id', -1)
+
+        # First call (or cache miss) — resolve scene name and item ID
         if item_id < 0:
-            return {"error": "Audio Visualizer source not found in scene", "connected": True}
+            if not scene_name or scene_name == "📺 Overlay Only":
+                scene_name = self._get_current_scene_name()
+            self._viz_scene_name = scene_name
+            item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
+            self._viz_item_id = item_id
+            if item_id < 0:
+                return {"error": "Audio Visualizer source not found in scene", "connected": True}
 
         return self._safe_call(
             lambda c, sn=scene_name, iid=item_id, sx=scale_x: c.set_scene_item_transform(
@@ -1466,6 +1519,15 @@ class OBSBridge:
                 }
             )
         )
+
+    def invalidate_visualizer_cache(self):
+        """Clear the visualizer's cached scene name and item ID.
+
+        Call this if the overlay scene is recreated or sources change.
+        """
+        self._viz_scene_name = None
+        self._viz_item_id = -1
+        self._viz_last_scale = 0.0
 
     def create_gif_source(self, gif_path: str = "", scene_name: str = "") -> dict:
         """Create a media source (ffmpeg_source) that loops an animated GIF.

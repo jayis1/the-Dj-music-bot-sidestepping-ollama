@@ -80,9 +80,15 @@ class YouTubeLiveStreamer:
     HEIGHT = 720
 
     # Audio visualizer bar update interval (seconds).
-    # 100ms = 10 FPS for the level bar animation — fast enough to look
-    # responsive, slow enough to not hammer OBS with WebSocket requests.
-    _VISUALIZER_INTERVAL = 0.1
+    # 500ms = 2 FPS for the level bar animation — enough to look
+    # responsive while avoiding WebSocket flooding. The OBS Bridge's
+    # update_visualizer_bar() also has delta-skip logic that only
+    # sends a WebSocket request when the level changes by >2%.
+    # DO NOT set this below 300ms — each tick opens a WebSocket
+    # connection (connect→request→disconnect) and OBS's event loop
+    # gets overwhelmed by rapid connect/disconnect cycles, causing
+    # audio glitches and dropouts.
+    _VISUALIZER_INTERVAL = 0.5
 
     def __init__(
         self,
@@ -599,13 +605,19 @@ class YouTubeLiveStreamer:
     async def _visualizer_poll_obs(self):
         """Poll the PCMBroadcaster's audio level and update the OBS visualizer bar.
 
-        This coroutine runs at ~10 FPS (every 100ms) while the stream is active.
+        This coroutine runs at ~2 FPS (every 500ms) while the stream is active.
         It reads the smoothed RMS audio level from the PCMBroadcaster and
         adjusts the width (scaleX) of the "Audio Visualizer" color source
         in OBS via the WebSocket API.
 
-        The visualizer bar provides real-time visual feedback on the stream
-        showing when audio is playing — viewers can "see" beats and silence.
+        The OBS Bridge's update_visualizer_bar() caches the scene item ID
+        and skips WebSocket calls when the level hasn't changed by >2%,
+        so most ticks result in zero WebSocket connections.
+
+        NOTE: The poll interval is intentionally conservative (500ms, not
+        100ms). Each WebSocket update requires a connect→request→disconnect
+        cycle. Rapid connect/disconnect (10+ per second) overwhelms OBS's
+        internal event loop, causing audio dropouts and glitches.
         """
         try:
             from utils.broadcaster import get_broadcaster

@@ -423,7 +423,58 @@ PYEOF
   fi
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
+    # CRITICAL: Ensure ApplyServiceSettings=false in the copied profile.
+    # OBS overwrites this with "true" when it respects YouTube's recommended
+    # settings, which overrides our custom keyint_sec=2 and bitrate=3000
+    # with YouTube defaults (keyint=250, bitrate=2500 → "Poor" stream health).
+    if grep -q "^ApplyServiceSettings=" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"; then
+      sed -i 's/^ApplyServiceSettings=.*/ApplyServiceSettings=false/' "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
+    fi
     success "Installed 'RadioDJ' OBS profile"
+  fi
+
+  # ── Copy streamEncoder.json from template ─────────────────────
+  # This file tells OBS 29 to use keyint_sec=2 (keyframes every 2s)
+  # instead of YouTube's default keyint=250 (8.3s @ 30fps → "Poor" health).
+  # OBS reads this at startup — it MUST exist before OBS launches.
+  if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/streamEncoder.json" ]; then
+    cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/streamEncoder.json" "$OBS_PROFILES_DIR/RadioDJ/streamEncoder.json"
+    success "Installed streamEncoder.json (keyint_sec=2, bitrate=3000)"
+  else
+    # Fallback: write it inline if template doesn't exist
+    cat > "$OBS_PROFILES_DIR/RadioDJ/streamEncoder.json" << 'ENCODEOF'
+{
+    "obs_x264": {
+        "rate_control": "CBR",
+        "bitrate": 3000,
+        "buffer_size": 3000,
+        "keyint_sec": 2,
+        "preset": "veryfast",
+        "profile": "high",
+        "tune": "zerolatency",
+        "x264opts": "keyint=60:min-keyint=60:bframes=0"
+    }
+}
+ENCODEOF
+    success "Wrote streamEncoder.json (keyint_sec=2, bitrate=3000)"
+  fi
+
+  # ── Write service.json template BEFORE OBS starts ────────────
+  # OBS reads service.json from the profile dir at startup to know
+  # which streaming service to use. Without it, OBS falls back to
+  # RTMPS with no server/key → "Connection reset by peer" errors.
+  # (The bot also writes this at startup with the actual stream key.)
+  if [ ! -f "$OBS_PROFILES_DIR/RadioDJ/service.json" ]; then
+    cat > "$OBS_PROFILES_DIR/RadioDJ/service.json" << 'SVCEOF'
+{
+    "type": "rtmp_custom",
+    "settings": {
+        "server": "rtmp://a.rtmp.youtube.com/live2",
+        "key": ""
+    }
+}
+SVCEOF
+    info "Wrote template service.json (stream key will be filled by bot)"
   fi
 
   # ── Start headless OBS via xvfb-run ─────────────────────

@@ -579,6 +579,35 @@ def run_web_server():
                     except Exception as e:
                         logging.warning(f"OBS: Failed to write service.json: {e}")
 
+                    # Write streamEncoder.json to OBS profile directory.
+                    # OBS 29 uses per-encoder JSON files that take PRECEDENCE
+                    # over basic.ini settings. Without this file, OBS uses
+                    # YouTube's recommended settings (bitrate=2500, keyint=250)
+                    # even though basic.ini says keyint_sec=2 and Bitrate=3000.
+                    # This MUST be written before OBS starts streaming — OBS
+                    # reads encoder settings from disk at startup.
+                    try:
+                        encoder_data = {
+                            "obs_x264": {
+                                "rate_control": "CBR",
+                                "bitrate": 3000,
+                                "buffer_size": 3000,
+                                "keyint_sec": 2,
+                                "preset": "veryfast",
+                                "profile": "high",
+                                "tune": "zerolatency",
+                                "x264opts": "keyint=60:min-keyint=60:bframes=0",
+                            }
+                        }
+                        with open(os.path.join(profile_dir, "streamEncoder.json"), "w") as f:
+                            json.dump(encoder_data, f, indent=4)
+                        logging.info(
+                            f"OBS: Wrote streamEncoder.json → {profile_dir} "
+                            f"(keyint_sec=2, bitrate=3000)"
+                        )
+                    except Exception as e:
+                        logging.warning(f"OBS: Failed to write streamEncoder.json: {e}")
+
                     # ALSO push via WebSocket API (OBS applies these immediately)
                     result = bridge.set_stream_settings(
                         service="rtmp_custom",

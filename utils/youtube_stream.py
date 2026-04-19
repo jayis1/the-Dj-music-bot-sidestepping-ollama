@@ -556,18 +556,27 @@ class YouTubeLiveStreamer:
                     # The x264opts "keyint=60:min-keyint=60:bframes=0" is the
                     # most reliable because it's passed verbatim to libx264 and
                     # can NOT be overridden by OBS's ApplyServiceSettings logic.
+                    # Push encoder settings via raw OBS WebSocket RPC.
+                    # obsws-python does NOT have a named method for
+                    # SetStreamEncoderSettings, so we use send() with
+                    # the raw request type. The RPC expects:
+                    #   encoderSettings: dict of encoder key=value pairs
+                    #   encoderName: "obs_x264"
                     try:
-                        batch_client.set_stream_encoder_settings(
+                        batch_client.send(
+                            "SetStreamEncoderSettings",
                             {
-                                "keyint_sec": "2",
-                                "bitrate": "3000",
-                                "rate_control": "CBR",
-                                "preset": "veryfast",
-                                "profile": "high",
-                                "tune": "zerolatency",
-                                "x264opts": "keyint=60:min-keyint=60:bframes=0",
+                                "encoderSettings": {
+                                    "keyint_sec": "2",
+                                    "bitrate": "3000",
+                                    "rate_control": "CBR",
+                                    "preset": "veryfast",
+                                    "profile": "high",
+                                    "tune": "zerolatency",
+                                    "x264opts": "keyint=60:min-keyint=60:bframes=0",
+                                },
+                                "encoderName": "obs_x264",
                             },
-                            "obs_x264",
                         )
                         log.info(
                             "YouTube Live/OBS: Encoder settings pushed — "
@@ -626,18 +635,13 @@ class YouTubeLiveStreamer:
 
         # Find the active OBS profile directory
         # OBS uses --profile "RadioDJ" from start.sh
+        # CRITICAL: Write to BOTH apt and Flatpak dirs — Flatpak OBS reads
+        # from its own sandboxed config dir, not from ~/.config/obs-studio/.
         profile_name = os.environ.get("OBS_PROFILE_NAME", "RadioDJ")
-        profile_dir = os.path.expanduser(
-            f"~/.config/obs-studio/basic/profiles/{profile_name}"
-        )
-
-        if not os.path.isdir(profile_dir):
-            # Try to create the directory if it doesn't exist
-            try:
-                os.makedirs(profile_dir, exist_ok=True)
-            except Exception as e:
-                log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
-                return
+        profile_dirs = [
+            os.path.expanduser(f"~/.config/obs-studio/basic/profiles/{profile_name}"),
+            os.path.expanduser(f"~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/{profile_name}"),
+        ]
 
         rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
 
@@ -649,16 +653,24 @@ class YouTubeLiveStreamer:
             },
         }
 
-        service_json_path = os.path.join(profile_dir, "service.json")
-        try:
-            with open(service_json_path, "w") as f:
-                json.dump(service_data, f, indent=4)
-            log.info(
-                f"YouTube Live/OBS: Wrote service.json → {profile_dir} "
-                f"(server: {rtmp_endpoint}, key: ...{self.stream_key[-4:]})"
-            )
-        except Exception as e:
-            log.warning(f"YouTube Live/OBS: Failed to write service.json: {e}")
+        for profile_dir in profile_dirs:
+            if not os.path.isdir(profile_dir):
+                try:
+                    os.makedirs(profile_dir, exist_ok=True)
+                except Exception as e:
+                    log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
+                    continue
+
+            service_json_path = os.path.join(profile_dir, "service.json")
+            try:
+                with open(service_json_path, "w") as f:
+                    json.dump(service_data, f, indent=4)
+                log.info(
+                    f"YouTube Live/OBS: Wrote service.json → {profile_dir} "
+                    f"(server: {rtmp_endpoint}, key: ...{self.stream_key[-4:]})"
+                )
+            except Exception as e:
+                log.warning(f"YouTube Live/OBS: Failed to write service.json to {profile_dir}: {e}")
 
     def _write_obs_encoder_json(self):
         """Write streamEncoder.json and fix basic.ini in the OBS profile directory.
@@ -688,16 +700,12 @@ class YouTubeLiveStreamer:
         import json
 
         profile_name = os.environ.get("OBS_PROFILE_NAME", "RadioDJ")
-        profile_dir = os.path.expanduser(
-            f"~/.config/obs-studio/basic/profiles/{profile_name}"
-        )
-
-        if not os.path.isdir(profile_dir):
-            try:
-                os.makedirs(profile_dir, exist_ok=True)
-            except Exception as e:
-                log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
-                return
+        # CRITICAL: Write to BOTH apt and Flatpak dirs — Flatpak OBS reads
+        # from its own sandboxed config dir, not from ~/.config/obs-studio/.
+        profile_dirs = [
+            os.path.expanduser(f"~/.config/obs-studio/basic/profiles/{profile_name}"),
+            os.path.expanduser(f"~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/{profile_name}"),
+        ]
 
         # ── Write streamEncoder.json ──
         # This is the OBS 29 per-encoder settings file.
@@ -715,66 +723,75 @@ class YouTubeLiveStreamer:
             }
         }
 
-        encoder_json_path = os.path.join(profile_dir, "streamEncoder.json")
-        try:
-            with open(encoder_json_path, "w") as f:
-                json.dump(encoder_data, f, indent=4)
-            log.info(
-                f"YouTube Live/OBS: Wrote streamEncoder.json → {profile_dir} "
-                f"(keyint_sec=2, bitrate=3000, CBR, veryfast, keyint=60)"
-            )
-        except Exception as e:
-            log.warning(f"YouTube Live/OBS: Failed to write streamEncoder.json: {e}")
+        for profile_dir in profile_dirs:
+            if not os.path.isdir(profile_dir):
+                try:
+                    os.makedirs(profile_dir, exist_ok=True)
+                except Exception as e:
+                    log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
+                    continue
 
-        # ── Fix basic.ini: ApplyServiceSettings must be false ──
-        # When true, OBS overrides our encoder settings with YouTube's
-        # recommended values (bitrate=2500, which OBS interprets as
-        # keyint=250 too). Set to false to use our custom values.
-        #
-        # CRITICAL: We do NOT use configparser here because it lowercases
-        # all option names by default (ApplyServiceSettings → applyservicesettings),
-        # which OBS doesn't recognize. Instead, we do a direct string replacement
-        # on the file content, preserving OBS's mixed-case option names.
-        basic_ini_path = os.path.join(profile_dir, "basic.ini")
-        try:
-            if os.path.isfile(basic_ini_path):
-                with open(basic_ini_path, "r") as f:
-                    content = f.read()
+            encoder_json_path = os.path.join(profile_dir, "streamEncoder.json")
+            try:
+                with open(encoder_json_path, "w") as f:
+                    json.dump(encoder_data, f, indent=4)
+                log.info(
+                    f"YouTube Live/OBS: Wrote streamEncoder.json → {profile_dir} "
+                    f"(keyint_sec=2, bitrate=3000, CBR, veryfast, keyint=60)"
+                )
+            except Exception as e:
+                log.warning(f"YouTube Live/OBS: Failed to write streamEncoder.json to {profile_dir}: {e}")
 
-                original = content
-                # Fix ApplyServiceSettings (mixed-case, as OBS expects it)
-                if "ApplyServiceSettings=true" in content:
-                    content = content.replace("ApplyServiceSettings=true", "ApplyServiceSettings=false")
-                elif "ApplyServiceSettings" not in content:
-                    # Not present at all — add it after [AdvOut] section header
-                    if "[AdvOut]" in content:
-                        content = content.replace("[AdvOut]", "[AdvOut]\nApplyServiceSettings=false")
-                    else:
-                        # Append section
-                        content += "\n[AdvOut]\nApplyServiceSettings=false\n"
+            # ── Fix basic.ini: ApplyServiceSettings must be false ──
+            # When true, OBS overrides our encoder settings with YouTube's
+            # recommended values (bitrate=2500, which OBS interprets as
+            # keyint=250 too). Set to false to use our custom values.
+            #
+            # CRITICAL: We do NOT use configparser here because it lowercases
+            # all option names by default (ApplyServiceSettings → applyservicesettings),
+            # which OBS doesn't recognize. Instead, we do a direct string replacement
+            # on the file content, preserving OBS's mixed-case option names.
+            basic_ini_path = os.path.join(profile_dir, "basic.ini")
+            try:
+                if os.path.isfile(basic_ini_path):
+                    with open(basic_ini_path, "r") as f:
+                        content = f.read()
 
-                # Also ensure keyint_sec and Bitrate are correct
-                if "keyint_sec=" in content:
-                    # Replace any keyint_sec value with 2
-                    content = re.sub(r'keyint_sec=\d+', 'keyint_sec=2', content)
-                if "Bitrate=" in content and "[AdvOut]" in content:
-                    # Replace AdvOut bitrate (not SimpleOutput bitrate)
-                    advout_section = content[content.index("[AdvOut]"):]
-                    advout_section = re.sub(r'Bitrate=\d+', 'Bitrate=3000', advout_section, count=1)
-                    content = content[:content.index("[AdvOut]")] + advout_section
+                    original = content
+                    # Fix ApplyServiceSettings (mixed-case, as OBS expects it)
+                    if "ApplyServiceSettings=true" in content:
+                        content = content.replace("ApplyServiceSettings=true", "ApplyServiceSettings=false")
+                    elif "ApplyServiceSettings" not in content:
+                        # Not present at all — add it after [AdvOut] section header
+                        if "[AdvOut]" in content:
+                            content = content.replace("[AdvOut]", "[AdvOut]\nApplyServiceSettings=false")
+                        else:
+                            # Append section
+                            content += "\n[AdvOut]\nApplyServiceSettings=false\n"
 
-                if content != original:
-                    with open(basic_ini_path, "w") as f:
-                        f.write(content)
-                    log.info(
-                        "YouTube Live/OBS: Fixed basic.ini encoder settings "
-                        "(ApplyServiceSettings=false, keyint_sec=2, Bitrate=3000)"
-                    )
-            else:
-                # basic.ini doesn't exist yet — write a minimal one
-                log.debug(f"YouTube Live/OBS: basic.ini not found at {basic_ini_path}, will be created by start.sh")
-        except Exception as e:
-            log.debug(f"YouTube Live/OBS: Could not fix basic.ini: {e}")
+                    # Also ensure keyint_sec and Bitrate are correct
+                    if "keyint_sec=" in content:
+                        # Replace any keyint_sec value with 2
+                        content = re.sub(r'keyint_sec=\d+', 'keyint_sec=2', content)
+                    if "Bitrate=" in content and "[AdvOut]" in content:
+                        # Replace AdvOut bitrate (not SimpleOutput bitrate)
+                        advout_section = content[content.index("[AdvOut]"):]
+                        advout_section = re.sub(r'Bitrate=\d+', 'Bitrate=3000', advout_section, count=1)
+                        content = content[:content.index("[AdvOut]")] + advout_section
+
+                    if content != original:
+                        with open(basic_ini_path, "w") as f:
+                            f.write(content)
+                        log.info(
+                            "YouTube Live/OBS: Fixed basic.ini encoder settings "
+                            f"in {profile_dir} "
+                            "(ApplyServiceSettings=false, keyint_sec=2, Bitrate=3000)"
+                        )
+                else:
+                    # basic.ini doesn't exist yet — write a minimal one
+                    log.debug(f"YouTube Live/OBS: basic.ini not found at {basic_ini_path}, will be created by start.sh")
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Could not fix basic.ini in {profile_dir}: {e}")
 
     async def _stop_obs_stream(self):
         """Stop OBS streaming."""

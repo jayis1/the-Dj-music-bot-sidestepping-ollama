@@ -163,6 +163,10 @@ def require_login():
     if request.endpoint in allowed_endpoints:
         return
 
+    # Hermes Agent API uses Bearer token auth, not session cookies
+    if request.endpoint and request.endpoint.startswith("hermes_"):
+        return
+
     # API endpoints require session auth
     if session.get("authenticated"):
         return
@@ -200,6 +204,10 @@ def validate_csrf():
         "api_ytcookies_set",
     }
     if request.endpoint in cors_endpoints:
+        return
+
+    # Exempt Hermes Agent API (machine-to-machine, uses Bearer token auth)
+    if request.endpoint and request.endpoint.startswith("hermes_"):
         return
 
     # Exempt overlay API (OBS browser source, public read data)
@@ -2468,7 +2476,6 @@ def api_overlay_state():
             "source": source,
             "booting": getattr(music, "is_booting", False),
             "yt_live_active": music._yt_stream_active,
-            "yt_live_active": music._yt_stream_active,
             "yt_live_title": getattr(current, "title", None)
             if (music._yt_stream_active and current)
             else None,
@@ -3673,3 +3680,651 @@ def api_obs_reconnect():
     if not bridge or not bridge.enabled:
         return jsonify({"ok": False, "error": "OBS not configured"})
     return jsonify(bridge.reconnect())
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ── HERMES AGENT API ──────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# Machine-to-machine API for external agents (Hermes, automation, monitoring)
+# to control the bot programmatically. Auth via Bearer token.
+#
+# All endpoints are prefixed with /api/hermes/ and require:
+#   Authorization: Bearer <HERMES_API_KEY>
+#   Content-Type: application/json
+#
+# If HERMES_API_KEY is not set in .env, all Hermes endpoints return 403.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _hermes_auth():
+    """Check Hermes API key from Authorization: Bearer <key> header.
+
+    Returns True if authenticated, False otherwise.
+    Handles the case where HERMES_API_KEY is not configured (returns 403).
+    """
+    api_key = getattr(config, "HERMES_API_KEY", "").strip()
+    if not api_key:
+        return False  # Hermes API disabled if no key configured
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        # Constant-time comparison to prevent timing attacks
+        import hmac as _hmac
+        return _hmac.compare_digest(token, api_key)
+    # Also accept key as query param for simpler integrations
+    query_key = request.args.get("api_key", "")
+    if query_key:
+        import hmac as _hmac
+        return _hmac.compare_digest(query_key, api_key)
+    return False
+
+
+def _hermes_require_auth():
+    """Decorator for Hermes API endpoints — returns 401/403 if not authed."""
+    if not _hermes_auth():
+        api_key = getattr(config, "HERMES_API_KEY", "").strip()
+        if not api_key:
+            return jsonify({"error": "Hermes API disabled — set HERMES_API_KEY in .env"}), 403
+        return jsonify({"error": "Unauthorized — provide Authorization: Bearer <HERMES_API_KEY>"}), 401
+    return None  # Auth OK
+
+
+def _hermes_guild_id():
+    """Resolve the active guild ID for Hermes requests.
+
+    Priority:
+      1. ?guild_id= parameter (explicit)
+      2. YouTube Live stream guild
+      3. First Discord guild with voice
+      4. First Discord guild (any)
+      5. 0 (headless virtual guild)
+    """
+    # Explicit override
+    gid = request.args.get("guild_id", type=int)
+    if gid:
+        return gid
+
+    music = _get_music_cog()
+    if not music:
+        return 0
+
+    # YouTube Live stream guild
+    if music._yt_stream_active and music._yt_stream_guild:
+        return music._yt_stream_guild
+
+    # First Discord guild with voice
+    if bot and bot.guilds:
+        for guild in bot.guilds:
+            if guild.voice_client:
+                return guild.id
+        # Any guild
+        return bot.guilds[0].id
+
+    return 0
+
+
+@app.route("/api/hermes/state")
+def hermes_state():
+    """Get the full bot state — now playing, queue, playback status, cookie health.
+
+    Returns:
+        {
+            "playing": bool,
+            "paused": bool,
+            "current_song": {"title": str, "url": str, "duration": int, "thumbnail": str} | null,
+            "queue": [{"title": str, "url": str, "position": int}, ...],
+            "queue_length": int,
+            "dj_enabled": bool,
+            "ai_enabled": bool,
+            "yt_live_active": bool,
+            "cookie_healthy": bool,
+            "volume": int,
+            "speed": float,
+            "station_name": str,
+            "guild_id": int,
+            "audio_level": float,
+            "rms_history": [float, ...]
+        }
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    gid = _hermes_guild_id()
+
+    # Playback state
+    voice = None
+    if bot:
+        guild_obj = bot.get_guild(gid)
+        if guild_obj:
+            voice = guild_obj.voice_client
+    if not voice and music:
+        voice = music._get_audio_client(gid)
+
+    is_playing = getattr(voice, "is_playing", lambda: False)() if voice else False
+    is_paused = getattr(voice, "is_paused", lambda: False)() if voice else False
+    current = music.current_song.get(gid) if music else None
+    volume = music.volumes.get(gid, 100) if music else 100
+    speed = music._get_current_speed_index(gid) if music else -1
+
+    # Queue
+    queue_items = music.peek_queue(gid) if music else []
+    queue_list = []
+    for i, item in enumerate(queue_items[:50]):  # Cap at 50 for sanity
+        queue_list.append({
+            "position": i,
+            "title": getattr(item, "title", "Unknown"),
+            "url": getattr(item, "url", None) or getattr(item, "original_url", None),
+            "duration": getattr(item, "duration", None),
+        })
+
+    # Cookie health
+    cookie_healthy = False
+    try:
+        cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+        cookie_healthy = os.path.exists(cookiefile) and os.path.getsize(cookiefile) > 0
+    except Exception:
+        pass
+
+    # Audio levels
+    audio_level = 0.0
+    rms_history = [0.0] * 64
+    try:
+        from utils.broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        if broadcaster:
+            audio_level = broadcaster.get_audio_level()
+            rms_history = broadcaster.get_rms_history()
+    except Exception:
+        pass
+
+    return jsonify({
+        "playing": is_playing or is_paused,
+        "paused": is_paused,
+        "current_song": {
+            "title": getattr(current, "title", None),
+            "url": getattr(current, "url", None) or getattr(current, "original_url", None),
+            "duration": getattr(current, "duration", None),
+            "thumbnail": getattr(current, "thumbnail", None),
+        } if current else None,
+        "queue": queue_list,
+        "queue_length": len(queue_list),
+        "dj_enabled": music.dj_enabled.get(gid, False) if music else False,
+        "ai_enabled": music.ai_dj_enabled.get(gid, False) if music else False,
+        "yt_live_active": music._yt_stream_active if music else False,
+        "cookie_healthy": cookie_healthy,
+        "volume": volume,
+        "speed_index": speed,
+        "station_name": getattr(config, "STATION_NAME", "MBot"),
+        "guild_id": gid,
+        "audio_level": round(audio_level, 4),
+        "rms_history": [round(v, 4) for v in rms_history],
+    })
+
+
+@app.route("/api/hermes/queue")
+def hermes_queue():
+    """Get the current queue for the active guild."""
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    gid = _hermes_guild_id()
+    items = music.peek_queue(gid) if music else []
+
+    queue_list = []
+    for i, item in enumerate(items[:50]):
+        queue_list.append({
+            "position": i,
+            "title": getattr(item, "title", "Unknown"),
+            "url": getattr(item, "url", None) or getattr(item, "original_url", None),
+            "duration": getattr(item, "duration", None),
+        })
+
+    return jsonify({
+        "guild_id": gid,
+        "queue": queue_list,
+        "queue_length": len(queue_list),
+    })
+
+
+@app.route("/api/hermes/queue/add", methods=["POST"])
+def hermes_queue_add():
+    """Add a song to the queue by URL or search query.
+
+    Body: {"query": "url or search term", "position": "end"|"next" (default "end")}
+    Returns: {"ok": true, "title": "song title", "position": int}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    query = data.get("query", "").strip()
+    position = data.get("position", "end")  # "end" or "next"
+
+    if not query:
+        return jsonify({"ok": False, "error": "No query provided"}), 400
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+
+    # Use the bot's event loop to run the async play command
+    # We create a fake context-like invocation by directly calling queue internals
+    try:
+        import asyncio
+        from utils.youtube_utils import YTDLSource
+
+        # Extract the source (same as the play command does)
+        async def _add_to_queue():
+            source = await YTDLSource.create_source(
+                music.bot, query, loop=music.bot.loop,
+                download=False, timestamp=None
+            )
+            if position == "next":
+                music.queue_push_front(gid, source)
+            else:
+                queue = await music.get_queue(gid)
+                await queue.put(source)
+            return source
+
+        # Run the async extraction
+        future = asyncio.run_coroutine_threadsafe(_add_to_queue(), bot.loop)
+        source = future.result(timeout=30)
+
+        # Get the position in queue
+        items = music.peek_queue(gid)
+        pos = -1
+        for i, item in enumerate(items):
+            if item is source:
+                pos = i
+                break
+
+        return jsonify({
+            "ok": True,
+            "title": getattr(source, "title", "Unknown"),
+            "position": pos,
+            "queued_as": position,
+        })
+
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/hermes/queue/remove", methods=["POST"])
+def hermes_queue_remove():
+    """Remove a song from the queue by position index.
+
+    Body: {"position": 0}  (0-indexed)
+    Returns: {"ok": true, "removed": "song title"}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    position = data.get("position", -1)
+
+    if position < 0:
+        return jsonify({"ok": False, "error": "Invalid position (must be ≥0)"}), 400
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+    items = music.peek_queue(gid)
+
+    if position >= len(items):
+        return jsonify({"ok": False, "error": f"Position {position} out of range (queue has {len(items)} items)"}), 400
+
+    try:
+        # Remove from internal deque
+        removed = items[position]
+        q = music.song_queues.get(gid)
+        if q:
+            q._queue.remove(removed)
+        return jsonify({
+            "ok": True,
+            "removed": getattr(removed, "title", "Unknown"),
+            "position": position,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/hermes/queue/move", methods=["POST"])
+def hermes_queue_move():
+    """Move a song in the queue from one position to another.
+
+    Body: {"from": 2, "to": 0}  (0-indexed, moves position 2 → position 0)
+    Returns: {"ok": true, "title": "song title", "new_position": 0}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    from_pos = data.get("from", -1)
+    to_pos = data.get("to", -1)
+
+    if from_pos < 0 or to_pos < 0:
+        return jsonify({"ok": False, "error": "Both 'from' and 'to' positions required (≥0)"}), 400
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+    q = music.song_queues.get(gid)
+    if not q:
+        return jsonify({"ok": False, "error": "No queue for this guild"}), 404
+
+    items = list(q._queue)
+    if from_pos >= len(items) or to_pos >= len(items):
+        return jsonify({"ok": False, "error": f"Position out of range (queue has {len(items)} items)"}), 400
+
+    try:
+        item = q._queue[from_pos]
+        del q._queue[from_pos]
+        q._queue.insert(to_pos, item)
+        return jsonify({
+            "ok": True,
+            "title": getattr(item, "title", "Unknown"),
+            "new_position": to_pos,
+        })
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/hermes/queue/clear", methods=["POST"])
+def hermes_queue_clear():
+    """Clear the entire queue.
+
+    Returns: {"ok": true, "cleared": number_of_items}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+    q = music.song_queues.get(gid)
+    count = 0
+    if q:
+        count = len(q._queue)
+        q._queue.clear()
+    return jsonify({"ok": True, "cleared": count})
+
+
+@app.route("/api/hermes/queue/shuffle", methods=["POST"])
+def hermes_queue_shuffle():
+    """Shuffle the queue randomly.
+
+    Returns: {"ok": true, "shuffled": number_of_items}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+    q = music.song_queues.get(gid)
+    if not q or len(q._queue) < 2:
+        return jsonify({"ok": True, "shuffled": 0, "message": "Queue too short to shuffle"})
+
+    import random
+    random.shuffle(q._queue)
+    return jsonify({"ok": True, "shuffled": len(q._queue)})
+
+
+@app.route("/api/hermes/skip", methods=["POST"])
+def hermes_skip():
+    """Skip the current song.
+
+    Returns: {"ok": true}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+
+    # Find the voice client and skip
+    voice = None
+    if bot:
+        guild_obj = bot.get_guild(gid)
+        if guild_obj and guild_obj.voice_client:
+            voice = guild_obj.voice_client
+
+    if not voice:
+        return jsonify({"ok": False, "error": "Not in a voice channel"}), 400
+
+    if not voice.is_playing():
+        return jsonify({"ok": False, "error": "Nothing is playing"}), 400
+
+    try:
+        voice.stop()  # Triggers _after_playback → play_next
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
+@app.route("/api/hermes/cookies/health")
+def hermes_cookies_health():
+    """Check cookie authentication health for YouTube playback.
+
+    Returns:
+        {
+            "healthy": bool,
+            "cookie_file": str,
+            "cookie_file_exists": bool,
+            "cookie_file_size": int,
+            "cookie_browser": str | null,
+            "yt_auth_blocked": bool,
+            "last_test": {"ok": bool, "error": str | null} | null
+        }
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+    browser = getattr(config, "YTDDL_COOKIES_FROM_BROWSER", "").strip()
+
+    file_exists = os.path.exists(cookiefile)
+    file_size = os.path.getsize(cookiefile) if file_exists else 0
+    has_youtube_cookies = False
+
+    if file_exists and file_size > 0:
+        try:
+            with open(cookiefile, "r") as f:
+                content = f.read()
+            has_youtube_cookies = "youtube" in content.lower()
+        except Exception:
+            pass
+
+    music = _get_music_cog()
+    yt_blocked = music._yt_auth_blocked if music else False
+
+    healthy = (file_exists and file_size > 0 and has_youtube_cookies) or bool(browser)
+
+    return jsonify({
+        "healthy": healthy,
+        "cookie_file": cookiefile,
+        "cookie_file_exists": file_exists,
+        "cookie_file_size": file_size,
+        "has_youtube_cookies": has_youtube_cookies,
+        "cookie_browser": browser or None,
+        "yt_auth_blocked": yt_blocked,
+    })
+
+
+@app.route("/api/hermes/cookies/inject", methods=["POST"])
+def hermes_cookies_inject():
+    """Inject cookies into the bot and trigger playback retry if blocked.
+
+    This is the self-healing endpoint for Hermes — when YouTube blocks
+    the bot (auth errors, "Sign in to confirm"), Hermes detects it and
+    pushes fresh cookies through this endpoint.
+
+    Body: {"cookies": "Netscape format text", "source": "hermes"}
+    OR:   {"cookies": [{"name": "...", "value": "...", ...}], "source": "extension"}
+    Returns: {"ok": true, "was_blocked": bool, "retrying": bool}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    cookie_text = data.get("cookies", "").strip()
+    source = data.get("source", "hermes")
+
+    if not cookie_text:
+        return jsonify({"ok": False, "error": "No cookie data provided"}), 400
+
+    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+
+    # ── Handle structured cookie array (extension format) ──
+    extension_cookies = data.get("cookies")
+    if isinstance(extension_cookies, list):
+        lines = ["# Netscape HTTP Cookie File"]
+        lines.append(f"# Injected by Hermes Agent at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        for c in extension_cookies:
+            if not isinstance(c, dict):
+                continue
+            name = c.get("name", "")
+            value = c.get("value", "")
+            domain = c.get("domain", ".youtube.com")
+            path = c.get("path", "/")
+            secure = "TRUE" if c.get("secure", True) else "FALSE"
+            include_subdomains = "TRUE" if domain.startswith(".") else "FALSE"
+            expires = "0"
+            if c.get("expirationDate"):
+                try:
+                    expires = str(int(c["expirationDate"]))
+                except (ValueError, TypeError):
+                    pass
+            lines.append(f"{domain}\t{include_subdomains}\t{path}\t{secure}\t{expires}\t{name}\t{value}")
+        cookie_text = "\n".join(lines) + "\n"
+
+    # ── Write the cookie file ──
+    try:
+        with open(cookiefile, "w") as f:
+            f.write(cookie_text)
+        logging.info(f"Hermes: Cookie file written → {cookiefile} ({len(cookie_text)} bytes, source={source})")
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Failed to write cookie file: {e}"}), 500
+
+    # Clear browser-based cookie source (we have a file now)
+    config.YTDDL_COOKIES_FROM_BROWSER = ""
+
+    # Reload yt-dlp with new cookies
+    try:
+        from cogs.admin import _reload_ytdl_cookies
+        _reload_ytdl_cookies()
+    except Exception as e:
+        logging.debug(f"Hermes: Could not reload yt-dlp cookies: {e}")
+
+    # Clear auth block and trigger retry
+    music = _get_music_cog()
+    was_blocked = False
+    retrying = False
+    if music:
+        was_blocked = music.clear_yt_auth_block()
+        if was_blocked and bot:
+            retrying = True
+            for guild in bot.guilds:
+                if guild.voice_client:
+                    try:
+                        asyncio.ensure_future(
+                            music.retry_playback_after_cookie_fix(guild.id),
+                            loop=bot.loop,
+                        )
+                    except Exception:
+                        pass
+
+    return jsonify({
+        "ok": True,
+        "message": "Cookies injected successfully",
+        "was_blocked": was_blocked,
+        "retrying": retrying,
+        "cookie_file": cookiefile,
+        "cookie_file_size": os.path.getsize(cookiefile),
+    })
+
+
+@app.route("/api/hermes/cookies/upload", methods=["POST"])
+def hermes_cookies_upload():
+    """Upload a cookies.txt file directly (multipart form data).
+
+    Accepts a 'file' field with a Netscape-format cookie file.
+    Returns: {"ok": true, "was_blocked": bool, "retrying": bool}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    if "file" not in request.files:
+        return jsonify({"ok": False, "error": "No file uploaded"}), 400
+
+    uploaded = request.files["file"]
+    if not uploaded.filename:
+        return jsonify({"ok": False, "error": "Empty filename"}), 400
+
+    content = uploaded.read().decode("utf-8", errors="replace").strip()
+    if not content:
+        return jsonify({"ok": False, "error": "Empty file"}), 400
+
+    cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+    try:
+        with open(cookiefile, "w") as f:
+            f.write(content)
+        logging.info(f"Hermes: Cookie file uploaded → {cookiefile}")
+    except Exception as e:
+        return jsonify({"ok": False, "error": f"Failed to write: {e}"}), 500
+
+    config.YTDDL_COOKIES_FROM_BROWSER = ""
+    try:
+        from cogs.admin import _reload_ytdl_cookies
+        _reload_ytdl_cookies()
+    except Exception:
+        pass
+
+    music = _get_music_cog()
+    was_blocked = False
+    retrying = False
+    if music:
+        was_blocked = music.clear_yt_auth_block()
+        if was_blocked and bot:
+            retrying = True
+            for guild in bot.guilds:
+                if guild.voice_client:
+                    try:
+                        asyncio.ensure_future(
+                            music.retry_playback_after_cookie_fix(guild.id),
+                            loop=bot.loop,
+                        )
+                    except Exception:
+                        pass
+
+    return jsonify({
+        "ok": True,
+        "was_blocked": was_blocked,
+        "retrying": retrying,
+    })

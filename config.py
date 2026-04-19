@@ -197,6 +197,17 @@ WEB_PORT = int(os.environ.get("WEB_PORT", 8080))
 
 WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 
+# ── Hermes Agent API ──────────────────────────────────────────────────
+# Machine-to-machine API key for external agents (Hermes, automation,
+# monitoring tools) to control the bot programmatically. When set,
+# Hermes API endpoints are enabled and require this key as a Bearer
+# token in the Authorization header:
+#   Authorization: Bearer <HERMES_API_KEY>
+#
+# If empty/unset, the Hermes API is disabled entirely.
+# Generate one with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
+HERMES_API_KEY = os.environ.get("HERMES_API_KEY", "").strip()
+
 # Reverse Proxy support (e.g. Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel).
 # When enabled, Flask's ProxyFix middleware is applied so the dashboard
 # correctly respects X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host

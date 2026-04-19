@@ -637,67 +637,80 @@ def run_web_server():
                     except Exception:
                         pass
             if obs_use_flatpak == "true":
-                profile_dir = os.path.expanduser(
+                primary_profile_dir = os.path.expanduser(
                     "~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/RadioDJ"
                 )
             else:
-                profile_dir = os.path.expanduser(
+                primary_profile_dir = os.path.expanduser(
                     "~/.config/obs-studio/basic/profiles/RadioDJ"
                 )
+
+            # Always write to BOTH apt and Flatpak dirs — ensures configs
+            # are available regardless of which OBS version is running.
+            profile_dirs = [
+                primary_profile_dir,
+                os.path.expanduser("~/.config/obs-studio/basic/profiles/RadioDJ"),
+                os.path.expanduser("~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/RadioDJ"),
+            ]
+            # Deduplicate (primary dir may match one of the two above)
+            profile_dirs = list(dict.fromkeys(profile_dirs))
 
             if stream_key:
                 bridge = get_bridge()
                 if bridge and bridge.enabled:
-                    # Write service.json to OBS profile directory FIRST.
+                    # Write service.json to ALL OBS profile directories.
                     # OBS reads this file when initializing the output module.
                     # Without it, OBS falls back to RTMPS with no key → TLS errors.
                     import json
-                    try:
-                        os.makedirs(profile_dir, exist_ok=True)
-                        service_data = {
-                            "type": "rtmp_custom",
-                            "settings": {
-                                "server": rtmp_server,
-                                "key": stream_key,
-                            },
-                        }
-                        with open(os.path.join(profile_dir, "service.json"), "w") as f:
-                            json.dump(service_data, f, indent=4)
-                        logging.info(
-                            f"OBS: Wrote service.json → {profile_dir} "
-                            f"(server: {rtmp_server}, key: ...{stream_key[-4:]})"
-                        )
-                    except Exception as e:
-                        logging.warning(f"OBS: Failed to write service.json: {e}")
+                    service_data = {
+                        "type": "rtmp_custom",
+                        "settings": {
+                            "server": rtmp_server,
+                            "key": stream_key,
+                        },
+                    }
+                    for p_dir in profile_dirs:
+                        try:
+                            os.makedirs(p_dir, exist_ok=True)
+                            with open(os.path.join(p_dir, "service.json"), "w") as f:
+                                json.dump(service_data, f, indent=4)
+                            logging.info(
+                                f"OBS: Wrote service.json → {p_dir} "
+                                f"(server: {rtmp_server}, key: ...{stream_key[-4:]})"
+                            )
+                        except Exception as e:
+                            logging.warning(f"OBS: Failed to write service.json to {p_dir}: {e}")
 
-                    # Write streamEncoder.json to OBS profile directory.
+                    # Write streamEncoder.json to ALL OBS profile directories.
                     # OBS 29 uses per-encoder JSON files that take PRECEDENCE
                     # over basic.ini settings. Without this file, OBS uses
                     # YouTube's recommended settings (bitrate=2500, keyint=250)
                     # even though basic.ini says keyint_sec=2 and Bitrate=3000.
                     # This MUST be written before OBS starts streaming — OBS
                     # reads encoder settings from disk at startup.
-                    try:
-                        encoder_data = {
-                            "obs_x264": {
-                                "rate_control": "CBR",
-                                "bitrate": 3000,
-                                "buffer_size": 3000,
-                                "keyint_sec": 2,
-                                "preset": "veryfast",
-                                "profile": "high",
-                                "tune": "zerolatency",
-                                "x264opts": "keyint=60:min-keyint=60:bframes=0",
-                            }
+                    encoder_data = {
+                        "obs_x264": {
+                            "rate_control": "CBR",
+                            "bitrate": 3000,
+                            "buffer_size": 3000,
+                            "keyint_sec": 2,
+                            "preset": "veryfast",
+                            "profile": "high",
+                            "tune": "zerolatency",
+                            "x264opts": "keyint=60:min-keyint=60:bframes=0",
                         }
-                        with open(os.path.join(profile_dir, "streamEncoder.json"), "w") as f:
-                            json.dump(encoder_data, f, indent=4)
-                        logging.info(
-                            f"OBS: Wrote streamEncoder.json → {profile_dir} "
-                            f"(keyint_sec=2, bitrate=3000)"
-                        )
-                    except Exception as e:
-                        logging.warning(f"OBS: Failed to write streamEncoder.json: {e}")
+                    }
+                    for p_dir in profile_dirs:
+                        try:
+                            os.makedirs(p_dir, exist_ok=True)
+                            with open(os.path.join(p_dir, "streamEncoder.json"), "w") as f:
+                                json.dump(encoder_data, f, indent=4)
+                            logging.info(
+                                f"OBS: Wrote streamEncoder.json → {p_dir} "
+                                f"(keyint_sec=2, bitrate=3000)"
+                            )
+                        except Exception as e:
+                            logging.warning(f"OBS: Failed to write streamEncoder.json to {p_dir}: {e}")
 
                     # ALSO push via WebSocket API (OBS applies these immediately)
                     result = bridge.set_stream_settings(

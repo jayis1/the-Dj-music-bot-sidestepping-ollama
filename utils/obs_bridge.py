@@ -1577,19 +1577,6 @@ class OBSBridge:
 
         results = {}
         try:
-            # Get the current streaming encoder settings
-            try:
-                encoder_settings = client.get_stream_encoder_settings()
-                if hasattr(encoder_settings, "encoder_settings"):
-                    current = encoder_settings.encoder_settings
-                elif isinstance(encoder_settings, dict):
-                    current = encoder_settings.get("encoder_settings", {})
-                else:
-                    current = {}
-            except Exception as e:
-                log.debug(f"OBS Bridge: Could not read current encoder settings: {e}")
-                current = {}
-
             # Build updated encoder settings
             # For obs_x264, the key names are:
             #   keyint_sec → keyframe interval in seconds
@@ -1604,8 +1591,7 @@ class OBSBridge:
             # x264opts is passed directly to libx264 and ALWAYS wins.
             # "keyint=60:min-keyint=60:bframes=0" forces 2-second keyframes
             # at 30fps regardless of what OBS thinks YouTube wants.
-            updated = dict(current) if isinstance(current, dict) else {}
-            updated.update({
+            encoder_settings = {
                 "keyint_sec": str(keyint_sec),
                 "bitrate": str(bitrate),
                 "rate_control": rate_control,
@@ -1613,13 +1599,17 @@ class OBSBridge:
                 "profile": "high",
                 "tune": "zerolatency",
                 "x264opts": "keyint=60:min-keyint=60:bframes=0",
-            })
+            }
 
-            # Push via set_stream_encoder_settings
+            # Push via raw OBS WebSocket RPC — SetStreamEncoderSettings
+            # obsws-python does NOT have a named method for this, so we use
+            # send() with the raw request type. The RPC expects:
+            #   encoderSettings: dict of encoder key=value pairs
+            #   encoderName: "obs_x264" (the encoder used for streaming)
             try:
-                client.set_stream_encoder_settings(
-                    updated,
-                    "obs_x264",  # Encoder name
+                response = client.send(
+                    "SetStreamEncoderSettings",
+                    {"encoderSettings": encoder_settings, "encoderName": "obs_x264"},
                 )
                 results["encoder"] = "ok"
                 log.info(
@@ -1628,8 +1618,7 @@ class OBSBridge:
                     f"preset={preset}, rc={rate_control}"
                 )
             except Exception as e:
-                # Fallback: try with different parameter naming
-                log.debug(f"OBS Bridge: set_stream_encoder_settings failed: {e}")
+                log.debug(f"OBS Bridge: SetStreamEncoderSettings RPC failed: {e}")
                 results["encoder"] = f"failed: {e}"
 
         except Exception as e:

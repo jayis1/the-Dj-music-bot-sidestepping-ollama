@@ -542,7 +542,14 @@ class OBSBridge:
     # ── Scene Control ─────────────────────────────────────────────────────
 
     def create_scene(self, scene_name: str) -> dict:
-        """Create a new scene in OBS. No-op if it already exists."""
+        """Create a new scene in OBS. No-op if it already exists.
+        
+        Includes a retry mechanism because Flatpak OBS 32 can return
+        success when creating a scene but its internal state may still
+        be null (especially after crash dialog dismissal). Verifying
+        the scene actually exists after creation prevents null pointer
+        crashes when adding sources to the scene.
+        """
         # Check if scene already exists — skip if so (idempotent)
         try:
             status = self.get_status()
@@ -552,9 +559,35 @@ class OBSBridge:
         except Exception:
             pass
 
-        return self._safe_call(
+        # Create the scene
+        result = self._safe_call(
             lambda c, sn=scene_name: c.create_scene(name=sn)
         )
+        
+        # Wait a beat and verify the scene actually exists in OBS's
+        # internal state. After crash dialog dismissal, OBS may report
+        # successful scene creation but its internal pointer is still
+        # null. Verifying prevents "basic_string: construction from
+        # null is not valid" crashes when adding sources.
+        if result.get("connected") and not result.get("error"):
+            time.sleep(1)  # Let OBS process the scene creation
+            for _verify in range(3):
+                try:
+                    status = self.get_status()
+                    existing_scenes = status.get("scenes", [])
+                    if scene_name in existing_scenes:
+                        return result
+                    # Scene not visible yet — retry creation
+                    log.debug(f"OBS Bridge: Scene '{scene_name}' not found after creation, retrying...")
+                    result = self._safe_call(
+                        lambda c, sn=scene_name: c.create_scene(name=sn)
+                    )
+                    time.sleep(1)
+                except Exception:
+                    time.sleep(1)
+            log.warning(f"OBS Bridge: Scene '{scene_name}' created but not visible in scene list after 3 retries")
+        
+        return result
 
     def set_current_scene(self, scene_name: str) -> dict:
         """Switch to a different OBS scene."""
@@ -563,12 +596,17 @@ class OBSBridge:
         )
 
     def _get_current_scene_name(self) -> str:
-        """Get the name of the current OBS scene. Falls back to 'Scene'."""
+        """Get the name of the current OBS scene. Falls back to '📺 Overlay Only'."""
         try:
             status = self.get_status()
-            return status.get("current_scene", "Scene") or "Scene"
+            scene = status.get("current_scene", "")
+            # Return our overlay scene if current scene is empty, null, or
+            # OBS's auto-created default "Scene" (which has no sources).
+            if scene and scene not in ("", "Scene", "Untitled"):
+                return scene
         except Exception:
-            return "Scene"
+            pass
+        return "📺 Overlay Only"
 
     # ── Source Control ────────────────────────────────────────────────────
 
@@ -1959,6 +1997,18 @@ class OBSBridge:
                 continue  # Can't add sources to a scene that doesn't exist
             if not result.get("data", {}).get("already_exists"):
                 created.append(f"scene:{scene_name}")
+
+            # Set this as the current scene BEFORE creating sources.
+            # After crash dialog dismissal, OBS's current scene pointer
+            # may be null. Sources created on a null current scene will
+            # crash OBS with "basic_string: construction from null".
+            try:
+                self.set_current_scene(scene_name)
+            except Exception:
+                log.debug(f"OBS Bridge: Could not set current scene to '{scene_name}' before source creation")
+            
+            # Brief pause to let OBS set the current scene internally
+            time.sleep(0.5)
 
             # Create each source in the scene
             for input_kind, source_name, settings in scene_def["sources"]:

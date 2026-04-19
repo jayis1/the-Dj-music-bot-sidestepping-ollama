@@ -961,7 +961,7 @@ USERINIEOF
       # can be frozen in a crash-recovery dialog with no WebSocket.
       # We poll the WebSocket port to confirm OBS is actually usable.
       _OBS_READY=false
-      for _attempt in $(seq 1 15); do
+      for _attempt in $(seq 1 30); do
         if python3 -c "
 import socket, sys
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

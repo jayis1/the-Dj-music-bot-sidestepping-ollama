@@ -743,12 +743,19 @@ def run_web_server():
             if bridge and bridge.enabled:
                 obs_ready = bridge.wait_for_obs(timeout=60, poll_interval=2.0)
                 if obs_ready:
-                    # Give OBS a few extra seconds to finish loading the scene
-                    # collection and initializing its internal state. Even after
-                    # the WebSocket responds, OBS may still be processing the
-                    # scene collection JSON and trying to create sources.
+                    # Give OBS extra time to finish loading the scene
+                    # collection and initializing its internal state. Even
+                    # after the WebSocket responds, OBS may still be
+                    # processing the scene collection JSON and trying to
+                    # create sources.
+                    #
+                    # Flatpak OBS 32 needs extra time after crash dialog
+                    # dismissal — the crash dialog restart causes OBS to
+                    # re-initialize its internal state, and sending commands
+                    # too early triggers a null pointer crash:
+                    #   "basic_string: construction from null is not valid"
                     import time as _time
-                    _time.sleep(3)
+                    _time.sleep(8)
 
                     try:
                         bridge.ensure_scenes_exist()
@@ -782,7 +789,7 @@ def run_web_server():
                 # loud audio). This ensures the UDP source has the correct
                 # "sample_rate=48000 channels=2" before any audio plays.
                 try:
-                    bridge.create_audio_source()
+                    bridge.create_audio_source(scene_name="📺 Overlay Only")
                     logging.info("OBS: Audio source settings force-updated (sample_rate=48000 channels=2)")
                 except Exception as e:
                     logging.debug(f"OBS: Audio source pre-update failed (will retry on stream start): {e}")

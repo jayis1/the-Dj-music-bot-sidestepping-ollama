@@ -1018,7 +1018,7 @@ class OBSBridge:
         OBS's FFmpeg source cannot auto-detect the format of a raw PCM stream,
         so we must explicitly specify:
           - input_format: "s16le" (signed 16-bit little-endian)
-          - ffmpeg_options: "sample_rate=48000 ch_layout=stereo" (48kHz, 2ch)
+          - ffmpeg_options: "sample_rate=48000 channels=2" (48kHz, 2 channels)
         NOTE: ffmpeg_options uses av_dict_parse_string() format (key=value),
         and goes to avformat_open_input() — NOT avcodec_open2().
         This means you must use AVFormat-level option names:
@@ -1049,13 +1049,11 @@ class OBSBridge:
             "input": f"udp://127.0.0.1:{udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
             "is_local_file": False,
             "input_format": "s16le",
-            "ffmpeg_options": "sample_rate=48000 ch_layout=stereo",
-            # Close the UDP reader when no output is active (prevents circular
-            # buffer overruns when streaming is stopped — otherwise the
-            # ffmpeg_source keeps reading UDP frames that pile up because
-            # OBS's output pipeline isn't consuming them).
-            "close_when_inactive": True,
-            # Restart the source automatically when streaming resumes
+            "ffmpeg_options": "sample_rate=48000 channels=2",
+            # close_when_inactive MUST be False — if True, OBS closes the
+            # UDP reader when no output is active, but then fails to
+            # reopen it reliably when streaming starts, causing dead air.
+            "close_when_inactive": False,
             "restart_on_activate": True,
         }
 
@@ -1067,7 +1065,7 @@ class OBSBridge:
                 if existing:
                     # Always push the correct settings to the existing source.
                     # This fixes stale settings from previous runs (e.g.
-                    # "ar=48000 ac=2" → "sample_rate=48000 ch_layout=stereo").
+                    # "ar=48000 ac=2" → "sample_rate=48000 channels=2").
                     # overlay=True forces OBS to apply changes immediately.
                     try:
                         c.set_input_settings(

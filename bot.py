@@ -489,6 +489,34 @@ def run_web_server():
             )
             logging.info("OBS Bridge initialized")
 
+            # Fix OBS's user.ini to ensure it loads "Radio DJ" scene collection.
+            # OBS stores the active collection in [Basic] → SceneCollection.
+            # If it says "Untitled" (OBS's default), OBS loads a blank scene
+            # even when --collection "Radio DJ" is on the command line.
+            import configparser
+            user_ini_path = os.path.expanduser("~/.config/obs-studio/user.ini")
+            try:
+                ucfg = configparser.ConfigParser()
+                ucfg.read(user_ini_path)
+                changed = False
+                if not ucfg.has_section("Basic"):
+                    ucfg.add_section("Basic")
+                    changed = True
+                if ucfg.get("Basic", "SceneCollection", fallback="") != "Radio DJ":
+                    ucfg.set("Basic", "SceneCollection", "Radio DJ")
+                    ucfg.set("Basic", "SceneCollectionFile", "Radio DJ.json")
+                    changed = True
+                if ucfg.get("Basic", "Profile", fallback="") == "Untitled":
+                    ucfg.set("Basic", "Profile", "RadioDJ")
+                    ucfg.set("Basic", "ProfileDir", "RadioDJ")
+                    changed = True
+                if changed:
+                    with open(user_ini_path, "w") as f:
+                        ucfg.write(f)
+                    logging.info("OBS: Fixed user.ini scene collection → Radio DJ")
+            except Exception as e:
+                logging.debug(f"OBS: Could not fix user.ini: {e}")
+
             # Push stream settings (RTMP server + stream key) to OBS at startup
             # so OBS is ready to stream when the user clicks Start Streaming.
             stream_key = getattr(config, "YOUTUBE_STREAM_KEY", "")
@@ -565,10 +593,10 @@ def run_web_server():
                 # OBS may have loaded stale settings from a previous run
                 # (e.g. "ar=48000 ac=2" which is WRONG — causes slow
                 # loud audio). This ensures the UDP source has the correct
-                # "sample_rate=48000 ch_layout=stereo" before any audio plays.
+                # "sample_rate=48000 channels=2" before any audio plays.
                 try:
                     bridge.create_audio_source()
-                    logging.info("OBS: Audio source settings force-updated (sample_rate=48000 ch_layout=stereo)")
+                    logging.info("OBS: Audio source settings force-updated (sample_rate=48000 channels=2)")
                 except Exception as e:
                     logging.debug(f"OBS: Audio source pre-update failed (will retry on stream start): {e}")
         except Exception as e:

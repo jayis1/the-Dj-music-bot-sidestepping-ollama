@@ -450,17 +450,6 @@ class YouTubeLiveStreamer:
                 return False
 
             log.info("YouTube Live/OBS: Streaming started ✅")
-
-            # Restart the UDP audio source now that streaming is active.
-            # With close_when_inactive=True and restart_on_activate=True,
-            # the source should auto-restart when OBS starts consuming it,
-            # but explicitly restarting ensures audio is live from frame 1.
-            try:
-                self._obs_bridge.restart_media_source("Bot Audio (UDP)")
-                log.info("YouTube Live/OBS: Restarted UDP audio source")
-            except Exception:
-                pass  # Non-critical — restart_on_activate handles it
-
             return True
 
         except Exception as e:
@@ -529,24 +518,9 @@ class YouTubeLiveStreamer:
             log.warning(f"YouTube Live/OBS: Failed to write service.json: {e}")
 
     async def _stop_obs_stream(self):
-        """Stop OBS streaming and deactivate the UDP audio source.
-
-        When streaming stops, OBS's ffmpeg_source keeps reading from the UDP
-        socket but the output pipeline is stalled, so frames pile up in the
-        circular buffer and cause constant 'Circular buffer overrun' warnings.
-        Fix: Stop the media source to close the UDP reader, and set
-        restart_on_activate=True so it restarts automatically when streaming
-        resumes.
-        """
+        """Stop OBS streaming."""
         if not self._obs_bridge:
             return
-        try:
-            # Stop the UDP audio source to prevent circular buffer overruns
-            self._obs_bridge.stop_media_source("Bot Audio (UDP)")
-            log.info("YouTube Live/OBS: Stopped UDP audio source (prevents buffer overruns)")
-        except Exception:
-            pass  # Source may not exist
-
         try:
             result = self._obs_bridge.stop_streaming()
             if result.get("connected"):

@@ -290,9 +290,8 @@ EOF
   success "obs-websocket configured (port 4455, password set)"
 
   # ── Copy default scene collection ──────────────────────
-  # CRITICAL: Kill OBS BEFORE copying the scene collection.
-  # If OBS is running, it will overwrite our file on exit with its
-  # in-memory (stale) version that has wrong ffmpeg_options.
+  # CRITICAL: If OBS is running, kill it first — otherwise it will
+  # overwrite our file on exit with its in-memory (stale) version.
   if pgrep -x obs &>/dev/null; then
     info "Stopping OBS to update scene collection..."
     pkill -x obs 2>/dev/null || true
@@ -307,12 +306,34 @@ EOF
   OBS_PROFILES_DIR="$HOME/.config/obs-studio/basic/profiles"
   mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
 
-  # Delete OBS's stale .bak backup files — OBS falls back to these
-  # when it can't parse the new scene collection, which brings back
-  # old broken settings (ar=48000 ac=2, 4 unused scenes, etc).
+  # Always force-copy the scene collection and clean up stale files.
+  # Even if OBS isn't running, the old file on disk may have stale
+  # settings (ar=48000 ac=2, old scene layout, etc).
   rm -f "$OBS_SCENES_DIR/Radio DJ.json.bak" "$OBS_SCENES_DIR/Radio DJ.json.bak.1" 2>/dev/null
-  # Also delete legacy scene collections ("Untitled") that OBS auto-creates
   rm -f "$OBS_SCENES_DIR/Untitled.json" "$OBS_SCENES_DIR/Untitled.json.bak" 2>/dev/null
+
+  # Fix OBS's user.ini to point to "Radio DJ" scene collection.
+  # OBS stores the active collection name in [Basic] and if it says
+  # "Untitled", OBS loads the wrong (blank) scene collection even
+  # when --collection "Radio DJ" is passed on the command line.
+  OBS_USER_INI="$HOME/.config/obs-studio/user.ini"
+  if [ -f "$OBS_USER_INI" ]; then
+    if grep -q "^SceneCollection=" "$OBS_USER_INI"; then
+      sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI"
+      sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI"
+    else
+      # Add if missing
+      echo "" >> "$OBS_USER_INI"
+      echo "[Basic]" >> "$OBS_USER_INI"
+      echo "SceneCollection=Radio DJ" >> "$OBS_USER_INI"
+      echo "SceneCollectionFile=Radio DJ.json" >> "$OBS_USER_INI"
+    fi
+    # Also fix Profile/ProfileDir if they point to "Untitled"
+    if grep -q "^Profile=Untitled" "$OBS_USER_INI"; then
+      sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI"
+      sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI"
+    fi
+  fi
 
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" "$OBS_SCENES_DIR/Radio DJ.json"

@@ -958,20 +958,15 @@ class OBSBridge:
         Without these, OBS logs "MP: Failed to open media" and the source
         stays silent.
 
-        REBUILD STRATEGY: We always delete+recreate the source rather than
-        trying to detect whether existing settings are correct. This is
-        because:
-          - set_input_settings() does NOT force OBS to reconnect the media
-            (the old FFmpeg context keeps running with broken options)
-          - get_input_settings() dataclass doesn't reliably expose
-            ffmpeg_options as an attribute, making detection fragile
-          - OBS persists source settings between runs — if the source was
-            created with wrong settings on a previous run, it reloads broken
-          - A fresh create_input() guarantees the correct FFmpeg context
+        STRATEGY: Only create the source if it doesn't already exist.
+        Do NOT delete+recreate — OBS loads the source from the scene
+        collection at startup with correct settings, and deleting it
+        disconnects it from OBS's audio mixer. A recreated source may
+        not properly route audio through the mixer.
 
-        After remove_input(), OBS may take 1-2 seconds to fully release
-        the source name. We retry create_input() with exponential backoff
-        (up to 3 attempts) to handle the race condition (error 601).
+        If the source exists but with stale settings, use set_input_settings
+        with overlay=True to force OBS to apply new settings while keeping
+        the source connected to the mixer.
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -980,59 +975,44 @@ class OBSBridge:
         if not scene_name:
             scene_name = self._get_current_scene_name()
 
-        def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name):
-            # Always remove the existing source first (if any).
-            # OBS persists sources between runs — a source created with
-            # wrong ffmpeg_options on a previous launch will reload broken.
-            # Deleting forces OBS to release the stale FFmpeg context.
-            source_existed = False
+        input_settings = {
+            "input": f"udp://127.0.0.1:{udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
+            "is_local_file": False,
+            "input_format": "s16le",
+            "ffmpeg_options": "ar=48000 ac=2",
+        }
+
+        def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name, _settings=input_settings):
+            # Check if source already exists — if so, just ensure it's in the scene
             try:
-                c.get_input_settings(name=_sn)
-                source_existed = True
+                existing = c.get_input_settings(name=_sn)
+                if existing:
+                    log.debug(f"OBS Bridge: Audio source '{_sn}' already exists, keeping it")
+                    # Ensure the source is added to the target scene
+                    try:
+                        items = c.get_scene_item_list(name=_scene)
+                        source_names = [
+                            item.source_name if hasattr(item, 'source_name') else item.get("sourceName", "")
+                            for item in (items.scene_items if hasattr(items, 'scene_items') else items.get("sceneItems", []))
+                        ]
+                        if _sn not in source_names:
+                            log.info(f"OBS Bridge: Adding existing audio source '{_sn}' to scene '{_scene}'")
+                            return c.add_scene_item(sceneName=_scene, sourceName=_sn)
+                    except Exception:
+                        pass  # May already be in the scene
+                    return existing
             except Exception:
-                pass  # Source doesn't exist — good, proceed to create
+                pass  # Source doesn't exist — proceed to create it
 
-            if source_existed:
-                log.info(f"OBS Bridge: Removing existing audio source '{_sn}' to rebuild with correct settings")
-                try:
-                    c.remove_input(name=_sn)
-                except Exception as e:
-                    log.warning(f"OBS Bridge: Failed to remove '{_sn}': {e}")
-
-            input_settings = {
-                "input": f"udp://127.0.0.1:{_p}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
-                "is_local_file": False,
-                # CRITICAL: Raw PCM format specification — OBS cannot
-                # auto-detect the format of a raw UDP stream. Without these,
-                # OBS logs "MP: Failed to open media" and the source is silent.
-                "input_format": "s16le",
-                "ffmpeg_options": "ar=48000 ac=2",
-            }
-
-            # Retry create_input() with backoff — OBS takes 1-2s to release
-            # the source name after remove_input(). Error 601 means "A source
-            # already exists by that input name" — just wait and retry.
-            max_retries = 3
-            for attempt in range(max_retries):
-                if attempt > 0:
-                    delay = min(2.0, 0.5 * (2 ** (attempt - 1)))  # 0.5s, 1s, 2s
-                    log.debug(f"OBS Bridge: Retrying audio source creation in {delay:.1f}s (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(delay)
-                try:
-                    return c.create_input(
-                        sceneName=_scene,
-                        inputKind="ffmpeg_source",
-                        inputName=_sn,
-                        inputSettings=input_settings,
-                        sceneItemEnabled=True,
-                    )
-                except Exception as e:
-                    if "601" in str(e) or "already exists" in str(e).lower():
-                        if attempt < max_retries - 1:
-                            log.debug(f"OBS Bridge: Source name still held by OBS, retrying ({attempt + 1}/{max_retries})")
-                            continue
-                    # Not a 601 error, or we're out of retries — raise it
-                    raise
+            # Source doesn't exist — create it fresh
+            log.info(f"OBS Bridge: Creating audio source '{_sn}' (UDP port {_p})")
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="ffmpeg_source",
+                inputName=_sn,
+                inputSettings=_settings,
+                sceneItemEnabled=True,
+            )
 
         return self._safe_call(_create)
 

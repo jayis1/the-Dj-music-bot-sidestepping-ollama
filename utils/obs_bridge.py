@@ -790,27 +790,62 @@ class OBSBridge:
 
         results = {}
 
-        # ── 1. Background color source ──────────────────────────────────
-        def _create_bg(c, _scene=scene_name):
+        # ── 1. Background — station logo (image_source) ────────────────
+        # The logo.png fills the entire 1280×720 canvas as the stream
+        # background. If no logo exists, falls back to a solid black
+        # color_source_v3 so the stream always has a background.
+        logo_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png"
+        )
+        use_logo = os.path.isfile(logo_path)
+
+        def _create_bg(c, _scene=scene_name, _logo=use_logo, _path=logo_path):
             try:
                 existing = c.get_input_settings(name="Overlay Background")
                 if existing:
+                    # Update to use logo if we switched from color source
+                    if _logo:
+                        try:
+                            c.set_input_settings(
+                                name="Overlay Background",
+                                settings={"file": _path, "unload": False},
+                                overlay=True,
+                            )
+                        except Exception:
+                            pass
                     return existing
             except Exception:
                 pass
-            return c.create_input(
-                sceneName=_scene,
-                inputKind="color_source_v3",
-                inputName="Overlay Background",
-                inputSettings={
-                    "color": 4278190080,  # 0xFF000000 = opaque black (ARGB)
-                    "width": 1280,
-                    "height": 720,
-                },
-                sceneItemEnabled=True,
-            )
+
+            if _logo:
+                return c.create_input(
+                    sceneName=_scene,
+                    inputKind="image_source",
+                    inputName="Overlay Background",
+                    inputSettings={
+                        "file": _path,
+                        "unload": False,
+                    },
+                    sceneItemEnabled=True,
+                )
+            else:
+                # Fallback: solid black background
+                return c.create_input(
+                    sceneName=_scene,
+                    inputKind="color_source_v3",
+                    inputName="Overlay Background",
+                    inputSettings={
+                        "color": 4278190080,  # 0xFF000000 = opaque black (ARGB)
+                        "width": 1280,
+                        "height": 720,
+                    },
+                    sceneItemEnabled=True,
+                )
 
         results["background"] = self._safe_call(_create_bg)
+
+        # Position and scale the background to fill the 1280×720 canvas
+        self._position_background(scene_name)
 
         # ── 2. State indicator text source (reads from file) ────────
         # Shows 🎵 Now Playing / 🎙️ DJ Speaking / ⏳ Waiting
@@ -1011,25 +1046,66 @@ class OBSBridge:
             except Exception:
                 pass  # Source may not exist yet — that's OK
 
+    def _position_background(self, scene_name: str):
+        """Position and scale the background (logo.png) to fill the 1280×720 canvas.
+
+        The logo is a 640×640 image that needs to be scaled up to fill the
+        1280×720 canvas while maintaining aspect ratio and covering the
+        entire area. We scale by 2.0x (640→1280 width, 640→1280 height)
+        which crops the bottom but fills the width perfectly.
+        Position: (0, 0) top-left corner.
+        """
+        item_id = self._get_scene_item_id(scene_name, "Overlay Background")
+        if item_id < 0:
+            return
+        try:
+            # logo.png is 640×640 → scale to 2.0 to fill 1280 width.
+            # The height becomes 1280 (cropped to 720 by OBS canvas).
+            # If using color_source_v3 fallback, no scaling needed.
+            import os as _os
+            logo_path = _os.path.join(
+                _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
+                "assets", "logo.png"
+            )
+            if _os.path.isfile(logo_path):
+                scale_x = 1280.0 / 640.0  # = 2.0
+                scale_y = 1280.0 / 640.0  # = 2.0, crops bottom
+                self._safe_call(
+                    lambda c, sn=scene_name, iid=item_id, sx=scale_x, sy=scale_y:
+                        c.set_scene_item_transform(
+                            scene_name=sn, item_id=iid,
+                            transform={
+                                "positionX": 0,
+                                "positionY": 0,
+                                "scaleX": sx,
+                                "scaleY": sy,
+                            }
+                        )
+                )
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to position background: {e}")
+
     def _position_overlay_items(self, scene_name: str):
         """Position overlay text sources on the 1280x720 canvas.
 
         Uses set_scene_item_transform to position each source.
         OBS scene item positions are in pixels from top-left.
 
-        Layout (1280x720):
-          ┌──────────────────────────────────────────────────────────────┐
-          │  (40,30)  [State] 🎵 Now Playing                           │
-          │  (40,80)  Station Name                        ┌──────────┐  │
-          │  (40,140) Now Playing title                   │  Song    │  │
-          │  (40,210) DJ Speaking text                    │ Thumbnail│  │
-          │  (40,280) ████ Audio Visualizer Bar ███████   │  (950,80)│  │
-          │  (40,320) [GIF Overlay - decorative]          └──────────┘  │
-          │                                                             │
-          │  (40,665) Ticker                                             │
-          └──────────────────────────────────────────────────────────────┘
+        Layout (1280x720) with logo.png background:
+          ┌────────────────────────────────────────────────────────────────┐
+          │  LOGO.PNG (fills entire canvas as background, 2x scale)         │
+          │                                                                │
+          │  (40,30)  [State] 🎵 Now Playing                      ┌────┐  │
+          │  (40,80)  Station Name                                │Thumb│  │
+          │  (40,140) Now Playing title                           │150px│  │
+          │  (40,210) DJ Speaking text                            └────┘  │
+          │  (40,280) ████ Audio Visualizer Bar ███████                   │
+          │  (40,320) [GIF Overlay - decorative]                          │
+          │                                                                │
+          │  (40,640) Ticker                                                │
+          └────────────────────────────────────────────────────────────────┘
 
-        Visual sources (thumbnail, visualizer, GIF) are positioned
+        Visual sources (background, thumbnail, visualizer, GIF) are positioned
         separately by their own _position_* methods.
         """
         # Positions for the TEXT overlay elements
@@ -1357,9 +1433,9 @@ class OBSBridge:
         """Position and scale the Song Thumbnail source on the canvas.
 
         Thumbnail layout on 1280x720:
-          - Position: (950, 80) — right side of the overlay
-          - Scale: 300x300 image scaled to fit
-          - The thumbnail appears as album art next to the text info
+          - Position: (1060, 85) — top-right corner of the overlay
+          - Scale: ~0.5 (300×300 image → ~150×150 display)
+          - Small "album art" next to text, not overwhelming
         """
         item_id = self._get_scene_item_id(scene_name, "Song Thumbnail")
         if item_id < 0:
@@ -1369,10 +1445,10 @@ class OBSBridge:
                 lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
                     scene_name=sn, item_id=iid,
                     transform={
-                        "positionX": 950,
-                        "positionY": 80,
-                        "scaleX": 0.85,
-                        "scaleY": 0.85,
+                        "positionX": 1060,
+                        "positionY": 85,
+                        "scaleX": 0.5,
+                        "scaleY": 0.5,
                     }
                 )
             )
@@ -1380,20 +1456,21 @@ class OBSBridge:
             log.debug(f"OBS Bridge: Failed to position thumbnail: {e}")
 
     def create_visualizer_bar(self, scene_name: str = "") -> dict:
-        """Create an audio level visualizer bar using a color source.
+        """Create a beat-pulse visualizer bar using a color source.
 
-        Uses a color_source_v3 as a thin colored bar whose width is
+        Uses a color_source_v3 as a colored bar whose width is
         dynamically adjusted by update_visualizer_bar() based on the
-        current audio level from the PCMBroadcaster.
+        beat-pulse audio level from the PCMBroadcaster.
+
+        The PCMBroadcaster detects beats (transients: kick drums, snares,
+        bass hits, sibilance) and makes the bar snap to peak on each
+        beat, then decay fast between beats — creating a pulsing effect.
 
         The bar is:
-          - 1000px wide (max) × 20px tall
-          - Neon green (#00FF80) for a "VU meter" look
-          - Positioned at the bottom of the text area (y=270)
-          - Width scales from 0 to 1000px based on audio level 0.0–1.0
-
-        The bar is initially at full width (1000px) and gets resized
-        by the visualizer polling loop in youtube_stream.py.
+          - 1200px wide (max) × 30px tall
+          - Neon cyan (#00FFE0) for a "beat pulse" look
+          - Positioned below the DJ Speaking text (y=280)
+          - Width pulses from minimum to full based on beat detection
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -1401,16 +1478,23 @@ class OBSBridge:
         if not scene_name:
             scene_name = self._get_current_scene_name()
 
-        # Neon green: 0xFF00FF80 in ARGB = 4278255616
-        # Or 0xFF00FF80... let me compute properly:
-        # ARGB: A=0xFF, R=0x00, G=0xFF, B=0x80
-        # = 0xFF00FF80 = 4278255744
-        visualizer_color = 4278255744  # Neon green ARGB
+        # Neon cyan: ARGB: A=0xFF, R=0x00, G=0xFF, B=0xE0
+        # = 0xFF00FFE0 = 4278255840
+        visualizer_color = 4278255840  # Neon cyan ARGB
 
         def _create(c, _scene=scene_name, _color=visualizer_color):
             try:
                 existing = c.get_input_settings(name="Audio Visualizer")
                 if existing:
+                    # Update to new color/size if settings changed
+                    try:
+                        c.set_input_settings(
+                            name="Audio Visualizer",
+                            settings={"color": _color, "width": 1200, "height": 30},
+                            overlay=True,
+                        )
+                    except Exception:
+                        pass
                     return existing
             except Exception:
                 pass
@@ -1420,8 +1504,8 @@ class OBSBridge:
                 inputName="Audio Visualizer",
                 inputSettings={
                     "color": _color,
-                    "width": 1000,   # Maximum width (gets scaled by update)
-                    "height": 20,
+                    "width": 1200,   # Maximum width (gets scaled by update)
+                    "height": 30,    # Taller than before for more visual impact
                 },
                 sceneItemEnabled=True,
             )
@@ -1451,26 +1535,27 @@ class OBSBridge:
             log.debug(f"OBS Bridge: Failed to position visualizer: {e}")
 
     def update_visualizer_bar(self, level: float, scene_name: str = "") -> dict:
-        """Update the audio visualizer bar width based on audio level.
+        """Update the beat-pulse visualizer bar width based on beat level.
 
         Args:
-            level: Audio level 0.0–1.0 (from PCMBroadcaster.get_audio_level())
+            level: Beat-pulse level 0.0–1.0 (from PCMBroadcaster.get_audio_level())
+                  This is NOT a smooth RMS average — it snaps to peak on beats
+                  and decays fast between them, creating a pulsing effect.
             scene_name: Scene name (empty = current scene)
 
         The bar's scaleX is set to `level`, so:
-          - 0.0 = invisible (0px wide)
-          - 0.5 = half width (500px)
-          - 1.0 = full width (1000px)
+          - 0.0 = minimum sliver (always at least 3% width)
+          - 0.5 = half width (600px)
+          - 1.0 = full width (1200px)
 
-        We keep scaleY at 1.0 so the bar height stays constant.
-        Position is preserved (left-anchored at x=40, y=280).
+        During music playback, the bar pulses with kick drums and beats.
+        During silence, it drops to minimum quickly.
 
-        PERFORMANCE: This method is called frequently by the visualizer
+        PERFORMANCE: This method is called at ~5 FPS by the visualizer
         polling loop. To avoid flooding OBS with WebSocket connections,
-        it uses a cached scene item ID and scene name (resolved once,
-        then reused). It also skips WebSocket calls entirely when the
-        level hasn't changed significantly (< 2% delta), avoiding
-        connect→request→disconnect overhead for sub-pixel bar movement.
+        it uses a cached scene item ID (resolved once, then reused)
+        and skips updates when the scale change is <3% (the pulse moves
+        too fast between beats for sub-3% differences to be visible).
         """
         if not self.enabled:
             return {"error": "OBS Bridge is disabled", "connected": False}
@@ -1478,15 +1563,14 @@ class OBSBridge:
         # Clamp level to [0.0, 1.0]
         level = max(0.0, min(1.0, level))
 
-        # A small minimum (2%) so the bar is always faintly visible
-        scale_x = max(0.02, level)
+        # Minimum 3% so the bar is always faintly visible as a baseline
+        scale_x = max(0.03, level)
 
         # Skip update if the change is negligible — avoids WebSocket spam.
-        # A 2% threshold means we only send an update when the bar would
-        # move by ~20 pixels on a 1000px-wide bar. Below that, the visual
-        # difference is imperceptible.
+        # 3% threshold: the beat pulse moves fast enough that <3% changes
+        # are invisible between polling ticks.
         last_scale = getattr(self, '_viz_last_scale', 0.0)
-        if abs(scale_x - last_scale) < 0.02:
+        if abs(scale_x - last_scale) < 0.03:
             return {"connected": True, "status": "ok", "data": {"skipped": True}}
         self._viz_last_scale = scale_x
 

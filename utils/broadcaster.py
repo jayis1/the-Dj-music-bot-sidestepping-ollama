@@ -46,14 +46,20 @@ class PCMBroadcaster(discord.AudioSource):
         # _stop_event allows clean, responsive shutdown of the autonomous clock.
         self._stop_event = threading.Event()
 
-        # ── Audio Level Metering (for OBS visualizer bar) ──
-        # Tracks the current RMS audio level as a float 0.0–1.0.
+        # ── Audio Level Metering (for OBS beat-pulse visualizer) ──
+        # Tracks a beat-pulse level that jumps on transients and decays fast.
         # Updated on every read() / autonomous clock tick (every 20ms).
-        # A smoothing factor decays the level between chunks so the bar
-        # drops smoothly instead of instantly to zero on silence.
-        self._audio_level = 0.0          # Current smoothed level (0.0–1.0)
-        self._audio_level_peak = 0.0     # Peak hold (for peak indicator)
+        # This creates a pulsing bar that reacts to drum hits and bass,
+        # not a slow VU meter.
+        self._audio_level = 0.0          # Current beat-pulse level (0.0–1.0)
+        self._audio_level_peak = 0.0     # Peak hold
         self._audio_level_lock = threading.Lock()
+
+        # Beat detection state:
+        # _energy_short  = RMS of the current 20ms chunk (instantaneous)
+        # _energy_long   = rolling average of recent chunks (background level)
+        # When short >> long, a beat (transient) is detected.
+        self._energy_long = 0.0          # Long-term energy average
 
         self._thread = threading.Thread(target=self._autonomous_clock, daemon=True)
         self._thread.start()
@@ -211,28 +217,64 @@ class PCMBroadcaster(discord.AudioSource):
                 self._source = None
 
     def _update_audio_level(self, pcm_data: bytes):
-        """Update the smoothed audio level from a PCM chunk.
+        """Update the beat-pulse audio level from a PCM chunk.
 
-        Uses exponential smoothing with a fast attack / slow decay:
-          - Attack (level rising): α = 0.3 → fast response to new audio
-          - Decay (level falling): α = 0.08 → smooth fade-out on silence
+        Creates a pulsing visualizer bar that reacts to beats/transients
+        (drums, bass hits), NOT a smooth VU meter.
 
-        This makes the visualizer bar jump quickly when audio starts
-        but drop smoothly when it stops (no flickering).
+        Algorithm:
+          1. Compute short-term RMS energy of the 20ms chunk
+          2. Maintain a long-term energy average (exponential moving average)
+          3. If short-term energy > long-term average × threshold → BEAT detected
+             → bar jumps to peak instantly (attack = 1.0)
+          4. Bar decays fast between beats (factor 0.65 per tick ≈ 15ms drop)
+             → creates the "pulse" shape: sharp rise, fast fall
+          5. Small silence-floor: when no audio at all, bar rests at ~0.02
+             instead of 0.0 so the bar is always faintly visible.
+
+        The result: during music, the bar pulses with the kick drum / beat.
+        During silence or quiet passages, the bar drops to minimum quickly.
+        During speech (DJ), the bar moves with syllable emphasis.
         """
         rms = self._compute_rms(pcm_data)
+
         with self._audio_level_lock:
-            if rms > self._audio_level:
-                # Attack: rise quickly
-                self._audio_level = self._audio_level * 0.7 + rms * 0.3
+            # Update long-term energy average (slow-moving background)
+            # α = 0.01 → very slow adaptation, takes ~100 ticks (2 sec) to settle
+            self._energy_long = self._energy_long * 0.99 + rms * 0.01
+
+            # Beat detection threshold: short-term energy must exceed
+            # long-term average by this multiplier to count as a beat.
+            # 1.3x = mild beat (speech sibilance), 1.5x = clear beat (kick),
+            # 2.0x+ = strong transient (snare hit).
+            # We use a dynamic threshold that adapts to the song's loudness.
+            beat_threshold = max(self._energy_long * 1.4, 0.03)
+
+            if rms > beat_threshold:
+                # BEAT DETECTED → instant attack to peak
+                # Scale the bar height by how hard the beat hits:
+                # A quiet beat → 0.4-0.6, medium → 0.6-0.8, slam → 0.9-1.0
+                intensity = min(1.0, rms / max(beat_threshold, 0.001))
+                target = min(1.0, 0.3 + intensity * 0.7)  # 0.3 min on beat, 1.0 max
+                # Instant attack — bar snaps to target immediately
+                self._audio_level = target
             else:
-                # Decay: fall slowly
-                self._audio_level = self._audio_level * 0.92 + rms * 0.08
-            # Peak hold with slow decay
+                # NO BEAT → fast exponential decay
+                # 0.65 per 20ms tick → bar drops to ~12% in 100ms, ~1% in 200ms
+                # This creates the "pulse" shape: sharp rise on beat, fast drop
+                self._audio_level *= 0.65
+                # If very quiet (near silence), drop faster
+                if rms < 0.01:
+                    self._audio_level *= 0.4
+                # Minimum floor so bar is always faintly visible
+                if self._audio_level < 0.02:
+                    self._audio_level = 0.02
+
+            # Peak hold with faster decay than before
             if rms > self._audio_level_peak:
                 self._audio_level_peak = rms
             else:
-                self._audio_level_peak *= 0.97
+                self._audio_level_peak *= 0.90
 
     def _autonomous_clock(self):
         """The headless 24/7 pulse. Only activates when Discord drops its connection.

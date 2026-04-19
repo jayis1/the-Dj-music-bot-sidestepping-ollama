@@ -79,16 +79,15 @@ class YouTubeLiveStreamer:
     WIDTH = 1280
     HEIGHT = 720
 
-    # Audio visualizer bar update interval (seconds).
-    # 500ms = 2 FPS for the level bar animation — enough to look
-    # responsive while avoiding WebSocket flooding. The OBS Bridge's
-    # update_visualizer_bar() also has delta-skip logic that only
-    # sends a WebSocket request when the level changes by >2%.
-    # DO NOT set this below 300ms — each tick opens a WebSocket
-    # connection (connect→request→disconnect) and OBS's event loop
-    # gets overwhelmed by rapid connect/disconnect cycles, causing
-    # audio glitches and dropouts.
-    _VISUALIZER_INTERVAL = 0.5
+    # Audio beat-pulse visualizer update interval (seconds).
+    # 200ms = 5 FPS — fast enough to show beat pulses (kick/snare),
+    # slow enough to avoid WebSocket flooding. The OBS Bridge's
+    # update_visualizer_bar() has delta-skip logic that only sends
+    # a WebSocket request when the scale changes by >2%.
+    # DO NOT set below 150ms — each tick opens a WebSocket
+    # connection and rapid connect/disconnect overwhelms OBS,
+    # causing audio glitches.
+    _VISUALIZER_INTERVAL = 0.2
 
     def __init__(
         self,
@@ -603,21 +602,22 @@ class YouTubeLiveStreamer:
             pass
 
     async def _visualizer_poll_obs(self):
-        """Poll the PCMBroadcaster's audio level and update the OBS visualizer bar.
+        """Poll the PCMBroadcaster's beat-pulse level and update the OBS visualizer bar.
 
-        This coroutine runs at ~2 FPS (every 500ms) while the stream is active.
-        It reads the smoothed RMS audio level from the PCMBroadcaster and
-        adjusts the width (scaleX) of the "Audio Visualizer" color source
-        in OBS via the WebSocket API.
+        This coroutine runs at ~5 FPS (every 200ms) while the stream is active.
+        It reads the beat-pulse audio level from the PCMBroadcaster and adjusts
+        the width (scaleX) of the "Audio Visualizer" color source in OBS.
+
+        The beat-pulse algorithm detects transients (drum hits, bass, sibilance)
+        and makes the bar snap to peak on each beat, then decay fast between
+        beats — creating a pulsing "VU meter on steroids" effect.
 
         The OBS Bridge's update_visualizer_bar() caches the scene item ID
-        and skips WebSocket calls when the level hasn't changed by >2%,
-        so most ticks result in zero WebSocket connections.
+        and skips WebSocket calls when the scale change is <2%, so most
+        ticks during silence result in zero WebSocket connections.
 
-        NOTE: The poll interval is intentionally conservative (500ms, not
-        100ms). Each WebSocket update requires a connect→request→disconnect
-        cycle. Rapid connect/disconnect (10+ per second) overwhelms OBS's
-        internal event loop, causing audio dropouts and glitches.
+        NOTE: 200ms is the minimum safe polling interval. Faster rates
+        cause WebSocket connection storms that break OBS audio.
         """
         try:
             from utils.broadcaster import get_broadcaster

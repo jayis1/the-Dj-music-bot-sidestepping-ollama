@@ -439,6 +439,32 @@ class OBSBridge:
         """Toggle OBS streaming on/off."""
         return self._safe_call(lambda c: c.toggle_stream())
 
+    # ── Media Source Control ────────────────────────────────────────────
+
+    def stop_media_source(self, source_name: str) -> dict:
+        """Stop a media/ffmpeg source from playing.
+
+        Used to deactivate the UDP audio source when streaming stops,
+        preventing circular buffer overruns (the ffmpeg_source keeps
+        reading from UDP but with no output consumer, frames pile up).
+        """
+        return self._safe_call(
+            lambda c, sn=source_name: c.trigger_media_input_action(
+                name=sn, action="OBS_WEBSOCKET_MEDIA_INPUT_ACTION_STOP"
+            )
+        )
+
+    def restart_media_source(self, source_name: str) -> dict:
+        """Restart a media/ffmpeg source.
+
+        Used to reactivate the UDP audio source when streaming resumes.
+        """
+        return self._safe_call(
+            lambda c, sn=source_name: c.trigger_media_input_action(
+                name=sn, action="OBS_WEBSOCKET_MEDIA_INPUT_ACTION_RESTART"
+            )
+        )
+
     # ── Recording Control ─────────────────────────────────────────────────
 
     def start_recording(self) -> dict:
@@ -992,7 +1018,7 @@ class OBSBridge:
         OBS's FFmpeg source cannot auto-detect the format of a raw PCM stream,
         so we must explicitly specify:
           - input_format: "s16le" (signed 16-bit little-endian)
-          - ffmpeg_options: "sample_rate=48000 channels=2" (48kHz, 2 channels)
+          - ffmpeg_options: "sample_rate=48000 ch_layout=stereo" (48kHz, 2ch)
         NOTE: ffmpeg_options uses av_dict_parse_string() format (key=value),
         and goes to avformat_open_input() — NOT avcodec_open2().
         This means you must use AVFormat-level option names:
@@ -1023,7 +1049,14 @@ class OBSBridge:
             "input": f"udp://127.0.0.1:{udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
             "is_local_file": False,
             "input_format": "s16le",
-            "ffmpeg_options": "sample_rate=48000 channels=2",
+            "ffmpeg_options": "sample_rate=48000 ch_layout=stereo",
+            # Close the UDP reader when no output is active (prevents circular
+            # buffer overruns when streaming is stopped — otherwise the
+            # ffmpeg_source keeps reading UDP frames that pile up because
+            # OBS's output pipeline isn't consuming them).
+            "close_when_inactive": True,
+            # Restart the source automatically when streaming resumes
+            "restart_on_activate": True,
         }
 
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name, _settings=input_settings):
@@ -1034,7 +1067,7 @@ class OBSBridge:
                 if existing:
                     # Always push the correct settings to the existing source.
                     # This fixes stale settings from previous runs (e.g.
-                    # "ar=48000 ac=2" → "sample_rate=48000 channels=2").
+                    # "ar=48000 ac=2" → "sample_rate=48000 ch_layout=stereo").
                     # overlay=True forces OBS to apply changes immediately.
                     try:
                         c.set_input_settings(

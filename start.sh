@@ -307,6 +307,13 @@ EOF
   OBS_PROFILES_DIR="$HOME/.config/obs-studio/basic/profiles"
   mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
 
+  # Delete OBS's stale .bak backup files — OBS falls back to these
+  # when it can't parse the new scene collection, which brings back
+  # old broken settings (ar=48000 ac=2, 4 unused scenes, etc).
+  rm -f "$OBS_SCENES_DIR/Radio DJ.json.bak" "$OBS_SCENES_DIR/Radio DJ.json.bak.1" 2>/dev/null
+  # Also delete legacy scene collections ("Untitled") that OBS auto-creates
+  rm -f "$OBS_SCENES_DIR/Untitled.json" "$OBS_SCENES_DIR/Untitled.json.bak" 2>/dev/null
+
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/scenes/Radio DJ.json" "$OBS_SCENES_DIR/Radio DJ.json"
     # Adapt scene collection to current platform.

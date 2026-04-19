@@ -565,10 +565,10 @@ def run_web_server():
                 # OBS may have loaded stale settings from a previous run
                 # (e.g. "ar=48000 ac=2" which is WRONG — causes slow
                 # loud audio). This ensures the UDP source has the correct
-                # "sample_rate=48000 channels=2" before any audio plays.
+                # "sample_rate=48000 ch_layout=stereo" before any audio plays.
                 try:
                     bridge.create_audio_source()
-                    logging.info("OBS: Audio source settings force-updated (sample_rate=48000 channels=2)")
+                    logging.info("OBS: Audio source settings force-updated (sample_rate=48000 ch_layout=stereo)")
                 except Exception as e:
                     logging.debug(f"OBS: Audio source pre-update failed (will retry on stream start): {e}")
         except Exception as e:

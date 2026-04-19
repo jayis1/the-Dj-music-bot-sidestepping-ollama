@@ -295,7 +295,7 @@ INTROS = [
     "{greeting} Music, music, music! First track — {title}. {sound:mustard_drop}",
     "{greeting} And we're back! Starting the session with {title}. {sound:another_one}",
     "{greeting} The one and only {title} to open the show! {sound:mega_airhorn}",
-    "Welcome to the show! I'm your DJ and this is {title}. {sound:im_your_dj}",
+    "Welcome to the show! This is {dj_name} and this is {title}. {sound:im_your_dj}",
     "{greeting} Let me hear you make some noise for {title}! {sound:rave_cheer}",
     "{greeting} Dropping the needle on {title}. {sound:sick_scratch}",
     "{greeting} Rewind! Let's start from the top with {title}. {sound:dj_rewind}",
@@ -442,7 +442,7 @@ HYPE_INTROS = [
     "Make some noise for {title}! {sound:rave_cheer}",
     "Big tune alert: {title}! {sound:mega_airhorn}",
     "Here's {title}! {sound:uyuuui}",
-    "I'm your DJ and this is {title}! {sound:im_your_dj}",
+    "This is {dj_name} and this is {title}! {sound:im_your_dj}",
     "The Django selects {title}! {sound:django}",
     "Turntables are spinning for {title}. {sound:dj_turn_it_up}",
     "{title} — you already know! {sound:uyuuui}",
@@ -575,7 +575,7 @@ HYPE_INTROS_LOUD = [
     "The crowd goes WILD for {title}! {sound:rave_cheer}",
     "This one's gonna tear the roof off! {title}! {sound:cool_dj_drop}",
     "SICK DROP ALERT! {title}! {sound:sick_scratch}",
-    "I am YOUR DJ and I say we play {title}! {sound:im_your_dj}",
+    "I am {dj_name} and I say we play {title}! {sound:im_your_dj}",
     "Maximum volume! {title}! {sound:mega_airhorn}",
     "Unhinged mode ACTIVATED! {title}! {sound:uyuuui}",
     "Django UNCHAINED! {title}! {sound:django}",
@@ -968,12 +968,18 @@ STATION_IDS = [
     f"This is {config.STATION_NAME} Radio, your non-stop music station.",
     f"{config.STATION_NAME} Radio — all music, all the time.",
     f"Welcome to {config.STATION_NAME} Radio.",
-    f"This is your DJ on {config.STATION_NAME} Radio.",
+    f"This is {config.DJ_NAME} on {config.STATION_NAME} Radio.",
     f"You're listening to {config.STATION_NAME}. Let's keep it going.",
     f"{config.STATION_NAME} Radio. The only station that never stops.",
     f"This is {config.STATION_NAME}, keeping the music alive, 24 7.",
     f"You're on {config.STATION_NAME} Radio, where the tunes never end.",
-    f"From the {config.STATION_NAME} Radio studios, this is your DJ.",
+    f"From the {config.STATION_NAME} Radio studios, this is {config.DJ_NAME}.",
+    # ── DJ Name intros ──
+    f"This is {config.DJ_NAME} and you're on {config.STATION_NAME} Radio.",
+    f"{config.DJ_NAME} in the booth on {config.STATION_NAME} Radio.",
+    f"You've got {config.DJ_NAME} on the mic, {config.STATION_NAME} Radio.",
+    f"{config.DJ_NAME} live on {config.STATION_NAME} Radio. Let's go.",
+    f"It's {config.DJ_NAME} and this is {config.STATION_NAME} Radio.",
     # ── With sound tags ──
     f"You're tuned in to {config.STATION_NAME} Radio. {{sound:dj_turn_it_up}}",
     f"This is {config.STATION_NAME} Radio! {{sound:airhorn}} Your non-stop music station.",
@@ -1282,11 +1288,11 @@ def extract_sound_tags(text: str) -> tuple[str, list[str]]:
 def generate_intro(title: str, queue_size: int = 0) -> str:
     """Generate a DJ intro message before the first song of a session."""
     greeting = _time_greeting()
-    msg = _format_line(random.choice(_pool("intros")), greeting=greeting, title=title)
+    msg = _format_line(random.choice(_pool("intros")), greeting=greeting, title=title, dj_name=config.DJ_NAME)
 
     # 30% chance to prepend a station ID
     if random.random() < 0.30:
-        msg = _format_line(random.choice(_pool("station_ids"))) + " " + msg
+        msg = _format_line(random.choice(_pool("station_ids")), dj_name=config.DJ_NAME) + " " + msg
 
     return msg
 
@@ -1297,12 +1303,12 @@ def generate_song_intro(title: str, queue_size: int = 0) -> str:
 
     # Late night? Go mellow 40% of the time
     if tod in ("night", "late night") and random.random() < 0.40:
-        msg = _format_line(random.choice(_pool("hype_intros")), title=title)
+        msg = _format_line(random.choice(_pool("hype_intros")), title=title, dj_name=config.DJ_NAME)
     # 20% chance of a loud/hype intro
     elif random.random() < 0.20:
-        msg = _format_line(random.choice(_pool("hype_intros_loud")), title=title)
+        msg = _format_line(random.choice(_pool("hype_intros_loud")), title=title, dj_name=config.DJ_NAME)
     else:
-        msg = _format_line(random.choice(_pool("hype_intros")), title=title)
+        msg = _format_line(random.choice(_pool("hype_intros")), title=title, dj_name=config.DJ_NAME)
 
     # 15% chance to tack on a listener callout
     if random.random() < 0.15:
@@ -1330,6 +1336,7 @@ def generate_outro(
                 random.choice(_pool("transitions_mellow")),
                 prev_title=title,
                 next_title=next_title,
+                dj_name=config.DJ_NAME,
             )
         # 20% chance of a hype transition
         elif random.random() < 0.20:
@@ -1337,12 +1344,14 @@ def generate_outro(
                 random.choice(_pool("transitions_hype")),
                 prev_title=title,
                 next_title=next_title,
+                dj_name=config.DJ_NAME,
             )
         else:
             msg = _format_line(
                 random.choice(_pool("transitions")),
                 prev_title=title,
                 next_title=next_title,
+                dj_name=config.DJ_NAME,
             )
 
         # 25% chance to tack on queue banter
@@ -1353,18 +1362,18 @@ def generate_outro(
 
     elif has_next:
         # Next track exists but we don't know its title
-        msg = _format_line(random.choice(_pool("outros")), title=title)
+        msg = _format_line(random.choice(_pool("outros")), title=title, dj_name=config.DJ_NAME)
         banter = _queue_banter(queue_size)
         if banter:
             msg += " " + banter
 
     else:
         # Last song — queue is empty after this
-        msg = _format_line(random.choice(_pool("outros_final")), title=title)
+        msg = _format_line(random.choice(_pool("outros_final")), title=title, dj_name=config.DJ_NAME)
 
     # 20% chance to prepend a station ID on the outro too
     if random.random() < 0.20:
-        msg = _format_line(random.choice(_pool("station_ids"))) + " " + msg
+        msg = _format_line(random.choice(_pool("station_ids")), dj_name=config.DJ_NAME) + " " + msg
 
     return msg
 

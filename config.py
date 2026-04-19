@@ -23,6 +23,11 @@ COMMAND_PREFIX = "?"
 # Radio DJ mode station name
 STATION_NAME = os.environ.get("STATION_NAME", "MBot")
 
+# DJ Name — the on-air personality name for the main DJ bot.
+# This is the name the DJ introduces herself as (e.g., "This is Nova on MBot Radio").
+# Pick something that sounds like a badass radio host — short, punchy, memorable.
+DJ_NAME = os.environ.get("DJ_NAME", "Nova")
+
 # Emojis for UI
 PLAY_EMOJI = "▶️"
 PAUSE_EMOJI = "⏸️"

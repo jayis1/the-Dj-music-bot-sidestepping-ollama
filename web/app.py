@@ -3185,7 +3185,7 @@ def api_youtube_stream_toggle(guild_id):
                     ),
                     stream_image=stream_image,
                     stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
-                    station_name=getattr(config, "STATION_NAME", "MBot Radio"),
+                    station_name=getattr(config, "STATION_NAME", "MBot") + " Radio",
                     obs_bridge=obs_bridge,
                 )
                 music._yt_stream_guild = guild_id

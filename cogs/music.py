@@ -357,6 +357,7 @@ class Music(commands.Cog):
                 stream_gif=getattr(config, "YOUTUBE_STREAM_GIF", "") or None,
                 bitrate_audio=int(getattr(config, "YOUTUBE_AUDIO_BITRATE", 192)),
                 bitrate_video=int(getattr(config, "YOUTUBE_VIDEO_BITRATE", 3000)),
+                station_name=getattr(config, "STATION_NAME", "MBot") + " Radio",
                 obs_bridge=self._get_obs_bridge(),  # Pass OBS bridge for OBS-native streaming
             )
             self._yt_stream_guild = guild.id
@@ -1884,11 +1885,31 @@ class Music(commands.Cog):
         guild_id = ctx.guild.id
         vc = self._get_audio_client(guild_id)
 
-        # If DJ is currently speaking, cancel the TTS and pending song
+        # If DJ is currently speaking (TTS intro), cancel the TTS and
+        # re-queue the pending song so it isn't lost.
+        # When DJ does a TTS intro, the song has already been dequeued
+        # from the queue and stored in _dj_pending. If we just stop the
+        # TTS and pop _dj_pending, that song data vanishes — and the
+        # _after_playback → play_next path would dequeue the WRONG song
+        # (the one AFTER the pending one). Instead, we put the pending
+        # song back at the FRONT of the queue so play_next picks it up.
+        skipped_dj_intro = False
         if self.dj_playing_tts.get(guild_id, False):
             logging.info(f"DJ: Skipping TTS intro in {ctx.guild.name}")
             self.dj_playing_tts[guild_id] = False
             pending = getattr(self, "_dj_pending", {}).pop(guild_id, None)
+
+            # Re-queue the pending song so it isn't lost.
+            # play_next (called from _after_playback) will dequeue it
+            # and generate a fresh DJ intro for it.
+            if pending:
+                _pending_ctx, pending_data, _pending_channel = pending
+                self.queue_push_front(guild_id, pending_data)
+                logging.info(
+                    f"DJ: Skipped TTS intro — re-queued '{pending_data.title}' "
+                    f"at front of queue for guild {guild_id}"
+                )
+
             if vc and vc.is_playing():
                 vc.stop()
             # Clean up TTS temp file
@@ -1897,9 +1918,29 @@ class Music(commands.Cog):
                 cleanup_tts_file(tts_path)
                 self._current_tts_path[guild_id] = None
 
+            # Cancel any pending AI side host prefetch
+            ai_task = self._ai_sidehost_prefetch.pop(guild_id, None)
+            if ai_task and not ai_task.done():
+                ai_task.cancel()
+
+            skipped_dj_intro = True
+
         if vc and vc.is_playing():
             vc.stop()
             logging.info(f"Song skipped in {ctx.guild.name}")
+
+            # If we skipped during a DJ intro (not during a song), the
+            # after_playback callback may not fire properly since the
+            # TTS source was stopped, not a song. Schedule play_next
+            # explicitly to ensure the queue continues.
+            if skipped_dj_intro:
+                logging.info(
+                    f"DJ: Triggering play_next after skipped DJ intro in guild {guild_id}"
+                )
+                # Small delay to let VoiceClient settle after stop()
+                await asyncio.sleep(0.3)
+                await self.play_next(ctx)
+
             await ctx.send(
                 embed=self.create_embed(
                     "Song Skipped",
@@ -1907,16 +1948,31 @@ class Music(commands.Cog):
                 )
             )
         else:
-            logging.warning(
-                f"Skip command invoked but nothing is playing in {ctx.guild.name}"
-            )
-            await ctx.send(
-                embed=self.create_embed(
-                    "Error",
-                    f"{config.ERROR_EMOJI} No song is currently playing to skip.",
-                    discord.Color.red(),
+            # Nothing currently playing — but if we just killed a DJ intro,
+            # the queue still has the pending song at the front. Play it.
+            if skipped_dj_intro:
+                logging.info(
+                    f"DJ: No audio playing after skipped intro, triggering play_next "
+                    f"for guild {guild_id}"
                 )
-            )
+                await self.play_next(ctx)
+                await ctx.send(
+                    embed=self.create_embed(
+                        "Intro Skipped",
+                        f"{config.SKIP_EMOJI} DJ intro skipped, playing next song.",
+                    )
+                )
+            else:
+                logging.warning(
+                    f"Skip command invoked but nothing is playing in {ctx.guild.name}"
+                )
+                await ctx.send(
+                    embed=self.create_embed(
+                        "Error",
+                        f"{config.ERROR_EMOJI} No song is currently playing to skip.",
+                        discord.Color.red(),
+                    )
+                )
 
     @commands.command(name="stop")
     async def stop(self, ctx):
@@ -2732,7 +2788,30 @@ class Music(commands.Cog):
         Called from FFmpeg's after-callback thread when TTS playback finishes.
         Cleans up the temp file, plays any pending sound effects, then
         schedules playing the actual song.
+
+        If TTS was cancelled by skip/stop, this may still fire (because
+        vc.stop() triggers the after-callback). In that case, _dj_pending
+        will already be empty — we bail out early so we don't conflict
+        with the skip/stop handler which has already re-queued the song
+        and called play_next.
         """
+        # Check if TTS was cancelled by skip/stop — if so, bail out.
+        # The skip/stop handler already re-queued the pending song
+        # and scheduled play_next, so we shouldn't also try to play it.
+        if not self.dj_playing_tts.get(guild_id, False) and not getattr(self, "_dj_pending", {}).get(guild_id):
+            # TTS was already cancelled and pending song was already handled.
+            # Just clean up and return.
+            logging.debug(
+                f"DJ: _on_tts_during fired for guild {guild_id} but TTS was already "
+                f"cancelled (skip/stop). Cleaning up and returning."
+            )
+            tts_path = self._current_tts_path.get(guild_id)
+            if tts_path:
+                cleanup_tts_file(tts_path)
+                self._current_tts_path[guild_id] = None
+            self._dj_pending_sounds.pop(guild_id, None)
+            return
+
         self.dj_playing_tts[guild_id] = False
 
         tts_path = self._current_tts_path.get(guild_id)
@@ -4102,7 +4181,7 @@ class BattleView(discord.ui.View):
             ),
             stream_image=stream_image,
             stream_gif=stream_gif,
-            station_name=getattr(config, "STATION_NAME", "MBot Radio"),
+            station_name=getattr(config, "STATION_NAME", "MBot") + " Radio",
             bitrate_audio=int(getattr(config, "YOUTUBE_AUDIO_BITRATE", 192)),
             bitrate_video=int(getattr(config, "YOUTUBE_VIDEO_BITRATE", 3000)),
             obs_bridge=obs_bridge,

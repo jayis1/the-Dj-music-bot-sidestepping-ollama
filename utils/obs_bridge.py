@@ -892,7 +892,48 @@ class OBSBridge:
         else:
             log.info("OBS Bridge: Native overlay created ✅")
 
+        # ── 8. Force-update existing text sources to read from files ──
+        # Sources created by previous runs may still have static text
+        # instead of reading from /tmp/radio_*.txt. We push the correct
+        # settings to ensure they switch to file-reading mode.
+        self._update_existing_text_sources()
+
         return {"connected": True, "status": "ok", "sources_created": list(results.keys()), "errors": errors or None}
+
+    def _update_existing_text_sources(self):
+        """Force-update existing text sources to read from /tmp/radio_*.txt.
+
+        Sources created by previous bot runs may have static text (e.g.
+        "MBOT RADIO") instead of reading from dynamic files. This method
+        pushes the correct file-reading settings to all overlay text sources.
+        Uses overlay=True to force OBS to apply changes immediately.
+        """
+        if not self.enabled:
+            return
+
+        # Map source name → (file_path, font_size, color)
+        source_configs = {
+            "State": ("/tmp/radio_state.txt", 28, 4294967295),        # White
+            "Station Name": ("/tmp/radio_station.txt", 42, 4294967295), # White
+            "Now Playing": ("/tmp/radio_title.txt", 56, 4294967264),    # Gold
+            "DJ Speaking": ("/tmp/radio_dj.txt", 36, 4278255872),       # Cyan-green
+            "Ticker": ("/tmp/radio_waiting.txt", 24, 4294967295),       # White
+        }
+
+        for source_name, (file_path, font_size, color) in source_configs.items():
+            try:
+                settings = _text_settings(
+                    " ", "DejaVu Sans", "Bold" if source_name != "DJ Speaking" else "Regular",
+                    font_size, color=color, align=0, valign=0,
+                    read_from_file=True, file_path=file_path,
+                )
+                self._safe_call(
+                    lambda c, sn=source_name, s=settings: c.set_input_settings(
+                        inputName=sn, inputSettings=s, overlay=True,
+                    )
+                )
+            except Exception:
+                pass  # Source may not exist yet — that's OK
 
     def _position_overlay_items(self, scene_name: str):
         """Position overlay text sources on the 1280x720 canvas.
@@ -951,12 +992,15 @@ class OBSBridge:
         OBS's FFmpeg source cannot auto-detect the format of a raw PCM stream,
         so we must explicitly specify:
           - input_format: "s16le" (signed 16-bit little-endian)
-          - ffmpeg_options: "ar=48000 ac=2" (48kHz, 2 channels)
+          - ffmpeg_options: "sample_rate=48000 channels=2" (48kHz, 2 channels)
         NOTE: ffmpeg_options uses av_dict_parse_string() format (key=value),
-        NOT CLI flag format (-ar 48000 -ac 2). OBS logs "Failed to parse
-        FFmpeg options: Invalid argument" if you use the flag format.
-        Without these, OBS logs "MP: Failed to open media" and the source
-        stays silent.
+        and goes to avformat_open_input() — NOT avcodec_open2().
+        This means you must use AVFormat-level option names:
+          sample_rate (NOT ar) — for raw audio sample rate
+          channels (NOT ac) — for raw audio channel count
+        Using the wrong names (ar/ac) silently does nothing — FFmpeg
+        defaults to 44100Hz mono, making 48kHz stereo audio play at
+        ~0.92x speed and double volume (stereo channels summed to mono).
 
         STRATEGY: Only create the source if it doesn't already exist.
         Do NOT delete+recreate — OBS loads the source from the scene
@@ -979,15 +1023,29 @@ class OBSBridge:
             "input": f"udp://127.0.0.1:{udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
             "is_local_file": False,
             "input_format": "s16le",
-            "ffmpeg_options": "ar=48000 ac=2",
+            "ffmpeg_options": "sample_rate=48000 channels=2",
         }
 
         def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name, _settings=input_settings):
-            # Check if source already exists — if so, just ensure it's in the scene
+            # Check if source already exists — if so, update its settings
+            # and ensure it's in the target scene.
             try:
                 existing = c.get_input_settings(name=_sn)
                 if existing:
-                    log.debug(f"OBS Bridge: Audio source '{_sn}' already exists, keeping it")
+                    # Always push the correct settings to the existing source.
+                    # This fixes stale settings from previous runs (e.g.
+                    # "ar=48000 ac=2" → "sample_rate=48000 channels=2").
+                    # overlay=True forces OBS to apply changes immediately.
+                    try:
+                        c.set_input_settings(
+                            inputName=_sn,
+                            inputSettings=_settings,
+                            overlay=True,
+                        )
+                        log.info(f"OBS Bridge: Updated audio source '{_sn}' settings (overlay=True)")
+                    except Exception as e:
+                        log.debug(f"OBS Bridge: Could not update audio source settings: {e}")
+
                     # Ensure the source is added to the target scene
                     try:
                         items = c.get_scene_item_list(name=_scene)
@@ -1036,44 +1094,18 @@ class OBSBridge:
         errors = []
 
         # ── Scene definitions ──
+        # We only create the "📺 Overlay Only" scene — this is the ONE
+        # scene the bot uses. All dynamic content (state indicator,
+        # station name, now playing, DJ text, ticker) lives here.
+        # We do NOT switch between scenes for different states —
+        # instead, a "State" text source (reads from /tmp/radio_state.txt)
+        # shows the current state (🎵/🎙️/⏳).
+        #
+        # The old separate scenes (️ Now Playing, 🎙️ DJ Speaking,
+        # ⏳ Waiting) have been removed — they caused problems because
+        # switching to them would lose all overlay sources (station name,
+        # ticker, etc) that only exist on the Overlay Only scene.
         scenes = {
-            "️ Now Playing": {
-                "sources": [
-                    ("color_source_v3", "Background Color", {
-                        "color": 4278190080, "width": 1280, "height": 720,
-                    }),
-                    (_TEXT_INPUT_KIND, "Now Playing Title", _text_settings(
-                        "Now Playing", "DejaVu Sans", "Bold", 48,
-                        color=4294967295, align=1, valign=1,
-                    )),
-                    (_TEXT_INPUT_KIND, "Station Name", _text_settings(
-                        "Radio DJ Bot", "DejaVu Sans", "Regular", 32,
-                        color=4286544650, align=1, valign=0,
-                    )),
-                ],
-            },
-            "🎙️ DJ Speaking": {
-                "sources": [
-                    ("color_source_v3", "Background Color", {
-                        "color": 4278190303, "width": 1280, "height": 720,
-                    }),
-                    (_TEXT_INPUT_KIND, "DJ Speaking Title", _text_settings(
-                        "🎙️ The DJ is Speaking...", "DejaVu Sans", "Bold", 56,
-                        color=4294967295, align=1, valign=1,
-                    )),
-                ],
-            },
-            "⏳ Waiting": {
-                "sources": [
-                    ("color_source_v3", "Background Color", {
-                        "color": 4286544384, "width": 1280, "height": 720,
-                    }),
-                    (_TEXT_INPUT_KIND, "Waiting Title", _text_settings(
-                        "⏳ Waiting for next track...", "DejaVu Sans", "Regular", 48,
-                        color=4294967295, align=1, valign=1,
-                    )),
-                ],
-            },
             "📺 Overlay Only": {
                 "sources": [
                     ("color_source_v3", "Overlay Background", {
@@ -1148,9 +1180,16 @@ class OBSBridge:
         CRITICAL: Every file must have at least a space " " or some visible
         text. Never leave a file empty (FreeType2 renders "" as invisible).
         """
-        import os
-        # Pick up the station name from the environment if available
-        station_name = os.environ.get("STATION_NAME", "MBot Radio")
+        # Use config.STATION_NAME (which loads from .env via dotenv) — not
+        # os.environ directly.  config.py correctly resolves defaults and
+        # handles the .env → environ mapping.  Append " Radio" for the
+        # HUD display so "MBot" → "MBot Radio" on the stream overlay.
+        try:
+            import config
+            station_name = getattr(config, "STATION_NAME", "MBot") + " Radio"
+        except ImportError:
+            station_name = "MBot Radio"
+
         hud_files = {
             "/tmp/radio_station.txt": station_name,
             "/tmp/radio_state.txt": "⏳ Waiting",

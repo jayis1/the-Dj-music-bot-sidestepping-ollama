@@ -151,6 +151,9 @@ setup_env() {
   read -rp "$(echo -e "${BOLD}  Radio Station Name (press Enter for MBot):${RESET} ")" STATION_NAME
   STATION_NAME="${STATION_NAME:-MBot}"
 
+  read -rp "$(echo -e "${BOLD}  DJ Name - on-air personality name (press Enter for Nova):${RESET} ")" DJ_NAME
+  DJ_NAME="${DJ_NAME:-Nova}"
+
   read -rp "$(echo -e "${BOLD}  Web Dashboard Port (press Enter for 8080):${RESET} ")" WEB_PORT
   WEB_PORT="${WEB_PORT:-8080}"
 
@@ -159,6 +162,7 @@ DISCORD_TOKEN="${DISCORD_TOKEN}"
 YOUTUBE_API_KEY="${YOUTUBE_API_KEY}"
 LOG_CHANNEL_ID="${LOG_CHANNEL_ID}"
 STATION_NAME="${STATION_NAME}"
+DJ_NAME="${DJ_NAME}"
 WEB_PORT="${WEB_PORT}"
 EOF
 

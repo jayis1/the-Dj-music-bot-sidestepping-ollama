@@ -1386,11 +1386,36 @@ class Music(commands.Cog):
                         is_commercial_enabled(guild_id)
                         and should_play_hijack(guild_id, queue_size=queue.qsize())
                     ):
-                        # Generate the hijack text
-                        hijack_text = await generate_hijack(
-                            station_name=getattr(config, "STATION_NAME", "MBot"),
-                            dj_name=getattr(config, "DJ_NAME", "Nova"),
-                        )
+                        # ── Pre-generation cache check ──
+                        # If the hijack was pre-generated while the previous
+                        # song played, use it instantly (zero latency!).
+                        pregen_hijack = None
+                        try:
+                            pregen = self._get_pregenerator()
+                            next_title = getattr(data, "title", "")
+                            prev_song = self.current_song.get(guild_id)
+                            prev_title = prev_song.title if prev_song else ""
+                            pregen_hijack = pregen.lookup_hijack(
+                                guild_id, next_title, prev_title=prev_title,
+                            )
+                        except Exception:
+                            pregen_hijack = None
+
+                        if pregen_hijack:
+                            # Use pre-generated hijack — skip TTS generation
+                            hj_tts_path, hj_text, hj_sounds, hj_voice = pregen_hijack
+                            hijack_text = hj_text
+                            hijack_voice = hj_voice
+                            logging.info(
+                                f"Station Wars: Using pre-generated hijack for guild {guild_id}"
+                            )
+                        else:
+                            # No pregen hit — generate on the fly
+                            hijack_text = await generate_hijack(
+                                station_name=getattr(config, "STATION_NAME", "MBot"),
+                                dj_name=getattr(config, "DJ_NAME", "Nova"),
+                            )
+                            hijack_voice = get_hijack_voice(guild_id)
 
                         if hijack_text:
                             # Store the pending song so _on_tts_done can pick it up
@@ -1408,18 +1433,23 @@ class Music(commands.Cog):
                                 self._hijack_pending_recovery = {}
                             self._hijack_pending_recovery[guild_id] = True
 
-                            # Use the hijack voice — same pool as commercial voices,
-                            # but they're from another kosmos
-                            hijack_voice = get_hijack_voice(guild_id)
-
                             # Prefix with a "frequency interference" marker
                             # so it sounds like a real station bleed
                             hijack_full = f"📡 {hijack_text}"
 
-                            spoke = await self._dj_speak(
-                                ctx.voice_client, hijack_full, guild_id,
-                                voice=hijack_voice,
-                            )
+                            if pregen_hijack:
+                                # Pregen hit — play the TTS file directly (zero latency)
+                                # Same play-tts pipeline but skips TTS generation
+                                spoke = await self._dj_speak(
+                                    ctx.voice_client, hijack_full, guild_id,
+                                    voice=hijack_voice,
+                                )
+                            else:
+                                # No pregen — generate TTS on the fly
+                                spoke = await self._dj_speak(
+                                    ctx.voice_client, hijack_full, guild_id,
+                                    voice=get_hijack_voice(guild_id),
+                                )
                             if spoke:
                                 await self._obs_scene_dj_speaking()
                                 record_commercial_played(guild_id)
@@ -1466,26 +1496,53 @@ class Music(commands.Cog):
                         is_commercial_enabled(guild_id)
                         and should_play_commercial(guild_id, queue_size=queue.qsize())
                     ):
-                        # Generate the commercial text
-                        prev_song = self.current_song.get(guild_id)
-                        prev_title = prev_song.title if prev_song else ""
-                        listener_count = 0
+                        # ── Pre-generation cache check ──
+                        # If a commercial was pre-generated while the previous
+                        # song played, use it instantly (zero latency!).
+                        pregen_commercial = None
                         try:
-                            vc = ctx.voice_client
-                            if vc and vc.channel:
-                                listener_count = sum(
-                                    1 for m in vc.channel.members if not m.bot
-                                )
+                            pregen = self._get_pregenerator()
+                            next_title = getattr(data, "title", "")
+                            prev_song = self.current_song.get(guild_id)
+                            prev_title = prev_song.title if prev_song else ""
+                            pregen_commercial = pregen.lookup_commercial(
+                                guild_id, next_title, prev_title=prev_title,
+                            )
                         except Exception:
-                            pass
+                            pregen_commercial = None
 
-                        commercial_text = await generate_commercial(
-                            station_name=getattr(config, "STATION_NAME", "MBot"),
-                            song_title=data.title,
-                            prev_title=prev_title,
-                            queue_size=queue.qsize(),
-                            listener_count=listener_count,
-                        )
+                        if pregen_commercial:
+                            # Use pre-generated commercial — skip TTS generation
+                            com_tts_path, com_text, com_sounds, com_voice = pregen_commercial
+                            commercial_text = com_text
+                            commercial_voice = com_voice
+                            logging.info(
+                                f"Commercial: Using pre-generated commercial for guild {guild_id}"
+                            )
+                        else:
+                            # Generate the commercial text on the fly
+                            prev_song = self.current_song.get(guild_id)
+                            prev_title = prev_song.title if prev_song else ""
+                            listener_count = 0
+                            try:
+                                vc = ctx.voice_client
+                                if vc and vc.channel:
+                                    listener_count = sum(
+                                        1 for m in vc.channel.members if not m.bot
+                                    )
+                            except Exception:
+                                pass
+
+                            commercial_text = await generate_commercial(
+                                station_name=getattr(config, "STATION_NAME", "MBot"),
+                                song_title=data.title,
+                                prev_title=prev_title,
+                                queue_size=queue.qsize(),
+                                listener_count=listener_count,
+                            )
+                            # Rotate between 3 commercial voices so each ad
+                            # sounds like a different spokesperson
+                            commercial_voice = get_commercial_voice(guild_id)
 
                         if commercial_text:
                             # Prefix with a "commercial break" marker
@@ -1503,9 +1560,10 @@ class Music(commands.Cog):
                                 self._commercial_pending_intro = {}
                             self._commercial_pending_intro[guild_id] = True
 
-                            # Rotate between 3 commercial voices so each ad
-                            # sounds like a different spokesperson
-                            commercial_voice = get_commercial_voice(guild_id)
+                            # Use the pre-generated commercial voice if available,
+                            # otherwise pick a random one from the commercial pool
+                            if not commercial_voice:
+                                commercial_voice = get_commercial_voice(guild_id)
 
                             spoke = await self._dj_speak(
                                 ctx.voice_client, commercial_text, guild_id,
@@ -3485,11 +3543,36 @@ class Music(commands.Cog):
         hijack_recovery = getattr(self, "_hijack_pending_recovery", {}).pop(guild_id, False)
         if hijack_recovery:
             logging.info(f"Station Wars: playing DJ recovery line for guild {guild_id}")
+
+            # Check pregen cache for recovery line TTS
+            pregen_recovery = None
             try:
-                from utils.commercials import get_recovery_line
-                recovery_line = get_recovery_line()
-            except ImportError:
-                recovery_line = "We're back. Don't touch that dial."
+                pregen = self._get_pregenerator()
+                pending_data = getattr(self, "_dj_pending", {}).get(guild_id)
+                if pending_data:
+                    _, pdata, _ = pending_data
+                    next_title = getattr(pdata, "title", "")
+                    prev_song = self.current_song.get(guild_id)
+                    prev_title = prev_song.title if prev_song else ""
+                    pregen_recovery = pregen.lookup_recovery(
+                        guild_id, next_title, prev_title=prev_title,
+                    )
+            except Exception:
+                pregen_recovery = None
+
+            if pregen_recovery:
+                # Pregen hit — use pre-generated recovery (zero latency)
+                rec_tts_path, rec_text = pregen_recovery
+                recovery_line = rec_text
+                logging.info(
+                    f"Station Wars: Using pre-generated recovery line for guild {guild_id}"
+                )
+            else:
+                try:
+                    from utils.commercials import get_recovery_line
+                    recovery_line = get_recovery_line()
+                except ImportError:
+                    recovery_line = "We're back. Don't touch that dial."
 
             # Speak the recovery line in the DJ's own voice
             spoke = await self._dj_speak(vc, recovery_line, guild_id)

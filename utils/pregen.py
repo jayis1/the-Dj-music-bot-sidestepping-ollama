@@ -43,6 +43,9 @@ class PregenEntry:
     """A pre-generated DJ line with its TTS audio file and metadata.
 
     Stored permanently in assets/part2/.
+
+    Includes optional commercial break, Station Wars hijack, and
+    DJ recovery line data — all pre-generated for zero-gap transitions.
     """
 
     dj_text: str = ""  # The DJ line text (clean, no {sound:} tags)
@@ -50,6 +53,20 @@ class PregenEntry:
     dj_sound_ids: list = field(default_factory=list)  # {sound:name} tags extracted
     ai_text: str = ""  # The AI side host line text (clean)
     ai_tts_path: str = ""  # Path to the AI side host TTS audio file (permanent)
+    # ── Commercial break (pre-generated) ──
+    commercial_text: str = ""  # Commercial script text (clean, with {sound:} tags stripped)
+    commercial_tts_path: str = ""  # Path to the commercial TTS audio file (permanent)
+    commercial_sound_ids: list = field(default_factory=list)  # Sound tags from commercial text
+    commercial_voice: str = ""  # Voice name used for this commercial
+    # ── Station Wars: Frequency Hijack (pre-generated) ──
+    hijack_text: str = ""  # Hijack script text (clean, with {sound:} tags stripped)
+    hijack_tts_path: str = ""  # Path to the hijack TTS audio file (permanent)
+    hijack_sound_ids: list = field(default_factory=list)  # Sound tags from hijack text
+    hijack_voice: str = ""  # Voice name used for this hijack
+    # ── DJ Recovery line after hijack (pre-generated) ──
+    recovery_text: str = ""  # DJ recovery line text
+    recovery_tts_path: str = ""  # Path to recovery TTS audio file (permanent)
+    # ── Common metadata ──
     title: str = ""  # Song title this entry is for
     prev_title: str = ""  # Previous song title (for transitions)
     queue_index: int = 0  # Position in queue (0 = next song)
@@ -91,6 +108,36 @@ def _ai_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
 def _ai_pregen_meta_path(guild_id: int, index: int, title_hash: str) -> str:
     """Full path to an AI host pregen metadata JSON file."""
     return os.path.join(PREGEN_DIR, f"ai_{guild_id}_{index}_{title_hash}.json")
+
+
+def _commercial_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
+    """Build a numbered commercial pregen filename: com_{guild}_{index}_{hash}.wav"""
+    return f"com_{guild_id}_{index}_{title_hash}.wav"
+
+
+def _commercial_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to a commercial pregen file in assets/part2/."""
+    return os.path.join(PREGEN_DIR, _commercial_pregen_filename(guild_id, index, title_hash))
+
+
+def _hijack_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
+    """Build a numbered hijack pregen filename: hj_{guild}_{index}_{hash}.wav"""
+    return f"hj_{guild_id}_{index}_{title_hash}.wav"
+
+
+def _hijack_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to a hijack pregen file in assets/part2/."""
+    return os.path.join(PREGEN_DIR, _hijack_pregen_filename(guild_id, index, title_hash))
+
+
+def _recovery_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
+    """Build a numbered recovery pregen filename: rec_{guild}_{index}_{hash}.wav"""
+    return f"rec_{guild_id}_{index}_{title_hash}.wav"
+
+
+def _recovery_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
+    """Full path to a recovery pregen file in assets/part2/."""
+    return os.path.join(PREGEN_DIR, _recovery_pregen_filename(guild_id, index, title_hash))
 
 
 def ensure_pregen_dir() -> None:
@@ -159,6 +206,16 @@ class DjPregenerator:
                     dj_sound_ids=data.get("dj_sound_ids", []),
                     ai_text=data.get("ai_text", ""),
                     ai_tts_path=data.get("ai_tts_path", ""),
+                    commercial_text=data.get("commercial_text", ""),
+                    commercial_tts_path=data.get("commercial_tts_path", ""),
+                    commercial_sound_ids=data.get("commercial_sound_ids", []),
+                    commercial_voice=data.get("commercial_voice", ""),
+                    hijack_text=data.get("hijack_text", ""),
+                    hijack_tts_path=data.get("hijack_tts_path", ""),
+                    hijack_sound_ids=data.get("hijack_sound_ids", []),
+                    hijack_voice=data.get("hijack_voice", ""),
+                    recovery_text=data.get("recovery_text", ""),
+                    recovery_tts_path=data.get("recovery_tts_path", ""),
                     title=data.get("title", ""),
                     prev_title=data.get("prev_title", ""),
                     queue_index=data.get("queue_index", 0),
@@ -195,6 +252,16 @@ class DjPregenerator:
                         "dj_sound_ids": entry.dj_sound_ids,
                         "ai_text": entry.ai_text,
                         "ai_tts_path": entry.ai_tts_path,
+                        "commercial_text": entry.commercial_text,
+                        "commercial_tts_path": entry.commercial_tts_path,
+                        "commercial_sound_ids": entry.commercial_sound_ids,
+                        "commercial_voice": entry.commercial_voice,
+                        "hijack_text": entry.hijack_text,
+                        "hijack_tts_path": entry.hijack_tts_path,
+                        "hijack_sound_ids": entry.hijack_sound_ids,
+                        "hijack_voice": entry.hijack_voice,
+                        "recovery_text": entry.recovery_text,
+                        "recovery_tts_path": entry.recovery_tts_path,
                         "title": entry.title,
                         "prev_title": entry.prev_title,
                         "queue_index": entry.queue_index,
@@ -223,6 +290,63 @@ class DjPregenerator:
         entry = guild_cache.get(title_hash)
         if entry and is_entry_fresh(entry):
             return entry
+        return None
+
+    def lookup_commercial(
+        self,
+        guild_id: int,
+        title: str,
+        prev_title: str = "",
+    ) -> Optional[tuple]:
+        """Look up a pre-generated commercial for a song transition.
+
+        Returns (commercial_tts_path, commercial_text, commercial_sound_ids,
+                 commercial_voice) if found, otherwise None.
+        """
+        entry = self.lookup(guild_id, title, prev_title)
+        if entry and entry.commercial_tts_path and os.path.isfile(entry.commercial_tts_path):
+            return (
+                entry.commercial_tts_path,
+                entry.commercial_text,
+                entry.commercial_sound_ids,
+                entry.commercial_voice,
+            )
+        return None
+
+    def lookup_hijack(
+        self,
+        guild_id: int,
+        title: str,
+        prev_title: str = "",
+    ) -> Optional[tuple]:
+        """Look up a pre-generated Station Wars hijack for a song transition.
+
+        Returns (hijack_tts_path, hijack_text, hijack_sound_ids,
+                 hijack_voice) if found, otherwise None.
+        """
+        entry = self.lookup(guild_id, title, prev_title)
+        if entry and entry.hijack_tts_path and os.path.isfile(entry.hijack_tts_path):
+            return (
+                entry.hijack_tts_path,
+                entry.hijack_text,
+                entry.hijack_sound_ids,
+                entry.hijack_voice,
+            )
+        return None
+
+    def lookup_recovery(
+        self,
+        guild_id: int,
+        title: str,
+        prev_title: str = "",
+    ) -> Optional[tuple]:
+        """Look up a pre-generated DJ recovery line for after a hijack.
+
+        Returns (recovery_tts_path, recovery_text) if found, otherwise None.
+        """
+        entry = self.lookup(guild_id, title, prev_title)
+        if entry and entry.recovery_tts_path and os.path.isfile(entry.recovery_tts_path):
+            return (entry.recovery_tts_path, entry.recovery_text)
         return None
 
     def purge_guild(self, guild_id: int) -> int:
@@ -369,6 +493,45 @@ class DjPregenerator:
                             guild_id=guild_id,
                         )
 
+                        # Also load commercial/hijack/recovery from disk if they exist
+                        com_path = _commercial_pregen_path(guild_id, i, title_hash)
+                        if os.path.isfile(com_path):
+                            entry.commercial_tts_path = com_path
+                            # Try to load commercial metadata
+                            try:
+                                import json as _json2
+                                with open(_pregen_meta_path(guild_id, i, title_hash), "r") as _mf:
+                                    _meta = _json2.load(_mf)
+                                entry.commercial_text = _meta.get("commercial_text", "")
+                                entry.commercial_sound_ids = _meta.get("commercial_sound_ids", [])
+                                entry.commercial_voice = _meta.get("commercial_voice", "")
+                            except Exception:
+                                pass
+
+                        hj_path = _hijack_pregen_path(guild_id, i, title_hash)
+                        if os.path.isfile(hj_path):
+                            entry.hijack_tts_path = hj_path
+                            try:
+                                import json as _json3
+                                with open(_pregen_meta_path(guild_id, i, title_hash), "r") as _mf2:
+                                    _meta2 = _json3.load(_mf2)
+                                entry.hijack_text = _meta2.get("hijack_text", "")
+                                entry.hijack_sound_ids = _meta2.get("hijack_sound_ids", [])
+                                entry.hijack_voice = _meta2.get("hijack_voice", "")
+                            except Exception:
+                                pass
+
+                        rec_path = _recovery_pregen_path(guild_id, i, title_hash)
+                        if os.path.isfile(rec_path):
+                            entry.recovery_tts_path = rec_path
+                            try:
+                                import json as _json4
+                                with open(_pregen_meta_path(guild_id, i, title_hash), "r") as _mf3:
+                                    _meta3 = _json4.load(_mf3)
+                                entry.recovery_text = _meta3.get("recovery_text", "")
+                            except Exception:
+                                pass
+
                         if guild_id not in self._cache:
                             self._cache[guild_id] = {}
                         self._cache[guild_id][title_hash] = entry
@@ -490,6 +653,136 @@ class DjPregenerator:
                                 f"Pregen: AI side host skipped for #{i} '{title}': {ai_e}"
                             )
 
+                        # ── Pregenerate Commercial Break (if enabled & likely) ──
+                        # While a song plays, pre-generate a commercial ad
+                        # so there's zero gap between song end → commercial → DJ intro.
+                        # Each commercial gets a random ANNOUNCER voice from
+                        # COMMERCIAL_VOICES, different from the main DJ voice.
+                        try:
+                            from utils.commercials import (
+                                is_commercial_enabled as _com_enabled,
+                                should_play_commercial as _should_com,
+                                generate_commercial as _gen_com,
+                                get_commercial_voice as _get_com_voice,
+                                generate_hijack as _gen_hijack,
+                                get_hijack_voice as _get_hijack_voice,
+                                get_recovery_line as _get_recovery,
+                                should_play_hijack as _should_hijack,
+                            )
+
+                            if _com_enabled(guild_id):
+                                queue_size = len(upcoming) if upcoming else 0
+
+                                # ── Commercial pre-generation ──
+                                # Pre-gen a commercial even if it might not play —
+                                # the 0.2s TTS generation cost is worth eliminating
+                                # the 1-3s gap for the listener.
+                                com_path = _commercial_pregen_path(guild_id, i, title_hash)
+                                if not os.path.isfile(com_path):
+                                    com_text = await _gen_com(
+                                        station_name=getattr(config, "STATION_NAME", "MBot"),
+                                        song_title=title,
+                                        prev_title=prev_title,
+                                        queue_size=queue_size,
+                                        listener_count=0,
+                                    )
+                                    if com_text:
+                                        com_clean, com_sounds = extract_sound_tags(com_text)
+                                        com_voice = _get_com_voice(guild_id) or voice
+                                        com_tts = await generate_tts(
+                                            com_clean,
+                                            voice=com_voice,
+                                            source="Pregen-Commercial",
+                                        )
+                                        if com_tts:
+                                            try:
+                                                import shutil
+                                                shutil.copy2(com_tts, com_path)
+                                                from utils.dj import cleanup_tts_file
+                                                cleanup_tts_file(com_tts)
+                                            except Exception:
+                                                com_path = com_tts
+                                            entry.commercial_text = com_clean
+                                            entry.commercial_tts_path = com_path
+                                            entry.commercial_sound_ids = com_sounds
+                                            entry.commercial_voice = com_voice
+                                            logging.info(
+                                                f"Pregen: #{i} Commercial cached for "
+                                                f"'{title}' in guild {guild_id} "
+                                                f"(voice={com_voice})"
+                                            )
+
+                                # ── Hijack pre-generation ──
+                                # Pre-gen a Station Wars transmission so it's
+                                # ready if the 5% roll hits at play time.
+                                hj_path = _hijack_pregen_path(guild_id, i, title_hash)
+                                if not os.path.isfile(hj_path):
+                                    hj_text = await _gen_hijack(
+                                        station_name=getattr(config, "STATION_NAME", "MBot"),
+                                        dj_name=getattr(config, "DJ_NAME", "Nova"),
+                                    )
+                                    if hj_text:
+                                        hj_clean, hj_sounds = extract_sound_tags(hj_text)
+                                        hj_voice = _get_hijack_voice(guild_id) or voice
+                                        hj_tts = await generate_tts(
+                                            hj_clean,
+                                            voice=hj_voice,
+                                            source="Pregen-Hijack",
+                                        )
+                                        if hj_tts:
+                                            try:
+                                                import shutil
+                                                shutil.copy2(hj_tts, hj_path)
+                                                from utils.dj import cleanup_tts_file
+                                                cleanup_tts_file(hj_tts)
+                                            except Exception:
+                                                hj_path = hj_tts
+                                            entry.hijack_text = hj_clean
+                                            entry.hijack_tts_path = hj_path
+                                            entry.hijack_sound_ids = hj_sounds
+                                            entry.hijack_voice = hj_voice
+                                            logging.info(
+                                                f"Pregen: #{i} Station Wars hijack cached for "
+                                                f"'{title}' in guild {guild_id} "
+                                                f"(voice={hj_voice})"
+                                            )
+
+                                # ── Recovery line pre-generation ──
+                                # Pre-gen the DJ's comeback line after a hijack.
+                                # Uses the main DJ voice (not a commercial voice).
+                                rec_path = _recovery_pregen_path(guild_id, i, title_hash)
+                                if not os.path.isfile(rec_path):
+                                    rec_text = _get_recovery()
+                                    if rec_text:
+                                        rec_clean, _ = extract_sound_tags(rec_text)
+                                        rec_tts = await generate_tts(
+                                            rec_clean,
+                                            voice=voice,  # DJ's own voice
+                                            source="Pregen-Recovery",
+                                        )
+                                        if rec_tts:
+                                            try:
+                                                import shutil
+                                                shutil.copy2(rec_tts, rec_path)
+                                                from utils.dj import cleanup_tts_file
+                                                cleanup_tts_file(rec_tts)
+                                            except Exception:
+                                                rec_path = rec_tts
+                                            entry.recovery_text = rec_clean
+                                            entry.recovery_tts_path = rec_path
+                                            logging.info(
+                                                f"Pregen: #{i} Recovery line cached for "
+                                                f"'{title}' in guild {guild_id}"
+                                            )
+                        except ImportError:
+                            logging.debug(
+                                f"Pregen: Commercials module not available for #{i}"
+                            )
+                        except Exception as com_e:
+                            logging.debug(
+                                f"Pregen: Commercial/hijack pre-gen skipped for #{i}: {com_e}"
+                            )
+
                         # Store in memory cache
                         if guild_id not in self._cache:
                             self._cache[guild_id] = {}
@@ -503,6 +796,9 @@ class DjPregenerator:
                             f"in guild {guild_id} "
                             f"(sounds: {sound_ids})"
                             f"{' + AI host' if ai_text else ''}"
+                            f"{' + commercial' if entry.commercial_tts_path else ''}"
+                            f"{' + hijack' if entry.hijack_tts_path else ''}"
+                            f"{' + recovery' if entry.recovery_tts_path else ''}"
                         )
 
                     except Exception as e:

@@ -53,7 +53,7 @@ error()   { echo -e "${RED}[ERROR]${RESET} $*"; exit 1; }
 #   - Launch: xvfb-run + flatpak run --socket=x11 --socket=dbus
 #     --nosocket=wayland --share=network com.obsproject.Studio
 #   - WebSocket: accessible on localhost (Flatpak allows by default)
-#   - D-Bus: requires --socket=dbus for host session bus access
+#   - D-Bus: requires --socket=session-bus for host session bus access
 OBS_FLATPAK_INSTALLED=false
 if command -v flatpak &>/dev/null && flatpak list 2>/dev/null | grep -q "com.obsproject.Studio"; then
   OBS_FLATPAK_INSTALLED=true
@@ -789,20 +789,23 @@ USERINIEOF
       if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
         info "Starting Flatpak OBS Studio (headless via xvfb, browser source available)..."
         # ── Flatpak OBS headless launch flags ──────────────────────
-        # --socket=x11:    Allow access to xvfb's X11 display (OBS needs real OpenGL)
-        # --nosocket=wayland: Prevent Wayland detection (we're using Xvfb)
-        # --socket=dbus:   Allow access to host D-Bus session (prevents
-        #                   "Could not create dbus connection" error)
-        # --share=network: Allow browser source to reach localhost:8080
+        # --socket=x11:        Allow access to xvfb's X11 display (OBS needs real OpenGL)
+        # --nosocket=wayland:  Prevent Wayland detection (we're using Xvfb)
+        # --socket=session-bus: Allow access to host D-Bus session bus (prevents
+        #                       "Could not create dbus connection" error).
+        #                       NOTE: The valid Flatpak socket name is "session-bus",
+        #                       NOT "dbus" — "dbus" will fail with:
+        #                       "error: Unknown socket type dbus"
+        # --share=network:     Allow browser source to reach localhost:8080
         #
         # NOTE: --disable-shutdown-check does NOT exist in OBS 32.
         # Crash dialog is prevented by deleting .sentinel files before launch
         # (see cleanup above). --safe-mode DISABLES WebSocket, so never use it.
         #
-        # DBUS_SESSION_BUS_ADDRESS is exported above from our dbus-daemon — the
-        # --socket=dbus flag lets the Flatpak sandbox inherit it.
+        # DBUS_SESSION_BUS_ADDRESS is exported above from our dbus-launch — the
+        # --socket=session-bus flag lets the Flatpak sandbox inherit it.
         xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
-          --socket=dbus --share=network \
+          --socket=session-bus --share=network \
           com.obsproject.Studio \
           --minimize-to-tray \
           --collection "Radio DJ" --profile "RadioDJ" &

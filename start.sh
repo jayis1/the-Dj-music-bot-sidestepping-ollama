@@ -366,6 +366,35 @@ EOF
     sleep 1
   fi
 
+  # ── Nuke corrupted configs from previous OBS versions ──────────
+  # OBS 32 migrates configs from the apt OBS dir (~/.config/obs-studio/).
+  # If the old apt configs still have OBS 29 encoder names (aac) and
+  # transitions (Cut/Fade), OBS 32 fails with errors and crashes.
+  # Fix: also rewrite the apt OBS configs to be OBS 32 compatible.
+  APT_OBS_BASE="$HOME/.config/obs-studio"
+  for OBS_BASE in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do
+    # Fix aac → ffmpeg_aac in any basic.ini (both apt and Flatpak dirs)
+    for inifile in "$OBS_BASE/basic/profiles/RadioDJ/basic.ini" \
+                   "$OBS_BASE/basic/profiles/Untitled/basic.ini" \
+                   "$OBS_BASE/basic/profiles/Unnamed/basic.ini"; do
+      if [ -f "$inifile" ]; then
+        sed -i 's/=aac/=ffmpeg_aac/g' "$inifile" 2>/dev/null || true
+        # Also fix ApplyServiceSettings
+        if grep -q "ApplyServiceSettings=true" "$inifile"; then
+          sed -i 's/ApplyServiceSettings=true/ApplyServiceSettings=false/' "$inifile"
+        fi
+      fi
+    done
+    # Delete any OBS-created scene collection backups (corrupted)
+    rm -f "$OBS_BASE/basic/scenes/Radio DJ.json.bak" 2>/dev/null
+    rm -f "$OBS_BASE/basic/scenes/Radio DJ.json.bak.1" 2>/dev/null
+    rm -f "$OBS_BASE/basic/scenes/Radio DJ.json.bak.2" 2>/dev/null
+    rm -f "$OBS_BASE/basic/scenes/Untitled.json" 2>/dev/null
+    rm -f "$OBS_BASE/basic/scenes/Untitled.json.bak" 2>/dev/null
+    # Delete global.json (OBS 32 migration cache — stores old encoder IDs)
+    rm -f "$OBS_BASE/global.json" 2>/dev/null
+  done
+
   OBS_SCENES_DIR="$OBS_CONFIG_BASE/basic/scenes"
   OBS_PROFILES_DIR="$OBS_CONFIG_BASE/basic/profiles"
   mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
@@ -375,6 +404,9 @@ EOF
   # settings (ar=48000 ac=2, old scene layout, etc).
   rm -f "$OBS_SCENES_DIR/Radio DJ.json.bak" "$OBS_SCENES_DIR/Radio DJ.json.bak.1" 2>/dev/null
   rm -f "$OBS_SCENES_DIR/Untitled.json" "$OBS_SCENES_DIR/Untitled.json.bak" 2>/dev/null
+  # OBS 32 may have saved a backup of the broken OBS 29 scene collection
+  # which it couldn't load. Remove it so it doesn't fall back to it.
+  rm -f "$OBS_SCENES_DIR/Radio DJ.json.bak.1" "$OBS_SCENES_DIR/Radio DJ.json.bak.2" 2>/dev/null
 
   # Fix OBS's user.ini to point to "Radio DJ" scene collection.
   # OBS stores the active collection name in [Basic] and if it says
@@ -485,6 +517,44 @@ PYEOF
     fi
     success "Installed 'Radio DJ' scene collection (1 scene + overlay sources + audio)"
   fi
+
+  # ── ALSO copy scene collection + profile to apt OBS dir ──────────
+  # When Flatpak OBS starts for the first time, it MIGRATES configs from
+  # the apt OBS dir (~/.config/obs-studio/). If the apt dir has stale
+  # OBS 29 configs (aac encoder, Cut/Fade transitions), OBS 32 crashes.
+  # Fix: ensure BOTH directories have clean OBS 32-compatible configs.
+  if [ "$OBS_FLATPAK_INSTALLED" = true ] && [ "$OBS_CONFIG_BASE" != "$APT_OBS_BASE" ]; then
+    APT_SCENES_DIR="$APT_OBS_BASE/basic/scenes"
+    APT_PROFILES_DIR="$APT_OBS_BASE/basic/profiles"
+    mkdir -p "$APT_SCENES_DIR" "$APT_PROFILES_DIR/RadioDJ" 2>/dev/null || true
+
+    if [ -f "$OBS_SCENES_DIR/Radio DJ.json" ]; then
+      cp "$OBS_SCENES_DIR/Radio DJ.json" "$APT_SCENES_DIR/Radio DJ.json"
+    fi
+    if [ -f "$OBS_PROFILES_DIR/RadioDJ/basic.ini" ]; then
+      cp "$OBS_PROFILES_DIR/RadioDJ/basic.ini" "$APT_PROFILES_DIR/RadioDJ/basic.ini"
+    fi
+    if [ -f "$OBS_PROFILES_DIR/RadioDJ/streamEncoder.json" ]; then
+      cp "$OBS_PROFILES_DIR/RadioDJ/streamEncoder.json" "$APT_PROFILES_DIR/RadioDJ/streamEncoder.json"
+    fi
+    if [ -f "$OBS_PROFILES_DIR/RadioDJ/service.json" ]; then
+      cp "$OBS_PROFILES_DIR/RadioDJ/service.json" "$APT_PROFILES_DIR/RadioDJ/service.json"
+    fi
+    # Fix aac in the apt copy too
+    if [ -f "$APT_PROFILES_DIR/RadioDJ/basic.ini" ]; then
+      sed -i 's/=aac/=ffmpeg_aac/g' "$APT_PROFILES_DIR/RadioDJ/basic.ini" 2>/dev/null || true
+    fi
+    # Fix apt user.ini too
+    APT_USER_INI="$APT_OBS_BASE/user.ini"
+    if [ -f "$APT_USER_INI" ]; then
+      if grep -q "^SceneCollection=" "$APT_USER_INI"; then
+        sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$APT_USER_INI"
+        sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$APT_USER_INI"
+      fi
+    fi
+    success "Synced configs to apt OBS dir (prevents migration corruption)"
+  fi
+
   if [ -f "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" ]; then
     cp "$BOT_DIR/obs-studio/config/obs-studio/basic/profiles/RadioDJ/basic.ini" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
     # CRITICAL: Ensure ApplyServiceSettings=false in the copied profile.
@@ -494,6 +564,10 @@ PYEOF
     if grep -q "^ApplyServiceSettings=" "$OBS_PROFILES_DIR/RadioDJ/basic.ini"; then
       sed -i 's/^ApplyServiceSettings=.*/ApplyServiceSettings=false/' "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
     fi
+    # OBS 32+ renamed the AAC encoder from "aac" to "ffmpeg_aac".
+    # If the copied basic.ini still has the old name, fix it.
+    # Without this, OBS 32+ errors: "Encoder ID 'aac' not found"
+    sed -i 's/=aac/=ffmpeg_aac/g' "$OBS_PROFILES_DIR/RadioDJ/basic.ini"
     success "Installed 'RadioDJ' OBS profile"
   fi
 

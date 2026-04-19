@@ -419,8 +419,13 @@ class YouTubeLiveStreamer:
             # Try browser overlay first (includes waveform visualizer,
             # album art, SFX animations). Falls back to native text overlay
             # if browser_source fails (e.g. Debian 12 apt OBS without obs-browser).
-            overlay_mode = getattr(config, "OBS_OVERLAY_MODE", "auto").lower()
-            overlay_url = getattr(config, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+            try:
+                import config as _cfg
+                overlay_mode = getattr(_cfg, "OBS_OVERLAY_MODE", "auto").lower()
+                overlay_url = getattr(_cfg, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+            except ImportError:
+                overlay_mode = "auto"
+                overlay_url = "http://localhost:8080/overlay"
             browser_overlay_created = False
 
             if overlay_mode in ("browser", "auto"):

@@ -2435,6 +2435,22 @@ def api_overlay_state():
     # Build thumbnail path — download to /tmp for the overlay
     thumbnail = getattr(current, "thumbnail", None) if current else None
 
+    # ── Audio Levels for Visualizer ────────────────────────────────────
+    # Read real-time audio levels from the PCMBroadcaster for the overlay's
+    # waveform visualizer. Falls back to zeros if broadcaster not available.
+    audio_level = 0.0
+    audio_level_peak = 0.0
+    rms_history = [0.0] * 64
+    try:
+        from utils.broadcaster import get_broadcaster
+        broadcaster = get_broadcaster()
+        if broadcaster:
+            audio_level = broadcaster.get_audio_level()
+            audio_level_peak = broadcaster.get_audio_level_peak()
+            rms_history = broadcaster.get_rms_history()
+    except Exception:
+        pass  # Broadcaster not registered yet — zeros are fine
+
     return jsonify(
         {
             "playing": is_playing or is_paused,
@@ -2456,6 +2472,10 @@ def api_overlay_state():
             "yt_live_title": getattr(current, "title", None)
             if (music._yt_stream_active and current)
             else None,
+            # Real-time audio levels for the waveform visualizer
+            "audio_level": round(audio_level, 4),
+            "audio_level_peak": round(audio_level_peak, 4),
+            "rms_history": [round(v, 4) for v in rms_history],
         }
     )
 
@@ -3450,13 +3470,35 @@ def api_obs_streaming_configure_and_start():
         return jsonify({"ok": False, "error": f"Failed to configure OBS stream settings: {result.get('error', 'unknown')}"})
 
     # Step 3: Ensure overlay source exists in the "📺 Overlay Only" scene
-    # Use native overlay (color+text sources) which works on all platforms
-    # including Debian 12 where obs-browser plugin is not available.
+    # Try browser overlay first (includes waveform visualizer, album art,
+    # SFX animations — needs obs-browser plugin). Fall back to native
+    # text overlay if browser_source fails (e.g. Debian 12 apt OBS).
     overlay_scene = getattr(config, "OBS_SCENE_OVERLAY", "📺 Overlay Only")
+    overlay_mode = getattr(config, "OBS_OVERLAY_MODE", "auto").lower()
+    overlay_url = getattr(config, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
 
-    bridge.create_native_overlay(
-        scene_name=overlay_scene,
-    )
+    browser_overlay_created = False
+    if overlay_mode in ("browser", "auto"):
+        try:
+            result = bridge.create_browser_overlay(
+                scene_name=overlay_scene,
+                url=overlay_url,
+            )
+            if result and not result.get("error"):
+                browser_overlay_created = True
+                log.info("OBS Mission Control: Browser overlay created (full overlay + visualizer)")
+        except Exception as e:
+            if overlay_mode == "browser":
+                log.warning(f"OBS Mission Control: Browser overlay failed: {e}")
+            else:
+                log.debug(f"OBS Mission Control: Browser overlay not available ({e}), falling back to native")
+
+    if not browser_overlay_created:
+        bridge.create_native_overlay(
+            scene_name=overlay_scene,
+        )
+        if overlay_mode == "browser":
+            log.warning("OBS Mission Control: Browser overlay requested but failed — using native fallback")
 
     # Step 4: Ensure FFmpeg audio source exists for bot audio (UDP PCM on port 12345)
     bridge.create_audio_source(

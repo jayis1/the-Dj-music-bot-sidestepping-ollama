@@ -816,6 +816,94 @@ class OBSBridge:
 
         return self._safe_call(_create)
 
+    def create_browser_overlay(self, scene_name: str = "", url: str = "") -> dict:
+        """Create an OBS browser source overlay pointing to the Mission Control overlay page.
+
+        This is the preferred overlay method when obs-browser is available
+        (Flatpak OBS, Ubuntu PPA, Windows, macOS). It renders the full
+        Mission Control overlay.html — station name, now-playing, DJ text,
+        album art, SFX animations, AND the real-time audio waveform visualizer.
+
+        The overlay page polls /api/overlay every ~1s and uses
+        requestAnimationFrame for smooth visualizer bars driven by real
+        PCMBroadcaster RMS data. This gives YouTube's encoder consistent
+        pixel variation (good for stream health) without needing a separate
+        visualizer rendering pipeline.
+
+        Falls back gracefully: if browser_source creation fails (e.g. on
+        Debian 12 apt OBS which lacks obs-browser), the caller should try
+        create_native_overlay() instead.
+
+        IMPORTANT: When using browser overlay, do NOT also create native text
+        sources — the browser source renders everything. The only other
+        sources needed on the scene are:
+          - UDP audio source (ffmpeg_source)
+          - GIF overlays (ffmpeg_source, optional)
+
+        Args:
+            scene_name: Scene to add the source to (empty = current scene).
+            url: URL for the overlay page. Defaults to
+                 http://localhost:8080/overlay (Mission Control).
+
+        Returns:
+            OBS WebSocket response dict, or {"error": ...} on failure.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        overlay_url = url or "http://localhost:8080/overlay"
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        # CSS ensures transparent background so OBS composites correctly
+        overlay_css = (
+            "body { background-color: transparent !important; "
+            "margin: 0px; padding: 0px; overflow: hidden; }"
+        )
+
+        def _create(c, _sn="Mission Control Overlay", _url=overlay_url,
+                     _scene=scene_name, _css=overlay_css):
+            # Check if source already exists — idempotent
+            try:
+                existing = c.get_input_settings(name=_sn)
+                if existing:
+                    log.debug(f"OBS Bridge: Browser overlay '{_sn}' already exists, skipping creation")
+                    return existing
+            except Exception:
+                pass  # Source doesn't exist — proceed to create it
+
+            try:
+                result = c.create_input(
+                    sceneName=_scene,
+                    inputKind="browser_source",
+                    inputName=_sn,
+                    inputSettings={
+                        "url": _url,
+                        "width": 1280,
+                        "height": 720,
+                        "css": _css,
+                        "reroute_audio": False,
+                        # shutdown=False keeps the browser process alive even
+                        # when the source is hidden — prevents reload delays
+                        "shutdown": False,
+                    },
+                    sceneItemEnabled=True,
+                )
+                log.info(f"OBS Bridge: Browser overlay created → {_url}")
+                return result
+            except Exception as e:
+                err_str = str(e)
+                if "605" in err_str:
+                    log.warning(
+                        "OBS Bridge: browser_source not available (error 605). "
+                        "Install obs-browser (Flatpak OBS or Ubuntu PPA) or use "
+                        "OBS_OVERLAY_MODE=native."
+                    )
+                raise  # Re-raise so caller can catch and fall back
+
+        return self._safe_call(_create)
+
     def create_native_overlay(self, scene_name: str = "") -> dict:
         """Create a native OBS overlay using color + text sources.
 

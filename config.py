@@ -261,6 +261,25 @@ OBS_OVERLAY_URL = os.environ.get(
     "OBS_OVERLAY_URL", "http://localhost:8080/overlay"
 )
 
+# OBS Overlay Mode — how the overlay is rendered in OBS:
+#   "browser" — Use a browser_source pointing to OBS_OVERLAY_URL.
+#               This renders the full Mission Control overlay.html including
+#               the real-time audio waveform visualizer, album art, SFX
+#               animations, DJ text, and ticker. Best for stream health
+#               (consistent pixel variation helps YouTube's encoder).
+#               REQUIRES obs-browser plugin (included in Flatpak OBS, Ubuntu PPA,
+#               Windows, macOS — NOT in Debian 12 apt OBS).
+#
+#   "native"  — Use native OBS color + text sources reading from /tmp/radio_*.txt
+#               files. Works on ALL platforms (no obs-browser needed), but
+#               does NOT include the waveform visualizer, album art, or SFX
+#               animations. Pure text overlay.
+#
+#   "auto"    — Try browser_source first; if it fails (error 605 — obs-browser
+#               not installed), fall back to native overlay. (DEFAULT)
+#
+OBS_OVERLAY_MODE = os.environ.get("OBS_OVERLAY_MODE", "auto").lower()
+
 # ── yt-dlp Cookie Authentication ──────────────────────────────────────────
 # YouTube increasingly requires authentication to avoid "Sign in to confirm
 # you're not a bot" errors. There are two ways to provide cookies:
@@ -289,14 +308,26 @@ YTDDL_COOKIEFILE = os.environ.get("YTDDL_COOKIEFILE", "youtube_cookie.txt")
 # Control OBS Studio from Mission Control via obs-websocket 5.x.
 # Requires OBS Studio with obs-websocket plugin (bundled since OBS 28).
 #
+# OBS can be installed via apt (Debian) or Flatpak (recommended for
+# browser source support). Set OBS_USE_FLATPAK=true if using Flatpak.
+# start.sh and bot.py use this to choose the correct launch command and
+# config directory paths.
+#
 # Setup:
-#   1. Install OBS Studio: https://obsproject.com
+#   1. Install OBS Studio (Flatpak recommended): https://obsproject.com
 #   2. In OBS: Tools → WebSocket Server Settings → Enable
 #   3. Set a password in OBS WebSocket settings
 #   4. Set OBS_WS_PASSWORD in .env (and OBS_WS_HOST/OBS_WS_PORT if not localhost)
 #
 # If OBS_WS_PASSWORD is not set, the OBS page in Mission Control
 # shows a "not configured" message instead of erroring.
+
+# Set to "true" if OBS is installed via Flatpak. This changes:
+#   - Launch command: `flatpak run com.obsproject.Studio` instead of `obs`
+#   - Config dir: ~/.var/app/com.obsproject.Studio/config/obs-studio/
+#   - Headless: Uses QT_QPA_PLATFORM=offscreen (xvfb not compatible with Flatpak)
+# Default: "auto" — start.sh will auto-detect by checking if flatpak OBS is installed
+OBS_USE_FLATPAK = os.environ.get("OBS_USE_FLATPAK", "auto").lower()
 
 OBS_WS_ENABLED = os.environ.get("OBS_WS_ENABLED", "true").lower() == "true"
 OBS_WS_HOST = os.environ.get("OBS_WS_HOST", "localhost")

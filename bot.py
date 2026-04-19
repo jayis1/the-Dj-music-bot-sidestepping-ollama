@@ -596,17 +596,43 @@ def run_web_server():
             # so OBS is ready to stream when the user clicks Start Streaming.
             stream_key = getattr(config, "YOUTUBE_STREAM_KEY", "")
             rtmp_server = getattr(config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2")
+
+            # Import get_bridge ONCE at this scope so it's available for all
+            # the OBS setup below — not just inside the if stream_key block.
+            from utils.obs_bridge import get_bridge
+
+            # ── Write OBS config files BEFORE OBS needs them ─────────
+            # Detect OBS install method to find correct profile directory.
+            # Flatpak OBS: ~/.var/app/com.obsproject.Studio/config/obs-studio/
+            # apt OBS:      ~/.config/obs-studio/
+            obs_use_flatpak = getattr(config, "OBS_USE_FLATPAK", "auto").lower()
+            if obs_use_flatpak == "auto":
+                import shutil
+                if shutil.which("flatpak"):
+                    try:
+                        result = __import__("subprocess").run(
+                            ["flatpak", "list"], capture_output=True, text=True, timeout=5
+                        )
+                        if "com.obsproject.Studio" in result.stdout:
+                            obs_use_flatpak = "true"
+                    except Exception:
+                        pass
+            if obs_use_flatpak == "true":
+                profile_dir = os.path.expanduser(
+                    "~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/RadioDJ"
+                )
+            else:
+                profile_dir = os.path.expanduser(
+                    "~/.config/obs-studio/basic/profiles/RadioDJ"
+                )
+
             if stream_key:
-                from utils.obs_bridge import get_bridge
                 bridge = get_bridge()
                 if bridge and bridge.enabled:
                     # Write service.json to OBS profile directory FIRST.
                     # OBS reads this file when initializing the output module.
                     # Without it, OBS falls back to RTMPS with no key → TLS errors.
                     import json
-                    profile_dir = os.path.expanduser(
-                        "~/.config/obs-studio/basic/profiles/RadioDJ"
-                    )
                     try:
                         os.makedirs(profile_dir, exist_ok=True)
                         service_data = {

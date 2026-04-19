@@ -22,6 +22,28 @@ VENV_PYTHON="$VENV_DIR/bin/python"
 VENV_PIP="$VENV_DIR/bin/pip"
 OBS_WS_CONFIG_DIR="$HOME/.config/obs-studio/plugin_config/obs-websocket"
 
+# ── Flatpak OBS detection ──────────────────────────────────────────
+# Flatpak OBS includes the browser_source plugin (obs-browser) which
+# enables the full Mission Control overlay with real-time waveform
+# visualizer. apt OBS on Debian 12 does NOT include obs-browser.
+#
+# When Flatpak OBS is detected:
+#   - Config dir: ~/.var/app/com.obsproject.Studio/config/obs-studio/
+#   - Launch: flatpak run com.obsproject.Studio (no xvfb — Flatpak
+#     runs in its own sandbox with QT_QPA_PLATFORM=offscreen)
+#   - WebSocket: accessible on localhost (Flatpak allows by default)
+OBS_FLATPAK_INSTALLED=false
+if command -v flatpak &>/dev/null && flatpak list 2>/dev/null | grep -q "com.obsproject.Studio"; then
+  OBS_FLATPAK_INSTALLED=true
+fi
+# Resolve OBS config directory based on install method
+if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
+  OBS_CONFIG_BASE="$HOME/.var/app/com.obsproject.Studio/config/obs-studio"
+  info "Flatpak OBS detected — using config dir: $OBS_CONFIG_BASE"
+else
+  OBS_CONFIG_BASE="$HOME/.config/obs-studio"
+fi
+
 BOLD="\e[1m"
 GREEN="\e[32m"
 CYAN="\e[36m"
@@ -185,19 +207,46 @@ setup_obs() {
   OBS_INSTALLED=false
   if command -v obs &>/dev/null; then
     OBS_INSTALLED=true
-    success "OBS Studio already installed"
+    success "OBS Studio already installed (apt)"
+  fi
+  # Also check for Flatpak OBS (preferred — includes browser_source)
+  if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
+    OBS_INSTALLED=true
+    success "OBS Studio already installed (Flatpak — browser source available!)"
   fi
 
   if [ "$OBS_INSTALLED" = false ]; then
-    info "Installing OBS Studio (v29.x with WebSocket 5.x)..."
-    $SUDO apt-get update -qq 2>/dev/null
-    if $SUDO apt-get install -y -qq obs-studio 2>/dev/null; then
-      OBS_INSTALLED=true
-      success "OBS Studio installed"
+    # Try Flatpak OBS first (includes browser_source plugin)
+    if command -v flatpak &>/dev/null; then
+      info "Installing OBS Studio via Flatpak (includes browser source for overlay visualizer)..."
+      $SUDO flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo 2>/dev/null || true
+      if $SUDO flatpak install -y flathub com.obsproject.Studio 2>/dev/null; then
+        OBS_INSTALLED=true
+        OBS_FLATPAK_INSTALLED=true
+        OBS_CONFIG_BASE="$HOME/.var/app/com.obsproject.Studio/config/obs-studio"
+        success "OBS Studio installed via Flatpak (browser source available!)"
+      else
+        warn "Flatpak OBS install failed, trying apt..."
+      fi
     else
-      warn "Could not install OBS Studio automatically."
-      warn "Install manually:  sudo apt update && sudo apt install obs-studio"
-      warn "OBS is optional — the bot works without it."
+      info "Flatpak not available. Install it first: sudo apt install flatpak"
+    fi
+
+    # Fallback: install via apt (no browser source)
+    if [ "$OBS_INSTALLED" = false ]; then
+      info "Installing OBS Studio via apt (no browser source)..."
+      $SUDO apt-get update -qq 2>/dev/null
+      if $SUDO apt-get install -y -qq obs-studio 2>/dev/null; then
+        OBS_INSTALLED=true
+        OBS_CONFIG_BASE="$HOME/.config/obs-studio"
+        success "OBS Studio installed via apt (no browser source — use native overlay)"
+        warn "For browser source overlay + visualizer, install Flatpak OBS instead:"
+        warn "  sudo apt install flatpak && sudo flatpak remote-add --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo && flatpak install flathub com.obsproject.Studio"
+      else
+        warn "Could not install OBS Studio automatically."
+        warn "Install manually:  sudo apt update && sudo apt install obs-studio"
+        warn "OBS is optional — the bot works without it."
+      fi
     fi
   fi
 
@@ -256,8 +305,14 @@ setup_obs() {
   # The WebSocket config is read by OBS on startup.
   # Two config locations needed for different OBS versions:
   info "Configuring obs-websocket 5.x..."
-  mkdir -p "$OBS_WS_CONFIG_DIR"
-  cat > "$OBS_WS_CONFIG_DIR/config.json" << EOF
+
+  # Write WebSocket config to BOTH possible locations (apt + Flatpak)
+  # so it works regardless of which OBS is being used.
+  for WS_DIR in \
+    "$HOME/.config/obs-studio/plugin_config/obs-websocket" \
+    "$HOME/.var/app/com.obsproject.Studio/config/obs-studio/plugin_config/obs-websocket"; do
+    mkdir -p "$WS_DIR" 2>/dev/null || true
+    cat > "$WS_DIR/config.json" << EOF
 {
     "server_enabled": true,
     "server_port": 4455,
@@ -266,12 +321,16 @@ setup_obs() {
     "alerts_enabled": false
 }
 EOF
+  done
 
   # Also write global.ini (some OBS versions read this instead)
-  OBS_GLOBAL_CONFIG="$HOME/.config/obs-studio/global.ini"
-  mkdir -p "$(dirname "$OBS_GLOBAL_CONFIG")"
-  if [ ! -f "$OBS_GLOBAL_CONFIG" ] || ! grep -q "OBSWebSocket" "$OBS_GLOBAL_CONFIG"; then
-    cat > "$OBS_GLOBAL_CONFIG" <<EOF
+  # Write to both apt and Flatpak config locations
+  for OBS_GLOBAL_CONFIG in \
+    "$HOME/.config/obs-studio/global.ini" \
+    "$HOME/.var/app/com.obsproject.Studio/config/obs-studio/global.ini"; do
+    mkdir -p "$(dirname "$OBS_GLOBAL_CONFIG")" 2>/dev/null || true
+    if [ ! -f "$OBS_GLOBAL_CONFIG" ] || ! grep -q "OBSWebSocket" "$OBS_GLOBAL_CONFIG"; then
+      cat > "$OBS_GLOBAL_CONFIG" <<EOF
 [General]
 Pre197TagsInUse=true
 [OBSWebSocket]
@@ -280,30 +339,35 @@ ServerPort=4455
 AuthRequired=true
 ServerPassword=${OBS_WS_PASSWORD}
 EOF
-    success "OBS global.ini configured"
-  else
-    # Update password in existing config
-    if grep -q "ServerPassword=" "$OBS_GLOBAL_CONFIG"; then
-      sed -i "s|^ServerPassword=.*|ServerPassword=${OBS_WS_PASSWORD}|" "$OBS_GLOBAL_CONFIG"
+    else
+      # Update password in existing config
+      if grep -q "ServerPassword=" "$OBS_GLOBAL_CONFIG"; then
+        sed -i "s|^ServerPassword=.*|ServerPassword=${OBS_WS_PASSWORD}|" "$OBS_GLOBAL_CONFIG"
+      fi
     fi
-  fi
+  done
   success "obs-websocket configured (port 4455, password set)"
 
   # ── Copy default scene collection ──────────────────────
   # CRITICAL: If OBS is running, kill it first — otherwise it will
   # overwrite our file on exit with its in-memory (stale) version.
-  if pgrep -x obs &>/dev/null; then
+  # Check both apt OBS and Flatpak OBS processes.
+  if pgrep -x obs &>/dev/null || pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
     info "Stopping OBS to update scene collection..."
     pkill -x obs 2>/dev/null || true
+    pkill -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
     sleep 2
     if pgrep -x obs &>/dev/null; then
       pkill -9 -x obs 2>/dev/null || true
-      sleep 1
     fi
+    if pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
+      pkill -9 -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
+    fi
+    sleep 1
   fi
 
-  OBS_SCENES_DIR="$HOME/.config/obs-studio/basic/scenes"
-  OBS_PROFILES_DIR="$HOME/.config/obs-studio/basic/profiles"
+  OBS_SCENES_DIR="$OBS_CONFIG_BASE/basic/scenes"
+  OBS_PROFILES_DIR="$OBS_CONFIG_BASE/basic/profiles"
   mkdir -p "$OBS_SCENES_DIR" "$OBS_PROFILES_DIR/RadioDJ"
 
   # Always force-copy the scene collection and clean up stale files.
@@ -316,7 +380,7 @@ EOF
   # OBS stores the active collection name in [Basic] and if it says
   # "Untitled", OBS loads the wrong (blank) scene collection even
   # when --collection "Radio DJ" is passed on the command line.
-  OBS_USER_INI="$HOME/.config/obs-studio/user.ini"
+  OBS_USER_INI="$OBS_CONFIG_BASE/user.ini"
   mkdir -p "$(dirname "$OBS_USER_INI")"
   if [ ! -f "$OBS_USER_INI" ]; then
     # First run — create user.ini from scratch with correct settings
@@ -480,7 +544,9 @@ SVCEOF
   # ── Start headless OBS via xvfb-run ─────────────────────
   if [ "$OBS_INSTALLED" = true ]; then
     if pgrep -x obs &>/dev/null; then
-      success "OBS Studio already running (PID: $(pgrep -x obs | head -1))"
+      success "OBS Studio already running (apt, PID: $(pgrep -x obs | head -1))"
+    elif pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
+      success "OBS Studio already running (Flatpak, PID: $(pgrep -f 'flatpak run com.obsproject.Studio' | head -1))"
     else
       info "Starting headless OBS Studio..."
 
@@ -503,7 +569,7 @@ SVCEOF
        # OBS reads user.ini on startup and if SceneCollection=Untitled,
        # it creates a blank scene and ignores --collection "Radio DJ".
        # This is our last chance to ensure it's correct.
-       OBS_USER_INI_PRE="$HOME/.config/obs-studio/user.ini"
+       OBS_USER_INI_PRE="$OBS_CONFIG_BASE/user.ini"
        if [ -f "$OBS_USER_INI_PRE" ]; then
          CURRENT_SC=$(grep "^SceneCollection=" "$OBS_USER_INI_PRE" 2>/dev/null | head -1 | cut -d= -f2)
          if [ "$CURRENT_SC" != "Radio DJ" ]; then
@@ -543,13 +609,26 @@ SVCEOF
       # Delete any Untitled scene backups that OBS may have auto-created
       # from a previous run — OBS falls back to these if it can't find
       # the referenced collection.
-      rm -f "$HOME/.config/obs-studio/basic/scenes/Untitled.json" 2>/dev/null
-      rm -f "$HOME/.config/obs-studio/basic/scenes/Untitled.json.bak" 2>/dev/null
-      rm -f "$HOME/.config/obs-studio/basic/scenes/Untitled.json.bak.1" 2>/dev/null
+      rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json" 2>/dev/null
+      rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json.bak" 2>/dev/null
+      rm -f "$OBS_CONFIG_BASE/basic/scenes/Untitled.json.bak.1" 2>/dev/null
 
-      # Start OBS headless via xvfb-run (handles Xvfb lifecycle automatically)
-      xvfb-run -a obs --minimize-to-tray --disable-shutdown-check --collection "Radio DJ" --profile "RadioDJ" &
-      OBS_PID=$!
+      # Start OBS headless
+      # Flatpak OBS: QT_QPA_PLATFORM=offscreen (xvfb doesn't work with Flatpak sandbox)
+      # apt OBS:      xvfb-run (needs Xvfb for headless rendering)
+      if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
+        info "Starting Flatpak OBS Studio (headless, browser source available)..."
+        QT_QPA_PLATFORM=offscreen \
+        flatpak run com.obsproject.Studio \
+          --minimize-to-tray --disable-shutdown-check \
+          --collection "Radio DJ" --profile "RadioDJ" &
+        OBS_PID=$!
+      else
+        info "Starting headless OBS Studio (apt, no browser source)..."
+        xvfb-run -a obs --minimize-to-tray --disable-shutdown-check \
+          --collection "Radio DJ" --profile "RadioDJ" &
+        OBS_PID=$!
+      fi
       sleep 3
 
       if kill -0 $OBS_PID 2>/dev/null; then
@@ -605,7 +684,8 @@ stop_bot() {
     warn "Bot is not currently running."
   fi
 
-  # Stop headless OBS (if we started it)
+  # Stop headless OBS (if we started it) — check both apt and Flatpak
+  OBS_STOPPED=false
   if pgrep -x obs &>/dev/null; then
     info "Stopping headless OBS..."
     pkill -x obs 2>/dev/null || true
@@ -613,6 +693,19 @@ stop_bot() {
     if pgrep -x obs &>/dev/null; then
       pkill -9 -x obs 2>/dev/null || true
     fi
+    OBS_STOPPED=true
+  fi
+  # Flatpak OBS runs as a separate process name
+  if pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
+    info "Stopping Flatpak OBS..."
+    pkill -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
+    sleep 1
+    if pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
+      pkill -9 -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
+    fi
+    OBS_STOPPED=true
+  fi
+  if [ "$OBS_STOPPED" = true ]; then
     success "OBS stopped."
   fi
 }

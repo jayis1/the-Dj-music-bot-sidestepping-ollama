@@ -415,17 +415,45 @@ class YouTubeLiveStreamer:
                 except Exception as e:
                     log.debug(f"YouTube Live/OBS: Scene check/create error: {e}")
 
-            # ── Step 4: Create overlay sources (native color+text) ──────
-            # This is now batched internally — one connection for all sources!
-            log.info("YouTube Live/OBS: Creating native overlay (color+text sources)")
-            result = self._obs_bridge.create_native_overlay(
-                scene_name=overlay_scene,
-            )
-            if result.get("errors"):
-                log.warning(
-                    f"YouTube Live/OBS: Native overlay had errors: {result['errors']}. "
-                    "Overlay may be incomplete."
+            # ── Step 4: Create overlay sources ──────────────────────────
+            # Try browser overlay first (includes waveform visualizer,
+            # album art, SFX animations). Falls back to native text overlay
+            # if browser_source fails (e.g. Debian 12 apt OBS without obs-browser).
+            overlay_mode = getattr(config, "OBS_OVERLAY_MODE", "auto").lower()
+            overlay_url = getattr(config, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+            browser_overlay_created = False
+
+            if overlay_mode in ("browser", "auto"):
+                try:
+                    result = self._obs_bridge.create_browser_overlay(
+                        scene_name=overlay_scene,
+                        url=overlay_url,
+                    )
+                    if result and not result.get("error"):
+                        browser_overlay_created = True
+                        log.info("YouTube Live/OBS: Browser overlay created (full overlay + visualizer)")
+                except Exception as e:
+                    if overlay_mode == "browser":
+                        log.warning(
+                            f"YouTube Live/OBS: Browser overlay failed: {e}. "
+                            "Install obs-browser (Flatpak OBS) or set OBS_OVERLAY_MODE=native."
+                        )
+                    else:
+                        log.debug(
+                            f"YouTube Live/OBS: Browser overlay not available ({e}), "
+                            "falling back to native overlay"
+                        )
+
+            if not browser_overlay_created:
+                log.info("YouTube Live/OBS: Creating native overlay (color+text sources)")
+                result = self._obs_bridge.create_native_overlay(
+                    scene_name=overlay_scene,
                 )
+                if result.get("errors"):
+                    log.warning(
+                        f"YouTube Live/OBS: Native overlay had errors: {result['errors']}. "
+                        "Overlay may be incomplete."
+                    )
 
             # ── Steps 5-7.5: Batch WebSocket (audio + mute + switch + encoder) ──
             with self._obs_bridge._batch() as batch_client:

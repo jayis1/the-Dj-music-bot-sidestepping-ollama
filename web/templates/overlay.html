@@ -120,7 +120,7 @@ body {
     background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(59,130,246,0.3));
 }
 
-/* ── EQ Visualizer ── */
+/* ── EQ Visualizer (Real-time audio-driven) ── */
 .visualizer {
     position: absolute;
     left: 50%;
@@ -131,7 +131,7 @@ body {
     display: flex;
     align-items: flex-end;
     justify-content: center;
-    gap: 6px;
+    gap: 2px;
     opacity: 0;
     transition: opacity 0.5s ease;
     z-index: 10;
@@ -141,17 +141,14 @@ body {
 }
 
 .visualizer-bar {
-    width: 8px;
+    width: 6px;
     background: linear-gradient(to top, #00FFCC, #a855f7);
-    border-radius: 4px 4px 0 0;
-    animation: eq-wave 1s infinite alternate;
-    height: 5px; /* baseline */
-    box-shadow: 0 0 10px rgba(168, 85, 247, 0.4);
-}
-
-@keyframes eq-wave {
-    0% { height: 5px; }
-    100% { height: 100%; }
+    border-radius: 3px 3px 0 0;
+    height: 2px; /* baseline */
+    /* Smooth interpolation — bars slide to new height instead of jumping */
+    transition: height 60ms ease-out;
+    box-shadow: 0 0 6px rgba(0, 255, 204, 0.3);
+    min-height: 2px;
 }
 
 </style>
@@ -202,19 +199,21 @@ const art = document.getElementById('art');
 const artPlaceholder = document.getElementById('artPlaceholder');
 const introVideo = document.getElementById('introVideo');
 
-// ── Initialize EQ Visualizer ──
-for(let i = 0; i < 45; i++) {
+// ── Initialize EQ Visualizer Bars ──────────────────────────────────────
+// Create 64 bars matching the 64 RMS values from PCMBroadcaster.
+// The bars map directly: bar[i] = rms_history[i], showing ~1.28s of waveform.
+const NUM_BARS = 64;
+const vizBars = [];
+for (let i = 0; i < NUM_BARS; i++) {
     let bar = document.createElement('div');
     bar.className = 'visualizer-bar';
-    let dur = 0.4 + Math.random() * 0.4; // 0.4s to 0.8s bounce
-    let del = Math.random() * -1.0; // Negative delay so it starts mid-animation
-    bar.style.animationDuration = `${dur}s`;
-    bar.style.animationDelay = `${del}s`;
-    // Slight height bias mapping for center bars to be taller visually
-    let centerDist = Math.abs((i - 22.5) / 22.5); 
-    bar.style.maxHeight = `${100 - (centerDist * 40)}%`; 
     visualizer.appendChild(bar);
+    vizBars.push(bar);
 }
+
+// Target heights for the visualizer bars (updated from API, applied via rAF)
+let vizTargetHeights = new Float32Array(NUM_BARS); // 0.0–1.0
+let vizCurrentHeights = new Float32Array(NUM_BARS); // smoothed current values
 
 // ── Format time ──
 function fmt(sec) {
@@ -245,11 +244,19 @@ function updateOverlay(data) {
         title.innerHTML = `${data.title || 'Waiting'} <span style="font-size: 32px; color: #ff5555; vertical-align: middle;">[PAUSED]</span>`;
     }
     
-    // Waveform State
+    // Waveform State — show/hide + feed RMS data to bars
     if (data.playing && !data.paused) {
         visualizer.classList.add('active');
+        // Update target heights from RMS history
+        if (data.rms_history && data.rms_history.length === NUM_BARS) {
+            for (let i = 0; i < NUM_BARS; i++) {
+                vizTargetHeights[i] = data.rms_history[i];
+            }
+        }
     } else {
         visualizer.classList.remove('active');
+        // Fade bars to zero when not playing
+        vizTargetHeights.fill(0);
     }
     
     // Boot Sequence Logic
@@ -312,6 +319,28 @@ function updateOverlay(data) {
 
 // Boot Pulse
 pollState();
+
+// ── Visualizer Animation Loop ──────────────────────────────────────
+// Smoothly interpolate bar heights toward the target RMS values.
+// This runs every frame (~60fps) for buttery-smooth bars, while the
+// API data arrives every ~1s. The interpolation bridges the gap.
+const VIZ_MAX_HEIGHT_PX = 70;  // matches CSS .visualizer height
+const VIZ_SMOOTHING = 0.25;     // 0=instant, 1=never move (0.25 = snappy but smooth)
+
+function animateVisualizer() {
+    for (let i = 0; i < NUM_BARS; i++) {
+        // Smooth interpolation toward target
+        vizCurrentHeights[i] += (vizTargetHeights[i] - vizCurrentHeights[i]) * VIZ_SMOOTHING;
+
+        // Scale: RMS 0.0–1.0 → height 2px–70px
+        // Apply a non-linear curve (sqrt) so quiet audio still shows visible movement
+        const normalized = Math.sqrt(Math.max(0, vizCurrentHeights[i]));
+        const heightPx = Math.max(2, normalized * VIZ_MAX_HEIGHT_PX);
+        vizBars[i].style.height = heightPx + 'px';
+    }
+    requestAnimationFrame(animateVisualizer);
+}
+requestAnimationFrame(animateVisualizer);
 </script>
 </body>
 </html>

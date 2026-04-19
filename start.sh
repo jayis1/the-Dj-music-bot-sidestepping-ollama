@@ -254,7 +254,7 @@ setup_obs() {
 
   # ── Install headless support packages ──────────────────
   if [ "$OBS_INSTALLED" = true ]; then
-    for pkg in xvfb dbus-x11 pulseaudio pulseaudio-utils chromium; do
+    for pkg in xvfb dbus-x11 xdotool pulseaudio pulseaudio-utils chromium; do
       if ! dpkg -s "$pkg" &>/dev/null 2>&1; then
         info "Installing $pkg for headless OBS + YouTube Live overlay..."
         $SUDO apt-get install -y -qq "$pkg" 2>/dev/null || warn "$pkg install failed"
@@ -782,12 +782,63 @@ USERINIEOF
       done
 
       # Start OBS headless
-      # Both apt OBS and Flatpak OBS need xvfb for headless rendering
-      # (OBS requires a real OpenGL context — QT_QPA_PLATFORM=offscreen
-      # doesn't work). Flatpak OBS needs --socket=x11 so the sandbox
-      # can access the virtual X display from xvfb.
+      # ══════════════════════════════════════════════════════════════════
+      # CRITICAL: We do NOT use xvfb-run because we need to:
+      #   1. Know the exact X11 display number for xdotool
+      #   2. Keep Xvfb running independently of OBS (xvfb-run kills Xvfb
+      #      when the child exits, but we need it persistent)
+      #   3. Use xdotool to auto-dismiss OBS crash/config dialogs that
+      #      block the Qt event loop and prevent WebSocket startup
+      #
+      # Strategy:
+      #   - Start Xvfb on a dedicated display (:420)
+      #   - Launch OBS on that display
+      #   - Run a dialog dismissal watchdog that sends Enter/Space
+      #     keypresses to auto-click through any blocking modal dialogs
+      #     (crash dialog, missing files dialog, safe mode prompt, etc.)
+      #   - This is more reliable than trying to prevent every possible
+      #     crash detection path (sentinel files, CrashDuringStartup,
+      #     plugin config markers, Flatpak runtime tracking, etc.)
+      # ══════════════════════════════════════════════════════════════════
+
+      # ── Start Xvfb on a dedicated display ───────────────────────
+      # Pick a display number unlikely to clash with real X sessions.
+      # :420 is the Radio DJ display — 420 for obvious reasons.
+      # If Xvfb fails to start (e.g. missing Xvfb binary), we fall
+      # back to xvfb-run which manages its own Xvfb instance.
+      _OBS_DISPLAY=":420"
+      _OBS_SCREEN="1280x720x24"  # 24-bit color depth, 720p
+      _USE_XVFB_EXPLICIT=false
+      if command -v Xvfb &>/dev/null; then
+        if ! pgrep -f "Xvfb $_OBS_DISPLAY" &>/dev/null; then
+          Xvfb "$_OBS_DISPLAY" -screen 0 "$_OBS_SCREEN" -ac +extension GLX +render -noreset &
+          sleep 1
+          if pgrep -f "Xvfb $_OBS_DISPLAY" &>/dev/null; then
+            info "Xvfb started on display $_OBS_DISPLAY"
+            _USE_XVFB_EXPLICIT=true
+          else
+            warn "Xvfb failed to start on $_OBS_DISPLAY — falling back to xvfb-run"
+            _OBS_DISPLAY=""
+          fi
+        else
+          info "Xvfb already running on $_OBS_DISPLAY"
+          _USE_XVFB_EXPLICIT=true
+        fi
+      else
+        warn "Xvfb binary not found — falling back to xvfb-run"
+        _OBS_DISPLAY=""
+      fi
+
+      # Export DISPLAY for xdotool and OBS (only if we have a known display)
+      if [ "$_USE_XVFB_EXPLICIT" = true ]; then
+        export DISPLAY="$_OBS_DISPLAY"
+      fi
+
+      # Suppress Flatpak XDG_DATA_DIRS warning
+      export XDG_DATA_DIRS="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}:/var/lib/flatpak/exports/share:$HOME/.local/share/flatpak/exports/share"
+
       if [ "$OBS_FLATPAK_INSTALLED" = true ]; then
-        info "Starting Flatpak OBS Studio (headless via xvfb, browser source available)..."
+        info "Starting Flatpak OBS Studio (headless, browser source available)..."
         # ── Flatpak OBS headless launch flags ──────────────────────
         # --socket=x11:        Allow access to xvfb's X11 display (OBS needs real OpenGL)
         # --nosocket=wayland:  Prevent Wayland detection (we're using Xvfb)
@@ -799,26 +850,87 @@ USERINIEOF
         # --share=network:     Allow browser source to reach localhost:8080
         #
         # NOTE: --disable-shutdown-check does NOT exist in OBS 32.
-        # Crash dialog is prevented by deleting .sentinel files before launch
-        # (see cleanup above). --safe-mode DISABLES WebSocket, so never use it.
+        # Crash dialog is auto-dismissed by our xdotool watchdog.
+        # --safe-mode DISABLES WebSocket, so never use it.
         #
         # DBUS_SESSION_BUS_ADDRESS is exported above from our dbus-launch — the
         # --socket=session-bus flag lets the Flatpak sandbox inherit it.
-        xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
-          --socket=session-bus --share=network \
-          com.obsproject.Studio \
-          --minimize-to-tray \
-          --collection "Radio DJ" --profile "RadioDJ" &
+        if [ "$_USE_XVFB_EXPLICIT" = true ]; then
+          # We have a dedicated Xvfb on :420 — use it directly
+          flatpak run --socket=x11 --nosocket=wayland \
+            --socket=session-bus --share=network \
+            --env=DISPLAY="$_OBS_DISPLAY" --env=LC_ALL=C.UTF-8 \
+            com.obsproject.Studio \
+            --minimize-to-tray --disable-missing-files-check \
+            --collection "Radio DJ" --profile "RadioDJ" &
+        else
+          # Fallback: use xvfb-run (no xdotool dialog dismissal available)
+          warn "Using xvfb-run fallback — crash dialogs cannot be auto-dismissed"
+          xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
+            --socket=session-bus --share=network \
+            --env=LC_ALL=C.UTF-8 \
+            com.obsproject.Studio \
+            --minimize-to-tray --disable-missing-files-check \
+            --collection "Radio DJ" --profile "RadioDJ" &
+        fi
         OBS_PID=$!
       else
         info "Starting headless OBS Studio (apt, no browser source)..."
         # NOTE: --disable-shutdown-check does NOT exist in OBS 32.
-        # Crash dialog prevention relies on .sentinel file deletion.
-        xvfb-run -a obs --minimize-to-tray \
-          --collection "Radio DJ" --profile "RadioDJ" &
+        # Crash dialog prevention relies on xdotool + .sentinel file deletion.
+        if [ "$_USE_XVFB_EXPLICIT" = true ]; then
+          DISPLAY="$_OBS_DISPLAY" obs --minimize-to-tray --disable-missing-files-check \
+            --collection "Radio DJ" --profile "RadioDJ" &
+        else
+          xvfb-run -a obs --minimize-to-tray --disable-missing-files-check \
+            --collection "Radio DJ" --profile "RadioDJ" &
+        fi
         OBS_PID=$!
       fi
       sleep 3
+
+      # ── Dialog dismissal watchdog (xdotool) ─────────────────────
+      # Even after deleting .sentinel files and fixing CrashDuringStartup,
+      # OBS may still show a "Crash or unclean shutdown detected" dialog
+      # on startup. This dialog BLOCKS the Qt event loop — the WebSocket
+      # server never starts and the bot can never connect.
+      #
+      # This watchdog runs in the background and uses xdotool to send
+      # Enter/Space keypresses to any OBS window with a modal dialog.
+      # The "Launch Normally" button is focused by default in the crash
+      # dialog, so pressing Enter dismisses it and OBS continues to load.
+      #
+      # It also handles other blocking dialogs like:
+      #   - "Missing files" dialog (--disable-missing-files-check)
+      #   - "Profile upgrade" dialog
+      #   - "Plugin incompatible" dialog
+      #   - Any other modal dialog with a default button
+      #
+      # The watchdog runs for up to 30 seconds, then auto-exits.
+      _DIALOG_WATCHDOG_PID=""
+      if command -v xdotool &>/dev/null && [ -n "$_OBS_DISPLAY" ]; then
+        (
+          for _dw_iter in $(seq 1 30); do
+            # Use xdotool to press Enter on the active window.
+            # --window: focus any window on the display
+            # --clearmodifiers: release any stuck modifier keys
+            # 2>/dev/null: suppress errors when no window exists yet
+            DISPLAY="$_OBS_DISPLAY" xdotool key --clearmodifiers Return 2>/dev/null || true
+            # Also try Tab+Enter (in case focus is on a non-default button)
+            DISPLAY="$_OBS_DISPLAY" xdotool key --clearmodifiers Tab Return 2>/dev/null || true
+            # Small delay between attempts — don't spam OBS
+            sleep 1
+          done
+        ) &
+        _DIALOG_WATCHDOG_PID=$!
+        info "Dialog dismissal watchdog started (pid: $_DIALOG_WATCHDOG_PID)"
+      else
+        if [ -z "$_OBS_DISPLAY" ]; then
+          warn "xdotool watchdog skipped (Xvfb not available)"
+        else
+          warn "xdotool not installed — install it for auto-dismiss of OBS crash dialogs"
+        fi
+      fi
 
       # ── Sentinel cleanup watchdog ───────────────────────────────
       # OBS creates a .sentinel file at the START of its launch, then
@@ -901,8 +1013,9 @@ except:
         fi
       fi
 
-      # Kill the sentinel watchdog if still running
+      # Kill the watchdogs if still running
       kill $_SENTINEL_WATCHDOG_PID 2>/dev/null || true
+      [ -n "$_DIALOG_WATCHDOG_PID" ] && kill $_DIALOG_WATCHDOG_PID 2>/dev/null || true
     fi
   fi
 
@@ -980,6 +1093,12 @@ stop_bot() {
       [ -d "$_stop_dir" ] && find "$_stop_dir" -name ".sentinel" -type f -delete 2>/dev/null || true
     done
   fi
+
+  # Stop Xvfb if we started it
+  if pgrep -f "Xvfb :420" &>/dev/null; then
+    info "Stopping Xvfb display :420..."
+    pkill -f "Xvfb :420" 2>/dev/null || true
+  fi
 }
 
 show_logs() {
@@ -1006,16 +1125,17 @@ nuke_obs() {
   # ═════════════════════════════════════════════════════════════
   warn "Nuking all OBS state..."
 
-  # Kill ALL OBS processes (apt + Flatpak)
+  # Kill ALL OBS processes (apt + Flatpak) + Xvfb
   pkill -9 -x obs 2>/dev/null || true
   pkill -9 -f "flatpak run com.obsproject.Studio" 2>/dev/null || true
+  pkill -9 -f "Xvfb :420" 2>/dev/null || true
   sleep 2
 
   # Check for stragglers
   if pgrep -x obs &>/dev/null || pgrep -f "flatpak run com.obsproject.Studio" &>/dev/null; then
     error "OBS processes still running after SIGKILL. Manual intervention needed."
   fi
-  success "OBS processes killed"
+  success "OBS + Xvfb processes killed"
 
   # Delete crash markers from BOTH dirs
   APT_OBS_BASE="$HOME/.config/obs-studio"

@@ -80,16 +80,6 @@ class YouTubeLiveStreamer:
     WIDTH = 1280
     HEIGHT = 720
 
-    # Audio beat-pulse visualizer update interval (seconds).
-    # 200ms = 5 FPS — fast enough to show beat pulses (kick/snare),
-    # slow enough to avoid WebSocket flooding. The OBS Bridge's
-    # update_visualizer_bar() has delta-skip logic that only sends
-    # a WebSocket request when the scale changes by >2%.
-    # DO NOT set below 150ms — each tick opens a WebSocket
-    # connection and rapid connect/disconnect overwhelms OBS,
-    # causing audio glitches.
-    _VISUALIZER_INTERVAL = 0.2
-
     def __init__(
         self,
         stream_key: str,
@@ -127,7 +117,6 @@ class YouTubeLiveStreamer:
         self._last_error: str = ""
         self._use_vaapi = _VAAPI_ENABLED
         self._stream_starting = False  # Guard against concurrent start attempts
-        self._visualizer_task: asyncio.Task | None = None  # Audio level bar polling
         
         self.update_hud(station=self.station_name, waiting="Booting Mainframes...")
 
@@ -202,8 +191,6 @@ class YouTubeLiveStreamer:
             if await self._start_obs_stream():
                 self._using_obs = True
                 self._watchdog_task = asyncio.create_task(self._watchdog_obs())
-                # Start the audio level visualizer bar polling loop
-                self._visualizer_task = asyncio.create_task(self._visualizer_poll_obs())
                 return
             else:
                 log.warning(
@@ -222,9 +209,6 @@ class YouTubeLiveStreamer:
         if self._watchdog_task:
             self._watchdog_task.cancel()
             self._watchdog_task = None
-        if self._visualizer_task:
-            self._visualizer_task.cancel()
-            self._visualizer_task = None
 
         if self._using_obs:
             await self._stop_obs_stream()
@@ -380,6 +364,23 @@ class YouTubeLiveStreamer:
             # frequency). The WebSocket set_encoder_settings() call is silently
             # ignored — only the on-disk JSON file actually works.
             self._write_obs_encoder_json()
+
+            # ── Step 1.6: Restart OBS to ensure correct encoder settings ─
+            # OBS loads encoder settings from basic.ini and streamEncoder.json
+            # at startup. If ApplyServiceSettings was true in a previous session,
+            # OBS may have already loaded YouTube's defaults (keyint=250, bitrate=2500)
+            # into memory. Even though we write correct configs to disk, the
+            # in-memory settings take precedence for the current session.
+            #
+            # The ONLY reliable way to ensure OBS uses our custom encoder settings
+            # is to restart OBS AFTER writing the correct config files to disk.
+            # OBS will then read our corrected basic.ini (ApplyServiceSettings=false,
+            # keyint_sec=2, Bitrate=3000) and streamEncoder.json on startup.
+            #
+            # After OBS restarts, we wait for the WebSocket server to come back
+            # up (up to 15 seconds). If OBS doesn't come back, we abort.
+            log.info("YouTube Live/OBS: Restarting OBS to apply encoder settings from disk...")
+            await self._restart_obs_for_encoding()
 
             # ── Steps 2-3: Batch WebSocket operations (first batch) ───────
             # Steps 2 (stream settings) and 3 (scene creation) share one
@@ -720,6 +721,205 @@ class YouTubeLiveStreamer:
         except Exception as e:
             log.debug(f"YouTube Live/OBS: Could not fix basic.ini: {e}")
 
+    async def _restart_obs_for_encoding(self):
+        """Restart OBS to force it to re-read encoder settings from disk.
+
+        This is the ONLY reliable way to ensure OBS uses our custom
+        encoder settings (keyint_sec=2, bitrate=3000) instead of
+        YouTube's defaults (keyint=250, bitrate=2500). OBS loads
+        encoder settings from basic.ini and streamEncoder.json at
+        startup, and the in-memory settings cannot be reliably
+        overridden via the WebSocket API.
+
+        The restart flow:
+        1. Kill the existing OBS process (if running)
+        2. Write configs one final time (ApplyServiceSettings=false)
+        3. Start OBS via xvfb-run
+        4. Wait for WebSocket connection (up to 15s)
+        5. Verify OBS loaded the correct encoder settings
+
+        If OBS doesn't come back within 15s, we still try to continue
+        — the stream may work even with default settings (just with
+        "Poor" YouTube health instead of "Good").
+        """
+        import shutil
+        import signal as _signal
+
+        # 1. Kill existing OBS
+        obs_pid = None
+        try:
+            # Find OBS PID
+            import subprocess
+            result = subprocess.run(
+                ["pgrep", "-x", "obs"],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                obs_pid = int(result.stdout.strip().split('\n')[0])
+        except Exception:
+            pass
+
+        if obs_pid:
+            log.info(f"YouTube Live/OBS: Stopping OBS (PID {obs_pid}) for encoder restart...")
+            try:
+                os.kill(obs_pid, _signal.SIGTERM)
+            except (ProcessLookupError, PermissionError, OSError):
+                pass
+
+            # Wait up to 5s for OBS to exit gracefully
+            for _ in range(10):
+                await asyncio.sleep(0.5)
+                try:
+                    os.kill(obs_pid, 0)  # Check if process still exists
+                except (ProcessLookupError, OSError):
+                    break
+            else:
+                # Process still alive — force kill
+                try:
+                    os.kill(obs_pid, _signal.SIGKILL)
+                    await asyncio.sleep(1)
+                except (ProcessLookupError, PermissionError, OSError):
+                    pass
+        else:
+            log.info("YouTube Live/OBS: OBS not currently running, will start fresh")
+
+        # 2. Re-verify config files are correct (belt and suspenders)
+        # Write configs one final time to ensure they weren't corrupted
+        # by OBS's shutdown sequence.
+        self._write_obs_encoder_json()
+        self._write_obs_service_json()
+
+        # Fix user.ini one more time — OBS may have overwritten it on exit
+        user_ini_path = os.path.expanduser("~/.config/obs-studio/user.ini")
+        try:
+            if os.path.isfile(user_ini_path):
+                with open(user_ini_path, "r") as f:
+                    content = f.read()
+                if "SceneCollection=Untitled" in content:
+                    content = content.replace("SceneCollection=Untitled", "SceneCollection=Radio DJ")
+                    content = content.replace("SceneCollectionFile=Untitled.json", "SceneCollectionFile=Radio DJ.json")
+                    with open(user_ini_path, "w") as f:
+                        f.write(content)
+        except Exception:
+            pass
+
+        # Delete Untitled scene collection backups
+        obs_scenes_dir = os.path.expanduser("~/.config/obs-studio/basic/scenes")
+        for name in ["Untitled.json", "Untitled.json.bak", "Untitled.json.bak.1"]:
+            path = os.path.join(obs_scenes_dir, name)
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+
+        # 3. Start OBS via xvfb-run
+        obs_bin = shutil.which("obs")
+        if not obs_bin:
+            log.warning("YouTube Live/OBS: 'obs' binary not found, cannot restart")
+            return
+
+        try:
+            # Start D-Bus if not running
+            if not os.path.exists("/run/dbus/pid"):
+                try:
+                    import subprocess
+                    subprocess.Popen(
+                        ["dbus-daemon", "--system", "--nofork"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+
+            # Start PulseAudio if not running
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["pgrep", "-x", "pulseaudio"],
+                    capture_output=True, text=True, timeout=3
+                )
+                if result.returncode != 0:
+                    subprocess.Popen(
+                        ["pulseaudio", "--start", "--fail=false", "--daemonize=true"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    await asyncio.sleep(1)
+            except Exception:
+                pass
+
+            xvfb_bin = shutil.which("xvfb-run")
+            if xvfb_bin:
+                proc = subprocess.Popen(
+                    [xvfb_bin, "-a", obs_bin,
+                     "--minimize-to-tray", "--disable-shutdown-check",
+                     "--collection", "Radio DJ", "--profile", "RadioDJ"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            else:
+                proc = subprocess.Popen(
+                    [obs_bin,
+                     "--minimize-to-tray", "--disable-shutdown-check",
+                     "--collection", "Radio DJ", "--profile", "RadioDJ"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            log.info(f"YouTube Live/OBS: OBS restarted (PID {proc.pid}), waiting for WebSocket...")
+        except Exception as e:
+            log.warning(f"YouTube Live/OBS: Failed to restart OBS: {e}")
+            return
+
+        # 4. Wait for OBS WebSocket to become available (up to 15 seconds)
+        # Reset the connection backoff so we can retry immediately
+        self._obs_bridge._last_connect_fail = 0
+        self._obs_bridge._connection_logged = False
+
+        for attempt in range(30):  # 30 × 0.5s = 15 seconds max
+            await asyncio.sleep(0.5)
+            try:
+                status = self._obs_bridge.get_status()
+                if status.get("connected"):
+                    log.info(
+                        f"YouTube Live/OBS: OBS reconnected after {attempt + 1} attempts "
+                        f"({(attempt + 1) * 0.5:.1f}s) ✅"
+                    )
+                    # Wait a bit more for OBS to fully initialize
+                    # (scene loading, audio mixer setup, etc.)
+                    await asyncio.sleep(2)
+                    break
+            except Exception:
+                pass
+        else:
+            log.warning(
+                "YouTube Live/OBS: OBS did not reconnect within 15s. "
+                "Will try streaming anyway — encoder settings may be incorrect."
+            )
+
+        # 5. Verify encoder settings (informational — don't fail if we can't verify)
+        try:
+            with self._obs_bridge._batch() as client:
+                if client:
+                    try:
+                        enc = client.get_stream_encoder_settings()
+                        enc_data = {}
+                        if hasattr(enc, "encoder_settings"):
+                            enc_data = enc.encoder_settings if isinstance(enc.encoder_settings, dict) else {}
+                        elif isinstance(enc, dict):
+                            enc_data = enc.get("encoder_settings", {})
+
+                        keyint = enc_data.get("keyint_sec", "?")
+                        bitrate = enc_data.get("bitrate", "?")
+                        log.info(
+                            f"YouTube Live/OBS: Encoder settings after restart: "
+                            f"keyint_sec={keyint}, bitrate={bitrate}"
+                        )
+                    except Exception as e:
+                        log.debug(f"YouTube Live/OBS: Could not verify encoder settings: {e}")
+        except Exception:
+            pass
+
     async def _stop_obs_stream(self):
         """Stop OBS streaming."""
         if not self._obs_bridge:
@@ -765,65 +965,7 @@ class YouTubeLiveStreamer:
         except asyncio.CancelledError:
             pass
 
-    async def _visualizer_poll_obs(self):
-        """Poll the PCMBroadcaster's RMS history and render the sound-wave visualizer.
 
-        This coroutine runs at ~5 FPS (every 200ms) while the stream is active.
-        It reads the RMS history buffer from the PCMBroadcaster (64 samples ≈
-        1.3 seconds of audio) and renders a waveform PNG image at
-        /tmp/radio_visualizer.png. OBS's image_source auto-refreshes on the
-        next frame render, so the update appears instantly with zero WebSocket
-        overhead.
-
-        The waveform shows vertical bars with varying heights — creating a
-        "sound wave" / "equalizer" look that pulses with beats and syllables.
-        Recent samples are brighter, older samples are dimmer.
-
-        NOTE: 200ms is the minimum safe polling interval. Faster rates
-        cause WebSocket connection storms that break OBS audio.
-        """
-        try:
-            from utils.broadcaster import get_broadcaster
-        except ImportError:
-            log.debug("YouTube Live/OBS: PCMBroadcaster not available for visualizer")
-            return
-
-        try:
-            overlay_scene = os.environ.get("OBS_SCENE_OVERLAY", "📺 Overlay Only")
-            while self._running:
-                await asyncio.sleep(self._VISUALIZER_INTERVAL)
-
-                if not self._obs_bridge or not self._obs_bridge.enabled:
-                    continue
-
-                # Read the audio level AND RMS history from the registered PCMBroadcaster
-                level = 0.0
-                rms_history = None
-                try:
-                    broadcaster = get_broadcaster()
-                    if broadcaster:
-                        level = broadcaster.get_audio_level()
-                        rms_history = broadcaster.get_rms_history()
-                except Exception:
-                    pass
-
-                # Render the sound-wave visualizer image.
-                # This writes /tmp/radio_visualizer.png which OBS's
-                # image_source picks up automatically. No WebSocket call
-                # needed for the image update — only for initial positioning.
-                if self._obs_bridge and self._obs_bridge.enabled:
-                    try:
-                        self._obs_bridge.update_visualizer_bar(
-                            level=level, scene_name=overlay_scene,
-                            rms_history=rms_history,
-                        )
-                    except Exception:
-                        pass  # Non-critical — visualizer is cosmetic
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            log.debug(f"YouTube Live/OBS: Visualizer polling error: {e}")
 
     _FONT_BOLD: str | None = None
     _FONT_REGULAR: str | None = None

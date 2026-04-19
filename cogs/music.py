@@ -156,6 +156,13 @@ class Music(commands.Cog):
                     from utils.broadcaster import PCMBroadcaster
 
                     self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+
+                    # Register for OBS audio visualizer readout
+                    try:
+                        from utils.broadcaster import register_broadcaster
+                        register_broadcaster(self._broadcasters[guild_id])
+                    except Exception:
+                        pass
             return guild.voice_client
 
         # Headless mode fallback for YouTube Live streaming
@@ -165,6 +172,13 @@ class Music(commands.Cog):
             from utils.broadcaster import PCMBroadcaster
 
             self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+
+            # Register for OBS audio visualizer readout
+            try:
+                from utils.broadcaster import register_broadcaster
+                register_broadcaster(self._broadcasters[guild_id])
+            except Exception:
+                pass
         if guild_id not in self._headless_clients:
             from utils.broadcaster import PCMBroadcasterWrapper
 
@@ -220,6 +234,13 @@ class Music(commands.Cog):
                 from utils.broadcaster import PCMBroadcaster
 
                 self._broadcasters[guild_id] = PCMBroadcaster(port=12345)
+
+                # Register for OBS audio visualizer readout
+                try:
+                    from utils.broadcaster import register_broadcaster
+                    register_broadcaster(self._broadcasters[guild_id])
+                except Exception:
+                    pass
 
             broadcaster = self._broadcasters[guild_id]
 
@@ -367,6 +388,13 @@ class Music(commands.Cog):
 
             if guild.id not in getattr(self, "_broadcasters", {}):
                 self._broadcasters[guild.id] = PCMBroadcaster(port=12345)
+
+                # Register for OBS audio visualizer readout
+                try:
+                    from utils.broadcaster import register_broadcaster
+                    register_broadcaster(self._broadcasters[guild.id])
+                except Exception:
+                    pass
 
             await self._yt_streamer.start()
 

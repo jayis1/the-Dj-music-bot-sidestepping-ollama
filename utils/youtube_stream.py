@@ -79,6 +79,11 @@ class YouTubeLiveStreamer:
     WIDTH = 1280
     HEIGHT = 720
 
+    # Audio visualizer bar update interval (seconds).
+    # 100ms = 10 FPS for the level bar animation — fast enough to look
+    # responsive, slow enough to not hammer OBS with WebSocket requests.
+    _VISUALIZER_INTERVAL = 0.1
+
     def __init__(
         self,
         stream_key: str,
@@ -116,6 +121,7 @@ class YouTubeLiveStreamer:
         self._last_error: str = ""
         self._use_vaapi = _VAAPI_ENABLED
         self._stream_starting = False  # Guard against concurrent start attempts
+        self._visualizer_task: asyncio.Task | None = None  # Audio level bar polling
         
         self.update_hud(station=self.station_name, waiting="Booting Mainframes...")
 
@@ -190,6 +196,8 @@ class YouTubeLiveStreamer:
             if await self._start_obs_stream():
                 self._using_obs = True
                 self._watchdog_task = asyncio.create_task(self._watchdog_obs())
+                # Start the audio level visualizer bar polling loop
+                self._visualizer_task = asyncio.create_task(self._visualizer_poll_obs())
                 return
             else:
                 log.warning(
@@ -208,6 +216,9 @@ class YouTubeLiveStreamer:
         if self._watchdog_task:
             self._watchdog_task.cancel()
             self._watchdog_task = None
+        if self._visualizer_task:
+            self._visualizer_task.cancel()
+            self._visualizer_task = None
 
         if self._using_obs:
             await self._stop_obs_stream()
@@ -434,6 +445,29 @@ class YouTubeLiveStreamer:
             self._obs_bridge.set_current_scene(overlay_scene)
             log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
 
+            # ── Step 7.5: Push encoder settings (keyint_sec, bitrate) ────
+            # OBS's Advanced mode often caches stale encoder settings from
+            # previous runs. Even though basic.ini has keyint_sec=2, OBS may
+            # still use keyint=250 (x264 default = 8.3s @ 30fps → "Poor" on
+            # YouTube). Pushing via WebSocket forces the correct values.
+            try:
+                enc_result = self._obs_bridge.set_encoder_settings(
+                    keyint_sec=2, bitrate=3000,
+                    preset="veryfast", rate_control="CBR",
+                )
+                if not enc_result.get("error"):
+                    log.info(
+                        "YouTube Live/OBS: Encoder settings pushed — "
+                        "keyint_sec=2, bitrate=3000, CBR, veryfast"
+                    )
+                else:
+                    log.debug(
+                        f"YouTube Live/OBS: Encoder settings push had issues: "
+                        f"{enc_result}"
+                    )
+            except Exception as e:
+                log.debug(f"YouTube Live/OBS: Could not push encoder settings: {e}")
+
             # ── Step 8: Start OBS streaming ─────────────────────────────
             result = self._obs_bridge.start_streaming()
             if not result.get("connected"):
@@ -561,6 +595,54 @@ class YouTubeLiveStreamer:
                             backoff = 0
         except asyncio.CancelledError:
             pass
+
+    async def _visualizer_poll_obs(self):
+        """Poll the PCMBroadcaster's audio level and update the OBS visualizer bar.
+
+        This coroutine runs at ~10 FPS (every 100ms) while the stream is active.
+        It reads the smoothed RMS audio level from the PCMBroadcaster and
+        adjusts the width (scaleX) of the "Audio Visualizer" color source
+        in OBS via the WebSocket API.
+
+        The visualizer bar provides real-time visual feedback on the stream
+        showing when audio is playing — viewers can "see" beats and silence.
+        """
+        try:
+            from utils.broadcaster import get_broadcaster
+        except ImportError:
+            log.debug("YouTube Live/OBS: PCMBroadcaster not available for visualizer")
+            return
+
+        try:
+            overlay_scene = os.environ.get("OBS_SCENE_OVERLAY", "📺 Overlay Only")
+            while self._running:
+                await asyncio.sleep(self._VISUALIZER_INTERVAL)
+
+                if not self._obs_bridge or not self._obs_bridge.enabled:
+                    continue
+
+                # Read the audio level from the registered PCMBroadcaster
+                level = 0.0
+                try:
+                    broadcaster = get_broadcaster()
+                    if broadcaster:
+                        level = broadcaster.get_audio_level()
+                except Exception:
+                    pass
+
+                # Update the OBS visualizer bar width
+                if self._obs_bridge and self._obs_bridge.enabled:
+                    try:
+                        self._obs_bridge.update_visualizer_bar(
+                            level=level, scene_name=overlay_scene
+                        )
+                    except Exception:
+                        pass  # Non-critical — visualizer is cosmetic
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            log.debug(f"YouTube Live/OBS: Visualizer polling error: {e}")
 
     _FONT_BOLD: str | None = None
     _FONT_REGULAR: str | None = None

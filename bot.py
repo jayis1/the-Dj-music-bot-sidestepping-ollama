@@ -528,7 +528,7 @@ def run_web_server():
                     # Write service.json to OBS profile directory FIRST.
                     # OBS reads this file when initializing the output module.
                     # Without it, OBS falls back to RTMPS with no key → TLS errors.
-                    import json, os
+                    import json
                     profile_dir = os.path.expanduser(
                         "~/.config/obs-studio/basic/profiles/RadioDJ"
                     )

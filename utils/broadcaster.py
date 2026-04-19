@@ -46,6 +46,15 @@ class PCMBroadcaster(discord.AudioSource):
         # _stop_event allows clean, responsive shutdown of the autonomous clock.
         self._stop_event = threading.Event()
 
+        # ── Audio Level Metering (for OBS visualizer bar) ──
+        # Tracks the current RMS audio level as a float 0.0–1.0.
+        # Updated on every read() / autonomous clock tick (every 20ms).
+        # A smoothing factor decays the level between chunks so the bar
+        # drops smoothly instead of instantly to zero on silence.
+        self._audio_level = 0.0          # Current smoothed level (0.0–1.0)
+        self._audio_level_peak = 0.0     # Peak hold (for peak indicator)
+        self._audio_level_lock = threading.Lock()
+
         self._thread = threading.Thread(target=self._autonomous_clock, daemon=True)
         self._thread.start()
         log.info(
@@ -95,6 +104,59 @@ class PCMBroadcaster(discord.AudioSource):
             except Exception as e:
                 log.error(f"Broadcaster: Failed to trigger after-callback: {e}")
 
+    @staticmethod
+    def _compute_rms(pcm_data: bytes) -> float:
+        """Compute RMS (root-mean-square) audio level from s16le PCM data.
+
+        Returns a float in 0.0–1.0 range where 1.0 = 0 dBFS (maximum).
+        This is used by the OBS audio visualizer bar to show audio activity.
+
+        The PCM data is signed 16-bit little-endian stereo:
+          - 3840 bytes = 960 samples × 2 channels × 2 bytes/sample
+          - Each sample is an int16 in the range -32768 to 32767
+        """
+        if not pcm_data or len(pcm_data) < 4:
+            return 0.0
+
+        # Number of int16 samples
+        n_samples = len(pcm_data) // 2
+        if n_samples == 0:
+            return 0.0
+
+        # Unpack all samples at once (fast C-level operation via array module)
+        try:
+            import array
+            samples = array.array('h')
+            samples.frombytes(pcm_data[:n_samples * 2])
+            total = sum(s * s for s in samples)
+        except Exception:
+            # Fallback: struct.unpack for odd-length data
+            import struct as _struct
+            total = 0.0
+            for i in range(0, len(pcm_data) - 1, 2):
+                sample = _struct.unpack_from('<h', pcm_data, i)[0]
+                total += sample * sample
+
+        # RMS = sqrt(mean(squared_samples)) / 32768.0
+        rms = (total / n_samples) ** 0.5
+        # Normalize to 0.0–1.0 (32768 is the max s16le value)
+        return min(1.0, rms / 32768.0)
+
+    def get_audio_level(self) -> float:
+        """Get the current smoothed audio level (0.0–1.0).
+
+        This is thread-safe and can be called from any thread/task
+        (e.g., OBS visualizer polling loop).
+        The value decays smoothly when audio stops.
+        """
+        with self._audio_level_lock:
+            return self._audio_level
+
+    def get_audio_level_peak(self) -> float:
+        """Get the current peak audio level (0.0–1.0) with hold."""
+        with self._audio_level_lock:
+            return self._audio_level_peak
+
     def read(self) -> bytes:
         """Called automatically by Discord VoiceClient. Drives the clock native to the server.
 
@@ -130,6 +192,10 @@ class PCMBroadcaster(discord.AudioSource):
             self.sock.sendto(payload, self.target)
         except BlockingIOError:
             pass
+
+        # Update audio level metering for OBS visualizer
+        self._update_audio_level(payload)
+
         return payload
 
     def stop(self):
@@ -143,6 +209,30 @@ class PCMBroadcaster(discord.AudioSource):
                 except Exception:
                     pass
                 self._source = None
+
+    def _update_audio_level(self, pcm_data: bytes):
+        """Update the smoothed audio level from a PCM chunk.
+
+        Uses exponential smoothing with a fast attack / slow decay:
+          - Attack (level rising): α = 0.3 → fast response to new audio
+          - Decay (level falling): α = 0.08 → smooth fade-out on silence
+
+        This makes the visualizer bar jump quickly when audio starts
+        but drop smoothly when it stops (no flickering).
+        """
+        rms = self._compute_rms(pcm_data)
+        with self._audio_level_lock:
+            if rms > self._audio_level:
+                # Attack: rise quickly
+                self._audio_level = self._audio_level * 0.7 + rms * 0.3
+            else:
+                # Decay: fall slowly
+                self._audio_level = self._audio_level * 0.92 + rms * 0.08
+            # Peak hold with slow decay
+            if rms > self._audio_level_peak:
+                self._audio_level_peak = rms
+            else:
+                self._audio_level_peak *= 0.97
 
     def _autonomous_clock(self):
         """The headless 24/7 pulse. Only activates when Discord drops its connection.
@@ -198,6 +288,9 @@ class PCMBroadcaster(discord.AudioSource):
             except Exception:
                 pass
 
+            # Update audio level metering for OBS visualizer
+            self._update_audio_level(payload)
+
             next_time += 0.02
             delay = next_time - time.perf_counter()
             if delay > 0:
@@ -208,6 +301,33 @@ class PCMBroadcaster(discord.AudioSource):
                     return
             else:
                 next_time = time.perf_counter()
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# Module-level Broadcaster Registry
+# ══════════════════════════════════════════════════════════════════════════
+# The PCMBroadcaster is typically created once and shared across the app.
+# The music cog (and web app) register their broadcaster instance here so
+# that the OBS visualizer polling loop can read audio levels without needing
+# a direct reference to the cog or Discord voice client.
+
+_registered_broadcaster: PCMBroadcaster | None = None
+
+
+def register_broadcaster(broadcaster: PCMBroadcaster):
+    """Register the global PCMBroadcaster instance for audio level readout.
+
+    Called once by the music cog when it creates the broadcaster.
+    The OBS visualizer reads from this to update the audio level bar.
+    """
+    global _registered_broadcaster
+    _registered_broadcaster = broadcaster
+    log.info("PCMBroadcaster: Registered global instance for audio level readout")
+
+
+def get_broadcaster() -> PCMBroadcaster | None:
+    """Get the registered global PCMBroadcaster instance (or None)."""
+    return _registered_broadcaster
 
 
 class PCMBroadcasterWrapper:

@@ -907,7 +907,31 @@ class OBSBridge:
 
         results["ticker_text"] = self._safe_call(_create_waiting)
 
-        # ── 7. Position scene items ────────────────────────────────
+        # ── 7. Song Thumbnail (image_source) ────────────────────────
+        # Displays the current song's album art / thumbnail.
+        # The image is downloaded to /tmp/radio_thumbnail.jpg by
+        # youtube_stream.py play_song() whenever a new song starts.
+        # OBS auto-refreshes the image on each frame render.
+        results["thumbnail"] = self.create_thumbnail_source(scene_name=scene_name)
+
+        # ── 8. Audio Visualizer bar (color_source_v3) ───────────────
+        # A neon green bar that dynamically resizes based on audio level.
+        # The PCMBroadcaster tracks RMS audio level, and a polling loop
+        # in youtube_stream.py updates the bar width via WebSocket.
+        results["visualizer"] = self.create_visualizer_bar(scene_name=scene_name)
+
+        # ── 9. GIF Overlay (ffmpeg_source) ──────────────────────────
+        # An animated GIF that adds visual energy to the stream.
+        # Loops infinitely. Positioned as background decoration.
+        # Falls back to assets/giphy.gif if no custom GIF is configured.
+        try:
+            import config as _cfg
+            gif_path = getattr(_cfg, "YOUTUBE_STREAM_GIF", "") or ""
+        except ImportError:
+            gif_path = ""
+        results["gif"] = self.create_gif_source(gif_path=gif_path, scene_name=scene_name)
+
+        # ── 10. Position scene items ────────────────────────────────
         # Set transform (position, size) for each text source so they
         # appear in the right places on the 1280x720 canvas.
         self._position_overlay_items(scene_name)
@@ -968,25 +992,27 @@ class OBSBridge:
         OBS scene item positions are in pixels from top-left.
 
         Layout (1280x720):
-          ┌──────────────────────────────────────────┐
-          │  (40,30)  [State]           🎵 Now Playing │  ← top bar
-          │  (40,80)  ████████████████████████████████ │  ← divider line (none)
-          │                                          │
-          │  (40,100)  Station Name                  │  ← large, bold, white
-          │  (40,165)  Now Playing title              │  ← large, gold
-          │  (40,240)  DJ Speaking text               │  ← medium, cyan-green
-          │                                          │
-          │                                          │
-          │  (40,665)  Ticker                         │  ← bottom bar, small
-          └──────────────────────────────────────────┘
+          ┌──────────────────────────────────────────────────────────────┐
+          │  (40,30)  [State] 🎵 Now Playing                           │
+          │  (40,80)  Station Name                        ┌──────────┐  │
+          │  (40,140) Now Playing title                   │  Song    │  │
+          │  (40,210) DJ Speaking text                    │ Thumbnail│  │
+          │  (40,280) ████ Audio Visualizer Bar ███████   │  (950,80)│  │
+          │  (40,320) [GIF Overlay - decorative]          └──────────┘  │
+          │                                                             │
+          │  (40,665) Ticker                                             │
+          └──────────────────────────────────────────────────────────────┘
+
+        Visual sources (thumbnail, visualizer, GIF) are positioned
+        separately by their own _position_* methods.
         """
-        # Positions for the overlay elements
+        # Positions for the TEXT overlay elements
         positions = {
             "State": {"x": 40, "y": 30},
             "Station Name": {"x": 40, "y": 80},
             "Now Playing": {"x": 40, "y": 140},
             "DJ Speaking": {"x": 40, "y": 210},
-            "Ticker": {"x": 40, "y": 600},
+            "Ticker": {"x": 40, "y": 640},
         }
 
         for source_name, pos in positions.items():
@@ -1105,6 +1131,448 @@ class OBSBridge:
 
         return self._safe_call(_create)
 
+    # ── Visual Overlay Sources ──────────────────────────────────────────────
+
+    def set_encoder_settings(self, keyint_sec: int = 2, bitrate: int = 3000,
+                              preset: str = "veryfast", rate_control: str = "CBR") -> dict:
+        """Set the streaming encoder (x264) keyframe interval and bitrate.
+
+        OBS's Advanced mode reads keyint_sec from basic.ini's [AdvOut] section,
+        but may override it with cached encoder-specific data. This method
+        explicitly pushes the correct encoder settings via the WebSocket API,
+        which takes effect immediately (even while streaming).
+
+        YouTube Live requires keyframes ≤4 seconds apart. With keyint_sec=2
+        at 30 FPS, keyframes appear every 60 frames = 2 seconds — well within
+        YouTube's spec and giving "Good" or "Excellent" stream health.
+
+        Without this, OBS may use keyint=250 (default x264) which gives 8.3s
+        keyframe intervals at 30fps — YouTube shows "Poor" stream health.
+
+        Args:
+            keyint_sec: Keyframe interval in seconds (default 2)
+            bitrate: Video bitrate in kbps (default 3000)
+            preset: x264 preset (default "veryfast")
+            rate_control: Rate control mode (default "CBR")
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        client = self._connect()
+        if client is None:
+            return {"error": "OBS is not running", "connected": False}
+
+        results = {}
+        try:
+            # Get the current streaming encoder settings
+            try:
+                encoder_settings = client.get_stream_encoder_settings()
+                if hasattr(encoder_settings, "encoder_settings"):
+                    current = encoder_settings.encoder_settings
+                elif isinstance(encoder_settings, dict):
+                    current = encoder_settings.get("encoder_settings", {})
+                else:
+                    current = {}
+            except Exception as e:
+                log.debug(f"OBS Bridge: Could not read current encoder settings: {e}")
+                current = {}
+
+            # Build updated encoder settings
+            # For obs_x264, the key names are:
+            #   keyint_sec → keyframe interval in seconds
+            #   bitrate → video bitrate in kbps
+            #   rate_control → CBR/CRF/VBR
+            #   preset → x264 preset name
+            updated = dict(current) if isinstance(current, dict) else {}
+            updated.update({
+                "keyint_sec": str(keyint_sec),
+                "bitrate": str(bitrate),
+                "rate_control": rate_control,
+                "preset": preset,
+            })
+
+            # Push via set_stream_encoder_settings
+            try:
+                client.set_stream_encoder_settings(
+                    updated,
+                    "obs_x264",  # Encoder name
+                )
+                results["encoder"] = "ok"
+                log.info(
+                    f"OBS Bridge: Encoder settings pushed — "
+                    f"keyint_sec={keyint_sec}, bitrate={bitrate}, "
+                    f"preset={preset}, rc={rate_control}"
+                )
+            except Exception as e:
+                # Fallback: try with different parameter naming
+                log.debug(f"OBS Bridge: set_stream_encoder_settings failed: {e}")
+                results["encoder"] = f"failed: {e}"
+
+        except Exception as e:
+            results["error"] = str(e)
+        finally:
+            try:
+                client.disconnect()
+            except Exception:
+                pass
+
+        return {"connected": True, "status": "ok", "data": results}
+
+    def create_thumbnail_source(self, scene_name: str = "") -> dict:
+        """Create an image source that displays the current song's thumbnail.
+
+        OBS's image_source reads from a local file path. The bot writes the
+        current song's thumbnail to /tmp/radio_thumbnail.jpg (downloaded by
+        youtube_stream.py play_song()). When the file changes, OBS's
+        image_source auto-refreshes on the next frame render.
+
+        On the 1280x720 canvas, the thumbnail is positioned in the
+        right portion of the overlay (x=950, y=80, 300x300) — providing
+        a nice "album art" area alongside the text on the left.
+
+        A default placeholder image is written at startup so the source
+        isn't blank on the first frame.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        # Write a default placeholder thumbnail if none exists
+        thumb_path = "/tmp/radio_thumbnail.jpg"
+        if not os.path.exists(thumb_path):
+            self._create_placeholder_thumbnail()
+
+        def _create(c, _scene=scene_name, _path=thumb_path):
+            try:
+                existing = c.get_input_settings(name="Song Thumbnail")
+                if existing:
+                    # Update the file path in case it was wrong
+                    try:
+                        c.set_input_settings(
+                            name="Song Thumbnail",
+                            settings={"file": _path, "unload": False},
+                            overlay=True,
+                        )
+                    except Exception:
+                        pass
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="image_source",
+                inputName="Song Thumbnail",
+                inputSettings={
+                    "file": _path,
+                    "unload": False,  # Keep image in memory for fast refresh
+                },
+                sceneItemEnabled=True,
+            )
+
+        result = self._safe_call(_create)
+        if not result.get("error"):
+            # Position and scale the thumbnail
+            self._position_thumbnail(scene_name)
+            log.info("OBS Bridge: Song Thumbnail source created ✅")
+        return result
+
+    def _create_placeholder_thumbnail(self):
+        """Create a simple placeholder thumbnail image at /tmp/radio_thumbnail.jpg.
+
+        Generates a 300x300 dark gray image with a music note emoji equivalent
+        using PIL if available, or a minimal valid JPEG as fallback.
+        """
+        thumb_path = "/tmp/radio_thumbnail.jpg"
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            img = Image.new("RGB", (300, 300), color=(30, 30, 40))
+            draw = ImageDraw.Draw(img)
+            # Draw a music-note-like circle and simple text
+            draw.ellipse([100, 60, 200, 160], fill=(60, 60, 80), outline=(100, 100, 120))
+            draw.text((120, 90), "♪", fill=(140, 140, 160))
+            draw.text((85, 200), "No Track", fill=(100, 100, 120))
+            img.save(thumb_path, "JPEG")
+        except ImportError:
+            # PIL not available — write a minimal 1x1 JPEG and let it be replaced
+            # when the first song plays
+            import struct
+            # Minimal JPEG: SOI + APP0 + minimal data + EOI
+            # Just write a tiny valid JPEG
+            try:
+                with open(thumb_path, "wb") as f:
+                    # 1x1 gray pixel JPEG
+                    f.write(bytes([
+                        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+                        0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
+                        0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
+                        0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
+                        0x07, 0x07, 0x07, 0x09, 0x09, 0x08, 0x0A, 0x0C,
+                        0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
+                        0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D,
+                        0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20,
+                        0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
+                        0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27,
+                        0x39, 0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34,
+                        0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
+                        0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4,
+                        0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01,
+                        0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04,
+                        0x05, 0x06, 0x07, 0x08, 0xFF, 0xDA, 0x00, 0x08,
+                        0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x7B, 0x94,
+                        0x01, 0x00, 0xFF, 0xD9,
+                    ]))
+            except Exception:
+                pass
+
+    def _position_thumbnail(self, scene_name: str):
+        """Position and scale the Song Thumbnail source on the canvas.
+
+        Thumbnail layout on 1280x720:
+          - Position: (950, 80) — right side of the overlay
+          - Scale: 300x300 image scaled to fit
+          - The thumbnail appears as album art next to the text info
+        """
+        item_id = self._get_scene_item_id(scene_name, "Song Thumbnail")
+        if item_id < 0:
+            return
+        try:
+            self._safe_call(
+                lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
+                    scene_name=sn, item_id=iid,
+                    transform={
+                        "positionX": 950,
+                        "positionY": 80,
+                        "scaleX": 0.85,
+                        "scaleY": 0.85,
+                    }
+                )
+            )
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to position thumbnail: {e}")
+
+    def create_visualizer_bar(self, scene_name: str = "") -> dict:
+        """Create an audio level visualizer bar using a color source.
+
+        Uses a color_source_v3 as a thin colored bar whose width is
+        dynamically adjusted by update_visualizer_bar() based on the
+        current audio level from the PCMBroadcaster.
+
+        The bar is:
+          - 1000px wide (max) × 20px tall
+          - Neon green (#00FF80) for a "VU meter" look
+          - Positioned at the bottom of the text area (y=270)
+          - Width scales from 0 to 1000px based on audio level 0.0–1.0
+
+        The bar is initially at full width (1000px) and gets resized
+        by the visualizer polling loop in youtube_stream.py.
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        # Neon green: 0xFF00FF80 in ARGB = 4278255616
+        # Or 0xFF00FF80... let me compute properly:
+        # ARGB: A=0xFF, R=0x00, G=0xFF, B=0x80
+        # = 0xFF00FF80 = 4278255744
+        visualizer_color = 4278255744  # Neon green ARGB
+
+        def _create(c, _scene=scene_name, _color=visualizer_color):
+            try:
+                existing = c.get_input_settings(name="Audio Visualizer")
+                if existing:
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="color_source_v3",
+                inputName="Audio Visualizer",
+                inputSettings={
+                    "color": _color,
+                    "width": 1000,   # Maximum width (gets scaled by update)
+                    "height": 20,
+                },
+                sceneItemEnabled=True,
+            )
+
+        result = self._safe_call(_create)
+        if not result.get("error"):
+            self._position_visualizer(scene_name)
+            log.info("OBS Bridge: Audio Visualizer bar created ✅")
+        return result
+
+    def _position_visualizer(self, scene_name: str):
+        """Position the audio visualizer bar on the canvas."""
+        item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
+        if item_id < 0:
+            return
+        try:
+            self._safe_call(
+                lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
+                    scene_name=sn, item_id=iid,
+                    transform={
+                        "positionX": 40,
+                        "positionY": 280,
+                    }
+                )
+            )
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to position visualizer: {e}")
+
+    def update_visualizer_bar(self, level: float, scene_name: str = "") -> dict:
+        """Update the audio visualizer bar width based on audio level.
+
+        Args:
+            level: Audio level 0.0–1.0 (from PCMBroadcaster.get_audio_level())
+            scene_name: Scene name (empty = current scene)
+
+        The bar's scaleX is set to `level`, so:
+          - 0.0 = invisible (0px wide)
+          - 0.5 = half width (500px)
+          - 1.0 = full width (1000px)
+
+        We keep scaleY at 1.0 so the bar height stays constant.
+        Position is preserved (left-anchored at x=40, y=280).
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        # Clamp level to [0.0, 1.0]
+        level = max(0.0, min(1.0, level))
+
+        # A small minimum (2%) so the bar is always faintly visible
+        scale_x = max(0.02, level)
+
+        item_id = self._get_scene_item_id(scene_name, "Audio Visualizer")
+        if item_id < 0:
+            return {"error": "Audio Visualizer source not found in scene", "connected": True}
+
+        return self._safe_call(
+            lambda c, sn=scene_name, iid=item_id, sx=scale_x: c.set_scene_item_transform(
+                scene_name=sn, item_id=iid,
+                transform={
+                    "positionX": 40,
+                    "positionY": 280,
+                    "scaleX": sx,
+                    "scaleY": 1.0,
+                }
+            )
+        )
+
+    def create_gif_source(self, gif_path: str = "", scene_name: str = "") -> dict:
+        """Create a media source (ffmpeg_source) that loops an animated GIF.
+
+        OBS's image_source does NOT support animated GIFs — only static images.
+        We use ffmpeg_source instead, which can play any media file including
+        GIFs, with looping enabled.
+
+        The GIF is positioned as background decoration — behind text but
+        above the black background, adding visual energy to the stream.
+
+        Args:
+            gif_path: Path to the GIF file. Falls back to assets/giphy.gif.
+            scene_name: Scene to add the source to (empty = current scene)
+        """
+        if not self.enabled:
+            return {"error": "OBS Bridge is disabled", "connected": False}
+
+        if not scene_name:
+            scene_name = self._get_current_scene_name()
+
+        # Resolve GIF path — fall back to assets/giphy.gif
+        if not gif_path or not os.path.isfile(gif_path):
+            assets_path = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "assets", "giphy.gif"
+            )
+            if os.path.isfile(assets_path):
+                gif_path = assets_path
+            else:
+                log.warning(
+                    "OBS Bridge: No GIF file found (set YOUTUBE_STREAM_GIF in .env "
+                    "or place assets/giphy.gif). Skipping GIF source."
+                )
+                return {"error": "No GIF file found", "connected": True}
+
+        def _create(c, _scene=scene_name, _gif=gif_path):
+            try:
+                existing = c.get_input_settings(name="GIF Overlay")
+                if existing:
+                    # Update the file path in case it changed
+                    try:
+                        c.set_input_settings(
+                            name="GIF Overlay",
+                            settings={
+                                "is_local_file": True,
+                                "local_file": _gif,
+                                "looping": True,
+                                "restart_on_activate": True,
+                                "close_when_inactive": False,
+                            },
+                            overlay=True,
+                        )
+                    except Exception:
+                        pass
+                    return existing
+            except Exception:
+                pass
+            return c.create_input(
+                sceneName=_scene,
+                inputKind="ffmpeg_source",
+                inputName="GIF Overlay",
+                inputSettings={
+                    "is_local_file": True,
+                    "local_file": _gif,
+                    "looping": True,
+                    "restart_on_activate": True,
+                    "close_when_inactive": False,
+                },
+                sceneItemEnabled=True,
+            )
+
+        result = self._safe_call(_create)
+        if not result.get("error"):
+            self._position_gif(scene_name)
+            log.info(f"OBS Bridge: GIF source created ✅ ({gif_path})")
+        return result
+
+    def _position_gif(self, scene_name: str):
+        """Position the GIF overlay on the canvas.
+
+        The GIF is placed below the ticker area, spanning most of the
+        canvas width as ambient decoration. It sits at the bottom of
+        the overlay, behind the text but above the black background.
+
+        Layout: positioned at (40, 320) — below the visualizer bar,
+        scaled to fit as a decorative band.
+        """
+        item_id = self._get_scene_item_id(scene_name, "GIF Overlay")
+        if item_id < 0:
+            return
+        try:
+            self._safe_call(
+                lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
+                    scene_name=sn, item_id=iid,
+                    transform={
+                        "positionX": 40,
+                        "positionY": 320,
+                        # Scale GIF to fit the overlay area nicely
+                        # (actual display size depends on GIF dimensions)
+                        "scaleX": 0.5,
+                        "scaleY": 0.5,
+                    }
+                )
+            )
+        except Exception as e:
+            log.debug(f"OBS Bridge: Failed to position GIF: {e}")
+
     # ── Scene Setup ─────────────────────────────────────────────────────────
 
     def ensure_scenes_exist(self) -> dict:
@@ -1197,7 +1665,8 @@ class OBSBridge:
 
     @staticmethod
     def _init_hud_files():
-        """Write /tmp/radio_*.txt files with initial content.
+        """Write /tmp/radio_*.txt files with initial content and create
+        a placeholder thumbnail image.
 
         Always overwrites — these are temp files that should reflect
         the current bot state. We write them even if they already
@@ -1233,6 +1702,60 @@ class OBSBridge:
             try:
                 with open(path, "w") as f:
                     f.write(default_text)
+            except Exception:
+                pass
+
+        # Create a placeholder thumbnail image so the OBS image_source
+        # has something to display from the first frame (instead of blank/black).
+        # This gets replaced with the actual song thumbnail when play_song() runs.
+        thumb_path = "/tmp/radio_thumbnail.jpg"
+        if not os.path.exists(thumb_path):
+            OBSBridge._create_placeholder_thumbnail_static()
+
+    @staticmethod
+    def _create_placeholder_thumbnail_static():
+        """Static version of placeholder thumbnail creation for _init_hud_files.
+
+        Creates a minimal placeholder JPEG at /tmp/radio_thumbnail.jpg.
+        This avoids needing `self` which isn't available in a @staticmethod.
+        """
+        thumb_path = "/tmp/radio_thumbnail.jpg"
+        try:
+            from PIL import Image, ImageDraw
+            img = Image.new("RGB", (300, 300), color=(30, 30, 40))
+            draw = ImageDraw.Draw(img)
+            # Dark card with subtle circle
+            draw.ellipse([100, 60, 200, 160], fill=(60, 60, 80), outline=(100, 100, 120))
+            draw.ellipse([130, 90, 170, 130], fill=(80, 80, 100))
+            draw.text((85, 200), "No Track", fill=(100, 100, 120))
+            img.save(thumb_path, "JPEG")
+        except ImportError:
+            # PIL not available — write a minimal 1x1 valid JPEG
+            # This will be replaced immediately when a song plays
+            try:
+                with open(thumb_path, "wb") as f:
+                    # Minimal valid JPEG bytes (1x1 gray pixel)
+                    f.write(bytes([
+                        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+                        0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
+                        0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
+                        0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
+                        0x07, 0x07, 0x07, 0x09, 0x09, 0x08, 0x0A, 0x0C,
+                        0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
+                        0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D,
+                        0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20,
+                        0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
+                        0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27,
+                        0x39, 0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34,
+                        0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
+                        0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4,
+                        0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01,
+                        0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04,
+                        0x05, 0x06, 0x07, 0x08, 0xFF, 0xDA, 0x00, 0x08,
+                        0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x7B, 0x94,
+                        0x01, 0x00, 0xFF, 0xD9,
+                    ]))
             except Exception:
                 pass
 

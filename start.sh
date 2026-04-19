@@ -499,22 +499,46 @@ SVCEOF
         pactl set-default-sink radio_dj_sink 2>/dev/null || true
       fi
 
-      # Final user.ini verification RIGHT before OBS starts.
-      # OBS reads user.ini on startup and if SceneCollection=Untitled,
-      # it creates a blank scene and ignores --collection "Radio DJ".
-      # This is our last chance to ensure it's correct.
-      OBS_USER_INI_PRE="$HOME/.config/obs-studio/user.ini"
-      if [ -f "$OBS_USER_INI_PRE" ]; then
-        CURRENT_SC=$(grep "^SceneCollection=" "$OBS_USER_INI_PRE" 2>/dev/null | head -1 | cut -d= -f2)
-        if [ "$CURRENT_SC" != "Radio DJ" ]; then
-          warn "user.ini still says SceneCollection='$CURRENT_SC' — forcing to 'Radio DJ' one last time"
-          sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI_PRE"
-          sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI_PRE"
-          sed -i 's/^Profile=Unnamed/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
-          sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
-          sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
-        fi
-      fi
+       # Final user.ini verification RIGHT before OBS starts.
+       # OBS reads user.ini on startup and if SceneCollection=Untitled,
+       # it creates a blank scene and ignores --collection "Radio DJ".
+       # This is our last chance to ensure it's correct.
+       OBS_USER_INI_PRE="$HOME/.config/obs-studio/user.ini"
+       if [ -f "$OBS_USER_INI_PRE" ]; then
+         CURRENT_SC=$(grep "^SceneCollection=" "$OBS_USER_INI_PRE" 2>/dev/null | head -1 | cut -d= -f2)
+         if [ "$CURRENT_SC" != "Radio DJ" ]; then
+           warn "user.ini still says SceneCollection='$CURRENT_SC' — forcing to 'Radio DJ' one last time"
+           sed -i 's/^SceneCollection=.*/SceneCollection=Radio DJ/' "$OBS_USER_INI_PRE"
+           sed -i 's/^SceneCollectionFile=.*/SceneCollectionFile=Radio DJ.json/' "$OBS_USER_INI_PRE"
+           sed -i 's/^Profile=Unnamed/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
+           sed -i 's/^Profile=Untitled/Profile=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
+           sed -i 's/^ProfileDir=Untitled/ProfileDir=RadioDJ/' "$OBS_USER_INI_PRE" 2>/dev/null
+         fi
+       fi
+
+       # CRITICAL: Force ApplyServiceSettings=false in basic.ini RIGHT BEFORE OBS starts.
+       # OBS overwrites this to "true" when it connects to YouTube, which causes
+       # it to use YouTube's recommended encoder settings (keyint=250, bitrate=2500)
+       # instead of our custom ones (keyint_sec=2, bitrate=3000).
+       # By forcing it to "false" right before OBS launches, we ensure OBS reads
+       # our custom encoder values from streamEncoder.json and basic.ini.
+       OBS_BASIC_INI="$OBS_PROFILES_DIR/RadioDJ/basic.ini"
+       if [ -f "$OBS_BASIC_INI" ]; then
+         if grep -q "ApplyServiceSettings=true" "$OBS_BASIC_INI"; then
+           sed -i 's/ApplyServiceSettings=true/ApplyServiceSettings=false/' "$OBS_BASIC_INI"
+           info "Fixed ApplyServiceSettings=false in basic.ini (was true)"
+         elif ! grep -q "ApplyServiceSettings" "$OBS_BASIC_INI"; then
+           # Not present at all — add it after [AdvOut]
+           if grep -q '\[AdvOut\]' "$OBS_BASIC_INI"; then
+             sed -i '/\[AdvOut\]/a ApplyServiceSettings=false' "$OBS_BASIC_INI"
+           else
+             echo "" >> "$OBS_BASIC_INI"
+             echo "[AdvOut]" >> "$OBS_BASIC_INI"
+             echo "ApplyServiceSettings=false" >> "$OBS_BASIC_INI"
+           fi
+           info "Added ApplyServiceSettings=false to basic.ini"
+         fi
+       fi
 
       # Delete any Untitled scene backups that OBS may have auto-created
       # from a previous run — OBS falls back to these if it can't find

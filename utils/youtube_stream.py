@@ -9,6 +9,7 @@ completely eliminating FFmpeg TCP handshake tearing and latency drops natively.
 import asyncio
 import logging
 import os
+import re
 import shutil
 import time
 
@@ -620,7 +621,6 @@ class YouTubeLiveStreamer:
         or YouTube's recommended settings override our custom ones.
         """
         import json
-        import configparser
 
         profile_name = os.environ.get("OBS_PROFILE_NAME", "RadioDJ")
         profile_dir = os.path.expanduser(
@@ -665,40 +665,42 @@ class YouTubeLiveStreamer:
         # When true, OBS overrides our encoder settings with YouTube's
         # recommended values (bitrate=2500, which OBS interprets as
         # keyint=250 too). Set to false to use our custom values.
+        #
+        # CRITICAL: We do NOT use configparser here because it lowercases
+        # all option names by default (ApplyServiceSettings → applyservicesettings),
+        # which OBS doesn't recognize. Instead, we do a direct string replacement
+        # on the file content, preserving OBS's mixed-case option names.
         basic_ini_path = os.path.join(profile_dir, "basic.ini")
         try:
             if os.path.isfile(basic_ini_path):
-                ucfg = configparser.ConfigParser()
-                ucfg.read(basic_ini_path)
-                changed = False
+                with open(basic_ini_path, "r") as f:
+                    content = f.read()
 
-                if ucfg.get("AdvOut", "ApplyServiceSettings", fallback="true") != "false":
-                    ucfg.set("AdvOut", "ApplyServiceSettings", "false")
-                    changed = True
+                original = content
+                # Fix ApplyServiceSettings (mixed-case, as OBS expects it)
+                if "ApplyServiceSettings=true" in content:
+                    content = content.replace("ApplyServiceSettings=true", "ApplyServiceSettings=false")
+                elif "ApplyServiceSettings" not in content:
+                    # Not present at all — add it after [AdvOut] section header
+                    if "[AdvOut]" in content:
+                        content = content.replace("[AdvOut]", "[AdvOut]\nApplyServiceSettings=false")
+                    else:
+                        # Append section
+                        content += "\n[AdvOut]\nApplyServiceSettings=false\n"
 
-                # Also ensure keyint_sec and bitrate are correct
-                if ucfg.get("AdvOut", "keyint_sec", fallback="") != "2":
-                    ucfg.set("AdvOut", "keyint_sec", "2")
-                    changed = True
-                if ucfg.get("AdvOut", "Bitrate", fallback="") != "3000":
-                    ucfg.set("AdvOut", "Bitrate", "3000")
-                    changed = True
-                if ucfg.get("AdvOut", "MaxBitrate", fallback="") != "3000":
-                    ucfg.set("AdvOut", "MaxBitrate", "3000")
-                    changed = True
-                if ucfg.get("AdvOut", "BufferSize", fallback="") != "3000":
-                    ucfg.set("AdvOut", "BufferSize", "3000")
-                    changed = True
-                if ucfg.get("AdvOut", "RateControl", fallback="") != "CBR":
-                    ucfg.set("AdvOut", "RateControl", "CBR")
-                    changed = True
-                if ucfg.get("AdvOut", "Preset", fallback="") != "veryfast":
-                    ucfg.set("AdvOut", "Preset", "veryfast")
-                    changed = True
+                # Also ensure keyint_sec and Bitrate are correct
+                if "keyint_sec=" in content:
+                    # Replace any keyint_sec value with 2
+                    content = re.sub(r'keyint_sec=\d+', 'keyint_sec=2', content)
+                if "Bitrate=" in content and "[AdvOut]" in content:
+                    # Replace AdvOut bitrate (not SimpleOutput bitrate)
+                    advout_section = content[content.index("[AdvOut]"):]
+                    advout_section = re.sub(r'Bitrate=\d+', 'Bitrate=3000', advout_section, count=1)
+                    content = content[:content.index("[AdvOut]")] + advout_section
 
-                if changed:
+                if content != original:
                     with open(basic_ini_path, "w") as f:
-                        ucfg.write(f)
+                        f.write(content)
                     log.info(
                         "YouTube Live/OBS: Fixed basic.ini encoder settings "
                         "(ApplyServiceSettings=false, keyint_sec=2, Bitrate=3000)"

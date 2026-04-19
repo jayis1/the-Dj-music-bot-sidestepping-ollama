@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import asyncio
 import os
+import re
 import sys
 import threading
 import discord
@@ -505,29 +506,74 @@ def run_web_server():
             # collection JSON, it creates a blank scene — but our
             # ensure_scenes_exist() programmatically creates the correct
             # scene via WebSocket anyway.
-            import configparser
+            #
+            # CRITICAL: We do NOT use configparser here because it lowercases
+            # all option names by default (SceneCollection → scenecollection),
+            # which OBS doesn't recognize. We do direct string replacement
+            # instead, preserving OBS's mixed-case option names.
             user_ini_path = os.path.expanduser("~/.config/obs-studio/user.ini")
             try:
                 # Ensure directory exists (first-run case)
                 os.makedirs(os.path.dirname(user_ini_path), exist_ok=True)
 
-                ucfg = configparser.ConfigParser()
-                ucfg.read(user_ini_path)
-                changed = False
-                if not ucfg.has_section("Basic"):
-                    ucfg.add_section("Basic")
-                    changed = True
-                if ucfg.get("Basic", "SceneCollection", fallback="") != "Radio DJ":
-                    ucfg.set("Basic", "SceneCollection", "Radio DJ")
-                    ucfg.set("Basic", "SceneCollectionFile", "Radio DJ.json")
-                    changed = True
-                if ucfg.get("Basic", "Profile", fallback="") in ("", "Untitled", "Unnamed"):
-                    ucfg.set("Basic", "Profile", "RadioDJ")
-                    ucfg.set("Basic", "ProfileDir", "RadioDJ")
-                    changed = True
-                if changed:
+                content = ""
+                if os.path.isfile(user_ini_path):
+                    with open(user_ini_path, "r") as f:
+                        content = f.read()
+
+                original = content
+                needs_rewrite = False
+
+                # Ensure [General] section exists (empty is fine, OBS adds to it)
+                if "[General]" not in content:
+                    content = "[General]\n" + content
+                    needs_rewrite = True
+
+                # Ensure [Basic] section exists
+                if "[Basic]" not in content:
+                    content = content.rstrip("\n") + "\n\n[Basic]\n"
+                    needs_rewrite = True
+
+                # Fix SceneCollection and ProfileDir
+                # Use string replacement to preserve OBS's mixed-case keys
+                imports_changed = False
+
+                if "SceneCollection=" in content:
+                    # Replace whatever value with "Radio DJ"
+                    import re
+                    content = re.sub(r'SceneCollection=.*', 'SceneCollection=Radio DJ', content)
+                else:
+                    # Add it after [Basic]
+                    content = content.rstrip("\n") + "\nSceneCollection=Radio DJ\n"
+                    needs_rewrite = True
+
+                if "SceneCollectionFile=" in content:
+                    content = re.sub(r'SceneCollectionFile=.*', 'SceneCollectionFile=Radio DJ.json', content)
+                else:
+                    content = content.rstrip("\n") + "\nSceneCollectionFile=Radio DJ.json\n"
+                    needs_rewrite = True
+
+                if "Profile=" in content:
+                    val = re.search(r'Profile=(.*)', content)
+                    if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
+                        content = re.sub(r'Profile=.*', 'Profile=RadioDJ', content)
+                        needs_rewrite = True
+                else:
+                    content = content.rstrip("\n") + "\nProfile=RadioDJ\n"
+                    needs_rewrite = True
+
+                if "ProfileDir=" in content:
+                    val = re.search(r'ProfileDir=(.*)', content)
+                    if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
+                        content = re.sub(r'ProfileDir=.*', 'ProfileDir=RadioDJ', content)
+                        needs_rewrite = True
+                else:
+                    content = content.rstrip("\n") + "\nProfileDir=RadioDJ\n"
+                    needs_rewrite = True
+
+                if content != original:
                     with open(user_ini_path, "w") as f:
-                        ucfg.write(f)
+                        f.write(content)
                     logging.info("OBS: Fixed user.ini scene collection → Radio DJ")
             except Exception as e:
                 logging.debug(f"OBS: Could not fix user.ini: {e}")

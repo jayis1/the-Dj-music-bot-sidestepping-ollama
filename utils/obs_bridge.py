@@ -1135,14 +1135,20 @@ class OBSBridge:
             except Exception as e:
                 log.debug(f"OBS Bridge: Failed to position visualizer: {e}")
 
-            # GIF positioning
+            # GIF positioning — full width at bottom
             if gif_path:
                 try:
                     gif_item_id = self._get_scene_item_id_from_client(client, scene_name, "GIF Overlay")
                     if gif_item_id >= 0:
                         client.set_scene_item_transform(
                             scene_name=scene_name, item_id=gif_item_id,
-                            transform={"positionX": 40, "positionY": 320, "scaleX": 0.5, "scaleY": 0.5},
+                            transform={
+                                # Full width: 1280/360 ≈ 3.56, bottom of canvas
+                                "positionX": 0,
+                                "positionY": 640,
+                                "scaleX": 3.56,
+                                "scaleY": 3.56,
+                            },
                         )
                 except Exception as e:
                     log.debug(f"OBS Bridge: Failed to position GIF: {e}")
@@ -1263,10 +1269,11 @@ class OBSBridge:
           │  (40,80)  Station Name                                │Thumb│  │
           │  (40,140) Now Playing title                           │150px│  │
           │  (40,210) DJ Speaking text                            └────┘  │
-          │  (40,270) ▁▂▃▅▇█▇▅▃▂▁ Sound Wave Visualizer █▇▅▃▂▁          │
-          │  (40,340) [GIF Overlay - decorative]                          │
+          │  (40,270) ▁▂▃▅▇█▇▅▃▂▁ Sound Wave Visualizer              │
           │                                                                │
           │  (40,640) Ticker                                                │
+          │  ████████████████████████████████████████████████████████████  │
+          │  (0,640)  ──── GIF Overlay spanning full width ────────────── │
           └────────────────────────────────────────────────────────────────┘
 
         Visual sources (background, thumbnail, visualizer, GIF) are positioned
@@ -2123,14 +2130,12 @@ class OBSBridge:
         return result
 
     def _position_gif(self, scene_name: str):
-        """Position the GIF overlay on the canvas.
+        """Position the GIF overlay at the bottom of the video, spanning the full width.
 
-        The GIF is placed below the ticker area, spanning most of the
-        canvas width as ambient decoration. It sits at the bottom of
-        the overlay, behind the text but above the black background.
-
-        Layout: positioned at (40, 320) — below the visualizer bar,
-        scaled to fit as a decorative band.
+        The GIF is a beat/wave animation that should stretch across the entire
+        1280px width as a decorative bar at the bottom of the stream.
+        Original GIF is 360x360 — scaled to fill 1280px wide × ~80px tall.
+        Positioned at (0, 640) so it sits at the very bottom of the canvas.
         """
         item_id = self._get_scene_item_id(scene_name, "GIF Overlay")
         if item_id < 0:
@@ -2140,12 +2145,11 @@ class OBSBridge:
                 lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
                     scene_name=sn, item_id=iid,
                     transform={
-                        "positionX": 40,
-                        "positionY": 320,
-                        # Scale GIF to fit the overlay area nicely
-                        # (actual display size depends on GIF dimensions)
-                        "scaleX": 0.5,
-                        "scaleY": 0.5,
+                        # Full width: 1280 / 360 ≈ 3.56
+                        "positionX": 0,
+                        "positionY": 640,
+                        "scaleX": 3.56,
+                        "scaleY": 3.56,
                     }
                 )
             )

@@ -90,6 +90,11 @@ class Music(commands.Cog):
         self.current_volume = {}
         self.inactivity_timers = {}
 
+        # Playback lock — prevents double-play race condition
+        # When DJ TTS finishes and _after_playback both try to start
+        # the next song simultaneously, only one wins.
+        self._playback_lock = {}  # guild_id -> bool (True = song is being started)
+
         # Overlay States
         self._sfx_active = {}  # guild_id -> bool
 
@@ -1306,6 +1311,26 @@ class Music(commands.Cog):
         and the retry paths now use asyncio.create_task() to break the
         call stack, preventing stack overflow on consecutive failures.
         """
+        guild_id = ctx.guild.id
+
+        # Playback lock — if a song is already being started for this guild,
+        # don't start another one. Prevents the double-play race where
+        # DJ TTS _after_playback and _play_song_after_dj both fire.
+        if self._playback_lock.get(guild_id, False):
+            logging.debug(
+                "play_next: blocked — playback already starting for guild %s",
+                guild_id,
+            )
+            return
+
+        self._playback_lock[guild_id] = True
+        try:
+            await self._play_next_inner(ctx, _skip_count, _drm_skip_count)
+        finally:
+            self._playback_lock[guild_id] = False
+
+    async def _play_next_inner(self, ctx, _skip_count=0, _drm_skip_count=0):
+        """Actual play_next logic, protected by the playback lock."""
         logging.info("play_next called.")
         queue = await self.get_queue(ctx.guild.id)
         if not queue.empty() and ctx.voice_client:

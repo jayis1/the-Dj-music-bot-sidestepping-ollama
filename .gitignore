@@ -55,3 +55,8 @@ presets/
 /tmp/
 *.tmp
 *.wav
+
+# Session artifacts
+commit_msg*.txt
+SHADOW_*.md
+*.wav

@@ -48,9 +48,7 @@ Config (in config.py or .env):
 
 import asyncio
 import logging
-import os
 import random
-import re
 
 import config
 
@@ -143,6 +141,7 @@ for _cat, _lines in COMMERCIAL_TEMPLATES.items():
 
 
 # ── Commercial System Configuration ─────────────────────────────────────
+
 
 def _get_state(guild_id: int) -> dict:
     """Get or create commercial state for a guild."""
@@ -396,7 +395,12 @@ async def generate_commercial(
     Returns:
         Commercial text with {sound:name} tags, or None if generation fails.
     """
-    from utils.llm_dj import call_ollama, OLLAMA_DJ_AVAILABLE, SOUND_LIST_FOR_PROMPT, _clean_ai_line
+    from utils.llm_dj import (
+        call_ollama,
+        OLLAMA_DJ_AVAILABLE,
+        SOUND_LIST_FOR_PROMPT,
+        _clean_ai_line,
+    )
 
     station = station_name or getattr(config, "STATION_NAME", "MBot")
 
@@ -407,7 +411,9 @@ async def generate_commercial(
             if category is None:
                 category = random.choice(list(_COMMERCIAL_CATEGORIES.keys()))
 
-            category_desc = _COMMERCIAL_CATEGORIES.get(category, "absurdist fake commercial")
+            category_desc = _COMMERCIAL_CATEGORIES.get(
+                category, "absurdist fake commercial"
+            )
 
             # Build context
             context_parts = []
@@ -435,7 +441,9 @@ async def generate_commercial(
             )
 
             raw = await asyncio.wait_for(
-                call_ollama(prompt=user, system=system, temperature=0.95, max_tokens=80),
+                call_ollama(
+                    prompt=user, system=system, temperature=0.95, max_tokens=80
+                ),
                 timeout=getattr(config, "OLLAMA_DJ_TIMEOUT", 4),
             )
 
@@ -443,7 +451,9 @@ async def generate_commercial(
                 cleaned = _clean_ai_line(raw)
                 if cleaned and len(cleaned) >= 10:
                     # Truncate to max duration
-                    max_chars = getattr(config, "COMMERCIAL_MAX_DURATION", 30) * 4  # ~4 chars/sec
+                    max_chars = (
+                        getattr(config, "COMMERCIAL_MAX_DURATION", 30) * 4
+                    )  # ~4 chars/sec
                     if len(cleaned) > max_chars:
                         # Try to truncate at sentence boundary
                         for sep in [". ", "! ", "? "]:
@@ -462,7 +472,9 @@ async def generate_commercial(
         except asyncio.TimeoutError:
             logging.debug("Commercial: Ollama timed out, falling back to template")
         except Exception as e:
-            logging.debug(f"Commercial: AI generation failed ({e}), falling back to template")
+            logging.debug(
+                f"Commercial: AI generation failed ({e}), falling back to template"
+            )
 
     # ── Fallback: pre-written templates ───────────────────────────────
     if category and category in COMMERCIAL_TEMPLATES:
@@ -476,6 +488,7 @@ async def generate_commercial(
 
     # Extract and validate sound tags
     from utils.dj import extract_sound_tags
+
     clean_text, sound_ids = extract_sound_tags(commercial)
     if sound_ids:
         tag_str = " ".join(f"{{sound:{sid}}}" for sid in sound_ids)
@@ -499,6 +512,7 @@ async def generate_commercial(
 
 
 # ── Station Wars: Frequency Hijack Logic ────────────────────────────────────
+
 
 def should_play_hijack(guild_id: int, queue_size: int = 0) -> bool:
     """Decide if a Station Wars dimensional frequency hijack should occur.
@@ -602,7 +616,12 @@ async def generate_hijack(
     Returns:
         Hijack text with {sound:name} tags, or None if generation fails.
     """
-    from utils.llm_dj import call_ollama, OLLAMA_DJ_AVAILABLE, SOUND_LIST_FOR_PROMPT, _clean_ai_line
+    from utils.llm_dj import (
+        call_ollama,
+        OLLAMA_DJ_AVAILABLE,
+        SOUND_LIST_FOR_PROMPT,
+        _clean_ai_line,
+    )
 
     station = station_name or getattr(config, "STATION_NAME", "MBot")
     dj = dj_name or getattr(config, "DJ_NAME", "Nova")
@@ -639,7 +658,7 @@ async def generate_hijack(
                         for sep in [". ", "! ", "? "]:
                             last = cleaned[:max_chars].rfind(sep)
                             if last > 15:
-                                cleaned = cleaned[:last + 1]
+                                cleaned = cleaned[: last + 1]
                                 break
                         else:
                             cleaned = cleaned[:max_chars]
@@ -652,7 +671,9 @@ async def generate_hijack(
         except asyncio.TimeoutError:
             logging.debug("Station Wars: Ollama timed out, falling back to template")
         except Exception as e:
-            logging.debug(f"Station Wars: AI generation failed ({e}), falling back to template")
+            logging.debug(
+                f"Station Wars: AI generation failed ({e}), falling back to template"
+            )
 
     # ── Fallback: pre-written hijack templates ────────────────────────
     templates = COMMERCIAL_TEMPLATES.get("station_hijack", [])
@@ -664,6 +685,7 @@ async def generate_hijack(
 
     # Extract and validate sound tags
     from utils.dj import extract_sound_tags
+
     clean_text, sound_ids = extract_sound_tags(template)
     if sound_ids:
         tag_str = " ".join(f"{{sound:{sid}}}" for sid in sound_ids)
@@ -677,7 +699,7 @@ async def generate_hijack(
         for sep in [". ", "! ", "? "]:
             last = hijack_text[:max_chars].rfind(sep)
             if last > 15:
-                hijack_text = hijack_text[:last + 1]
+                hijack_text = hijack_text[: last + 1]
                 break
         else:
             hijack_text = hijack_text[:max_chars]

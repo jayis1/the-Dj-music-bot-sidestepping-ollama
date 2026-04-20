@@ -51,15 +51,15 @@ class PCMBroadcaster(discord.AudioSource):
         # Updated on every read() / autonomous clock tick (every 20ms).
         # This creates a pulsing bar that reacts to drum hits and bass,
         # not a slow VU meter.
-        self._audio_level = 0.0          # Current beat-pulse level (0.0–1.0)
-        self._audio_level_peak = 0.0     # Peak hold
+        self._audio_level = 0.0  # Current beat-pulse level (0.0–1.0)
+        self._audio_level_peak = 0.0  # Peak hold
         self._audio_level_lock = threading.Lock()
 
         # Beat detection state:
         # _energy_short  = RMS of the current 20ms chunk (instantaneous)
         # _energy_long   = rolling average of recent chunks (background level)
         # When short >> long, a beat (transient) is detected.
-        self._energy_long = 0.0          # Long-term energy average
+        self._energy_long = 0.0  # Long-term energy average
 
         # ── Sound Wave RMS History Buffer ──
         # A rolling buffer of recent RMS levels used to render the
@@ -107,7 +107,6 @@ class PCMBroadcaster(discord.AudioSource):
     def _trigger_after(self, error=None):
         """Fires the after-play callback back onto the main asyncio loop."""
         cb = self._after_callback
-        guild_id = self._guild_id
         bot = self._bot
 
         self._after_callback = None
@@ -140,15 +139,17 @@ class PCMBroadcaster(discord.AudioSource):
         # Unpack all samples at once (fast C-level operation via array module)
         try:
             import array
-            samples = array.array('h')
-            samples.frombytes(pcm_data[:n_samples * 2])
+
+            samples = array.array("h")
+            samples.frombytes(pcm_data[: n_samples * 2])
             total = sum(s * s for s in samples)
         except Exception:
             # Fallback: struct.unpack for odd-length data
             import struct as _struct
+
             total = 0.0
             for i in range(0, len(pcm_data) - 1, 2):
-                sample = _struct.unpack_from('<h', pcm_data, i)[0]
+                sample = _struct.unpack_from("<h", pcm_data, i)[0]
                 total += sample * sample
 
         # RMS = sqrt(mean(squared_samples)) / 32768.0
@@ -181,7 +182,7 @@ class PCMBroadcaster(discord.AudioSource):
         """
         with self._audio_level_lock:
             # Read the buffer in chronological order (oldest → newest)
-            n = len(self._rms_history)
+            len(self._rms_history)
             idx = self._rms_history_idx
             return list(self._rms_history[idx:] + self._rms_history[:idx])
 

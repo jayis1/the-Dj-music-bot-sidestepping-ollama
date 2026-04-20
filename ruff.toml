@@ -1,0 +1,34 @@
+# ── Ruff configuration ──────────────────────────────────────────────────────
+# https://docs.astral.sh/ruff/configuration/
+
+# Python version target
+target-version = "py311"
+
+# Line length — same as Black default
+line-length = 88
+
+# Files to exclude
+extend-exclude = [
+    "venv",
+    ".venv",
+    "__pycache__",
+    "node_modules",
+    "moss-tts-server",
+]
+
+[lint]
+# Select all rules by default, then ignore noisy ones
+select = ["E4", "E7", "E9", "F", "W"]
+ignore = [
+    "E501",    # Line too long (ruff format handles this)
+    "E722",    # Bare except (too many in existing code to fix now)
+    "F401",    # Unused import — silenced for __init__.py re-exports and conditional imports
+    "F841",    # Unused variable (common in pattern: x = func(); return x)
+]
+
+[lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"shadow_controller/__init__.py" = ["F401", "F403"]
+"bot.py" = ["E402"]       # Module-level imports not at top (conditional setup)
+"web/app.py" = ["E402"]   # Flask app, imports after app creation
+"cogs/music.py" = ["E402", "F841"]

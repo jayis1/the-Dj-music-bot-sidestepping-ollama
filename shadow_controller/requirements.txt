@@ -1,0 +1,6 @@
+# Shadow Controller dependencies
+browser-use>=0.1.40
+playwright>=1.40.0
+aiohttp>=3.9.0
+pyyaml>=6.0
+discord.py>=2.4.0

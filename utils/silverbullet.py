@@ -29,17 +29,17 @@ Page Hierarchy:
       └── hijack-20260420-1545.md           ← Station Wars hijack event
 
 Frontmatter Schema per page type:
-  Incident:    {type: incident, severity: critical|warning|info, category: ..., 
+  Incident:    {type: incident, severity: critical|warning|info, category: ...,
                 resolved: bool, timestamp: ISO8601, guild_id: int}
-  Session:     {type: session, start: ISO8601, end: ISO8601|null, 
+  Session:     {type: session, start: ISO8601, end: ISO8601|null,
                 tracks_played: int, guild_id: int}
-  Track:       {type: track, title: str, url: str, duration: int, 
+  Track:       {type: track, title: str, url: str, duration: int,
                 played_at: ISO8601, source: autodj|manual|hermes}
-  StreamHealth:{type: stream_health, date: YYYY-MM-DD, keyframes_ok: bool, 
+  StreamHealth:{type: stream_health, date: YYYY-MM-DD, keyframes_ok: bool,
                 bitrate: int, audio_ok: bool}
-  Commercial:  {type: commercial, aired_at: ISO8601, voice: str, 
+  Commercial:  {type: commercial, aired_at: ISO8601, voice: str,
                 category: str, num_ads: int}
-  Hijack:      {type: hijack, aired_at: ISO8601, voice: str, 
+  Hijack:      {type: hijack, aired_at: ISO8601, voice: str,
                 station: str, recovery_line: str}
 """
 
@@ -97,7 +97,32 @@ def _frontmatter(data: Dict[str, Any]) -> str:
             lines.append(f"{key}: {value}")
         elif isinstance(value, str):
             # Quote strings that contain special chars
-            if any(c in value for c in (":", "#", "{", "}", "[", "]", ",", "&", "*", "?", "|", "-", "<", ">", "=", "!", "%", "@", "`", '"', "'")):
+            if any(
+                c in value
+                for c in (
+                    ":",
+                    "#",
+                    "{",
+                    "}",
+                    "[",
+                    "]",
+                    ",",
+                    "&",
+                    "*",
+                    "?",
+                    "|",
+                    "-",
+                    "<",
+                    ">",
+                    "=",
+                    "!",
+                    "%",
+                    "@",
+                    "`",
+                    '"',
+                    "'",
+                )
+            ):
                 escaped = value.replace('"', '\\"')
                 lines.append(f'{key}: "{escaped}"')
             else:
@@ -170,13 +195,19 @@ def write_page(page_path: str, content: str, append: bool = False) -> bool:
             pass  # Page doesn't exist yet — just write fresh
 
     try:
-        resp = requests.put(url, data=content.encode("utf-8"), headers=headers, timeout=10)
+        resp = requests.put(
+            url, data=content.encode("utf-8"), headers=headers, timeout=10
+        )
         if resp.status_code in (200, 201, 204):
             logger.info("SilverBullet: wrote %s (%d bytes)", page_path, len(content))
             return True
         else:
-            logger.error("SilverBullet: write failed for %s — HTTP %d: %s",
-                         page_path, resp.status_code, resp.text[:200])
+            logger.error(
+                "SilverBullet: write failed for %s — HTTP %d: %s",
+                page_path,
+                resp.status_code,
+                resp.text[:200],
+            )
             return False
     except requests.RequestException as e:
         logger.error("SilverBullet: connection error for %s: %s", page_path, e)
@@ -210,7 +241,11 @@ def read_page(page_path: str) -> Optional[str]:
         elif resp.status_code == 404:
             return None
         else:
-            logger.warning("SilverBullet: read failed for %s — HTTP %d", page_path, resp.status_code)
+            logger.warning(
+                "SilverBullet: read failed for %s — HTTP %d",
+                page_path,
+                resp.status_code,
+            )
             return None
     except requests.RequestException as e:
         logger.error("SilverBullet: read error for %s: %s", page_path, e)
@@ -294,11 +329,14 @@ def document_incident(
     write_page(page_path, content)
 
     # Also append to the daily log
-    _append_daily_log(date, f"## 🚨 Incident: {title}\n\n"
-                     f"- **Severity**: {severity}\n"
-                     f"- **Category**: {category}\n"
-                     f"- **Resolved**: {'Yes' if resolved else 'No'}\n\n"
-                     f"{body}\n")
+    _append_daily_log(
+        date,
+        f"## 🚨 Incident: {title}\n\n"
+        f"- **Severity**: {severity}\n"
+        f"- **Category**: {category}\n"
+        f"- **Resolved**: {'Yes' if resolved else 'No'}\n\n"
+        f"{body}\n",
+    )
 
     return page_path
 
@@ -341,9 +379,12 @@ def document_session_start(
 
     write_page(page_path, content)
 
-    _append_daily_log(date, f"## 📡 Session Started: {date} {time_suffix}\n\n"
-                     f"- Auto-DJ: {'On' if autodj_enabled else 'Off'}\n"
-                     f"- Source: {source or 'none'}\n")
+    _append_daily_log(
+        date,
+        f"## 📡 Session Started: {date} {time_suffix}\n\n"
+        f"- Auto-DJ: {'On' if autodj_enabled else 'Off'}\n"
+        f"- Source: {source or 'none'}\n",
+    )
 
     return page_path
 
@@ -374,6 +415,7 @@ def document_session_end(
 
     # Update tracks_played count
     import re
+
     updated = re.sub(r"tracks_played: \d+", f"tracks_played: {tracks_played}", updated)
 
     # Append end summary
@@ -508,7 +550,7 @@ def document_commercial(
         "tags": ["station/commercial"],
     }
 
-    content = _frontmatter(frontmatter_data) + f"\n\n# 📺 Commercial Break\n\n"
+    content = _frontmatter(frontmatter_data) + "\n\n# 📺 Commercial Break\n\n"
     content += f"- **Time**: {_iso(ts)}\n"
     content += f"- **Voice**: {voice}\n"
     content += f"- **Category**: {category}\n"
@@ -558,7 +600,9 @@ def document_hijack(
         "tags": ["station/hijack"],
     }
 
-    content = _frontmatter(frontmatter_data) + f"\n\n# 📡 Station Wars: {station_name}\n\n"
+    content = (
+        _frontmatter(frontmatter_data) + f"\n\n# 📡 Station Wars: {station_name}\n\n"
+    )
     content += f"- **Time**: {_iso(ts)}\n"
     content += f"- **Invading Station**: {station_name}\n"
     content += f"- **Voice**: {voice}\n\n"
@@ -567,11 +611,13 @@ def document_hijack(
         content += f"> *{body}*\n\n"
 
     if recovery_line:
-        content += f"**DJ Recovery**: *\"{recovery_line}\"*\n"
+        content += f'**DJ Recovery**: *"{recovery_line}"*\n'
 
     write_page(page_path, content)
 
-    _append_daily_log(date, f"📡 **STATION WARS**: {station_name} hijacked the frequency!\n")
+    _append_daily_log(
+        date, f"📡 **STATION WARS**: {station_name} hijacked the frequency!\n"
+    )
 
     return page_path
 
@@ -606,13 +652,13 @@ def update_dashboard(
         "tags": ["station"],
     }
 
-    content = _frontmatter(frontmatter_data) + f"\n\n"
+    content = _frontmatter(frontmatter_data) + "\n\n"
     content += f"# 🎛️ {station_name} — Station Dashboard\n\n"
     content += f"> Last updated: {_iso()}\n\n"
 
     # Live status card
     content += "## Status\n\n"
-    content += f"| Metric | Value |\n|--------|-------|\n"
+    content += "| Metric | Value |\n|--------|-------|\n"
     content += f"| Stream | {'🟢 LIVE' if yt_stream_active else '🔴 Offline'} |\n"
     content += f"| Now Playing | {current_song or 'Nothing'} |\n"
     content += f"| Auto-DJ | {'✅ On' if autodj_enabled else '❌ Off'} |\n"
@@ -623,8 +669,8 @@ def update_dashboard(
     # SilverBullet queries that auto-populate from frontmatter
     content += "## Today's Activity\n\n"
     content += "```query\n"
-    content += "from p = tags[\"station/track\"]\n"
-    content += f"where p.date == \"{_date_str()}\"\n"
+    content += 'from p = tags["station/track"]\n'
+    content += f'where p.date == "{_date_str()}"\n'
     content += "order by p.played_at desc\n"
     content += "limit 20\n"
     content += "select {|p.played_at|[[${p.name}|p.title]]|p.source|}\n"
@@ -632,7 +678,7 @@ def update_dashboard(
 
     content += "## Recent Incidents\n\n"
     content += "```query\n"
-    content += "from p = tags[\"station/incident\"]\n"
+    content += 'from p = tags["station/incident"]\n'
     content += "order by p.timestamp desc\n"
     content += "limit 10\n"
     content += "select {|p.timestamp|[[${p.name}|p.title]]|p.severity|p.resolved|}\n"
@@ -640,7 +686,7 @@ def update_dashboard(
 
     content += "## Recent Hijacks\n\n"
     content += "```query\n"
-    content += "from p = tags[\"station/hijack\"]\n"
+    content += 'from p = tags["station/hijack"]\n'
     content += "order by p.aired_at desc\n"
     content += "limit 5\n"
     content += "select {|p.aired_at|p.station|p.voice|}\n"
@@ -685,7 +731,12 @@ def test_connection() -> Dict[str, Any]:
     """
     base_url = getattr(config, "SILVERBULLET_URL", "")
     if not base_url:
-        return {"connected": False, "url": "", "writable": False, "error": "SILVERBULLET_URL not configured"}
+        return {
+            "connected": False,
+            "url": "",
+            "writable": False,
+            "error": "SILVERBULLET_URL not configured",
+        }
 
     url = f"{base_url}/.ping"
 

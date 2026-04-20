@@ -7,7 +7,6 @@ the sound effect over the currently playing music in a guild.
 """
 
 import os
-import logging
 
 SOUNDS_DIR = "sounds"
 

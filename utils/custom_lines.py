@@ -7,7 +7,6 @@ Each category is a list of format strings using {title}, {prev_title},
 """
 
 import json
-import os
 import logging
 from pathlib import Path
 

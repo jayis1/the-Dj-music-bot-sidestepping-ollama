@@ -43,7 +43,6 @@ Configure via .env: OLLAMA_HOST, OLLAMA_MODEL, OLLAMA_DJ_ENABLED
 """
 
 import asyncio
-import json
 import logging
 import os
 import random
@@ -584,7 +583,9 @@ def _build_user_prompt(
     context_parts.append(f"What to do: {category_desc}")
 
     if dj_line:
-        context_parts.append(f'{getattr(config, "DJ_NAME", "Nova")} just said: "{dj_line}"')
+        context_parts.append(
+            f'{getattr(config, "DJ_NAME", "Nova")} just said: "{dj_line}"'
+        )
     if title:
         context_parts.append(f'Current song: "{title}"')
     if prev_title:
@@ -775,14 +776,18 @@ def _clean_ai_line(raw: str) -> str:
     from utils.soundboard import list_sounds as _list_sounds
 
     try:
-        available_sounds = {s["id"]: os.path.splitext(s["id"])[0] for s in _list_sounds()}
+        available_sounds = {
+            s["id"]: os.path.splitext(s["id"])[0] for s in _list_sounds()
+        }
     except Exception:
         available_sounds = {}
 
     if available_sounds:
         # Sort by length (longest first) to avoid partial matches
         # e.g. "mega_airhorn" before "airhorn"
-        sorted_ids = sorted(available_sounds.keys(), key=lambda x: -len(available_sounds[x]))
+        sorted_ids = sorted(
+            available_sounds.keys(), key=lambda x: -len(available_sounds[x])
+        )
 
         for sid in sorted_ids:
             base = available_sounds[sid]
@@ -791,19 +796,22 @@ def _clean_ai_line(raw: str) -> str:
             # These patterns intentionally do NOT match {sound:}, [sound:], (sound:) format.
             # The lookbehind prevents matching inside bracket-style tags:
             # (?<![{[(<]) means "not preceded by {, [, (, <"
-            bracket_lookbehind = r'(?<![{[(<])'
+            bracket_lookbehind = r"(?<![{[(<])"
             patterns = [
-                rf'\bplays\s+{re.escape(base)}\b',
-                rf'\*plays\s+{re.escape(base)}\*',
-                rf'\bsound\s+effect[:\s]+{re.escape(base)}\b',
-                bracket_lookbehind + rf'sound:{re.escape(base)}\b(?![_a-z])',  # sound:airhorn but not inside brackets
-                rf'\bsound\s+{re.escape(base)}\b',                 # sound airhorn (space, no colon)
-                rf'\({re.escape(base)}\)',
-                rf'\*{re.escape(base)}\*',
+                rf"\bplays\s+{re.escape(base)}\b",
+                rf"\*plays\s+{re.escape(base)}\*",
+                rf"\bsound\s+effect[:\s]+{re.escape(base)}\b",
+                bracket_lookbehind
+                + rf"sound:{re.escape(base)}\b(?![_a-z])",  # sound:airhorn but not inside brackets
+                rf"\bsound\s+{re.escape(base)}\b",  # sound airhorn (space, no colon)
+                rf"\({re.escape(base)}\)",
+                rf"\*{re.escape(base)}\*",
             ]
             for pattern in patterns:
                 if re.search(pattern, line, re.IGNORECASE):
-                    line = re.sub(pattern, f"{{sound:{base}}}", line, flags=re.IGNORECASE)
+                    line = re.sub(
+                        pattern, f"{{sound:{base}}}", line, flags=re.IGNORECASE
+                    )
                     break  # Only replace once per sound
 
     # 3. Extract and validate {sound:name} tags (now handles {}, [], (), <>)

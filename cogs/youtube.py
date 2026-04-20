@@ -1,6 +1,5 @@
 import asyncio
 import yt_dlp
-import discord
 import logging
 import os
 import config
@@ -117,6 +116,7 @@ def get_ytdl_format_options():
     all other callers that got a shallow copy.
     """
     import copy
+
     return copy.deepcopy(YTDL_FORMAT_OPTIONS)
 
 

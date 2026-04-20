@@ -54,9 +54,13 @@ class PregenEntry:
     ai_text: str = ""  # The AI side host line text (clean)
     ai_tts_path: str = ""  # Path to the AI side host TTS audio file (permanent)
     # ── Commercial break (pre-generated) ──
-    commercial_text: str = ""  # Commercial script text (clean, with {sound:} tags stripped)
+    commercial_text: str = (
+        ""  # Commercial script text (clean, with {sound:} tags stripped)
+    )
     commercial_tts_path: str = ""  # Path to the commercial TTS audio file (permanent)
-    commercial_sound_ids: list = field(default_factory=list)  # Sound tags from commercial text
+    commercial_sound_ids: list = field(
+        default_factory=list
+    )  # Sound tags from commercial text
     commercial_voice: str = ""  # Voice name used for this commercial
     # ── Station Wars: Frequency Hijack (pre-generated) ──
     hijack_text: str = ""  # Hijack script text (clean, with {sound:} tags stripped)
@@ -117,7 +121,9 @@ def _commercial_pregen_filename(guild_id: int, index: int, title_hash: str) -> s
 
 def _commercial_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
     """Full path to a commercial pregen file in assets/part2/."""
-    return os.path.join(PREGEN_DIR, _commercial_pregen_filename(guild_id, index, title_hash))
+    return os.path.join(
+        PREGEN_DIR, _commercial_pregen_filename(guild_id, index, title_hash)
+    )
 
 
 def _hijack_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
@@ -127,7 +133,9 @@ def _hijack_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
 
 def _hijack_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
     """Full path to a hijack pregen file in assets/part2/."""
-    return os.path.join(PREGEN_DIR, _hijack_pregen_filename(guild_id, index, title_hash))
+    return os.path.join(
+        PREGEN_DIR, _hijack_pregen_filename(guild_id, index, title_hash)
+    )
 
 
 def _recovery_pregen_filename(guild_id: int, index: int, title_hash: str) -> str:
@@ -137,7 +145,9 @@ def _recovery_pregen_filename(guild_id: int, index: int, title_hash: str) -> str
 
 def _recovery_pregen_path(guild_id: int, index: int, title_hash: str) -> str:
     """Full path to a recovery pregen file in assets/part2/."""
-    return os.path.join(PREGEN_DIR, _recovery_pregen_filename(guild_id, index, title_hash))
+    return os.path.join(
+        PREGEN_DIR, _recovery_pregen_filename(guild_id, index, title_hash)
+    )
 
 
 def ensure_pregen_dir() -> None:
@@ -304,7 +314,11 @@ class DjPregenerator:
                  commercial_voice) if found, otherwise None.
         """
         entry = self.lookup(guild_id, title, prev_title)
-        if entry and entry.commercial_tts_path and os.path.isfile(entry.commercial_tts_path):
+        if (
+            entry
+            and entry.commercial_tts_path
+            and os.path.isfile(entry.commercial_tts_path)
+        ):
             return (
                 entry.commercial_tts_path,
                 entry.commercial_text,
@@ -345,7 +359,11 @@ class DjPregenerator:
         Returns (recovery_tts_path, recovery_text) if found, otherwise None.
         """
         entry = self.lookup(guild_id, title, prev_title)
-        if entry and entry.recovery_tts_path and os.path.isfile(entry.recovery_tts_path):
+        if (
+            entry
+            and entry.recovery_tts_path
+            and os.path.isfile(entry.recovery_tts_path)
+        ):
             return (entry.recovery_tts_path, entry.recovery_text)
         return None
 
@@ -404,7 +422,6 @@ class DjPregenerator:
 
                 from utils.dj import (
                     generate_outro,
-                    generate_song_intro,
                     generate_intro,
                     generate_tts,
                     extract_sound_tags,
@@ -474,6 +491,7 @@ class DjPregenerator:
                             if os.path.isfile(ai_meta_path):
                                 try:
                                     import json as _json
+
                                     with open(ai_meta_path, "r") as _f:
                                         _ai_data = _json.load(_f)
                                     ai_text = _ai_data.get("ai_text", ai_text)
@@ -500,11 +518,18 @@ class DjPregenerator:
                             # Try to load commercial metadata
                             try:
                                 import json as _json2
-                                with open(_pregen_meta_path(guild_id, i, title_hash), "r") as _mf:
+
+                                with open(
+                                    _pregen_meta_path(guild_id, i, title_hash), "r"
+                                ) as _mf:
                                     _meta = _json2.load(_mf)
                                 entry.commercial_text = _meta.get("commercial_text", "")
-                                entry.commercial_sound_ids = _meta.get("commercial_sound_ids", [])
-                                entry.commercial_voice = _meta.get("commercial_voice", "")
+                                entry.commercial_sound_ids = _meta.get(
+                                    "commercial_sound_ids", []
+                                )
+                                entry.commercial_voice = _meta.get(
+                                    "commercial_voice", ""
+                                )
                             except Exception:
                                 pass
 
@@ -513,10 +538,15 @@ class DjPregenerator:
                             entry.hijack_tts_path = hj_path
                             try:
                                 import json as _json3
-                                with open(_pregen_meta_path(guild_id, i, title_hash), "r") as _mf2:
+
+                                with open(
+                                    _pregen_meta_path(guild_id, i, title_hash), "r"
+                                ) as _mf2:
                                     _meta2 = _json3.load(_mf2)
                                 entry.hijack_text = _meta2.get("hijack_text", "")
-                                entry.hijack_sound_ids = _meta2.get("hijack_sound_ids", [])
+                                entry.hijack_sound_ids = _meta2.get(
+                                    "hijack_sound_ids", []
+                                )
                                 entry.hijack_voice = _meta2.get("hijack_voice", "")
                             except Exception:
                                 pass
@@ -526,7 +556,10 @@ class DjPregenerator:
                             entry.recovery_tts_path = rec_path
                             try:
                                 import json as _json4
-                                with open(_pregen_meta_path(guild_id, i, title_hash), "r") as _mf3:
+
+                                with open(
+                                    _pregen_meta_path(guild_id, i, title_hash), "r"
+                                ) as _mf3:
                                     _meta3 = _json4.load(_mf3)
                                 entry.recovery_text = _meta3.get("recovery_text", "")
                             except Exception:
@@ -611,7 +644,11 @@ class DjPregenerator:
                         ai_text = ""
                         ai_tts_path = ""
                         try:
-                            from utils.llm_dj import generate_side_host_line, OLLAMA_DJ_AVAILABLE
+                            from utils.llm_dj import (
+                                generate_side_host_line,
+                                OLLAMA_DJ_AVAILABLE,
+                            )
+
                             ai_enabled = music.ai_dj_enabled.get(guild_id, False)
                             if ai_enabled and OLLAMA_DJ_AVAILABLE:
                                 ai_line = await generate_side_host_line(
@@ -632,11 +669,15 @@ class DjPregenerator:
                                     )
                                     if ai_tts_result:
                                         # Move AI TTS to permanent path
-                                        ai_perm = _ai_pregen_path(guild_id, i, title_hash)
+                                        ai_perm = _ai_pregen_path(
+                                            guild_id, i, title_hash
+                                        )
                                         try:
                                             import shutil
+
                                             shutil.copy2(ai_tts_result, ai_perm)
                                             from utils.dj import cleanup_tts_file
+
                                             cleanup_tts_file(ai_tts_result)
                                             ai_tts_path = ai_perm
                                         except Exception:
@@ -677,17 +718,23 @@ class DjPregenerator:
                                 # Pre-gen a commercial even if it might not play —
                                 # the 0.2s TTS generation cost is worth eliminating
                                 # the 1-3s gap for the listener.
-                                com_path = _commercial_pregen_path(guild_id, i, title_hash)
+                                com_path = _commercial_pregen_path(
+                                    guild_id, i, title_hash
+                                )
                                 if not os.path.isfile(com_path):
                                     com_text = await _gen_com(
-                                        station_name=getattr(config, "STATION_NAME", "MBot"),
+                                        station_name=getattr(
+                                            config, "STATION_NAME", "MBot"
+                                        ),
                                         song_title=title,
                                         prev_title=prev_title,
                                         queue_size=queue_size,
                                         listener_count=0,
                                     )
                                     if com_text:
-                                        com_clean, com_sounds = extract_sound_tags(com_text)
+                                        com_clean, com_sounds = extract_sound_tags(
+                                            com_text
+                                        )
                                         com_voice = _get_com_voice(guild_id) or voice
                                         com_tts = await generate_tts(
                                             com_clean,
@@ -697,8 +744,10 @@ class DjPregenerator:
                                         if com_tts:
                                             try:
                                                 import shutil
+
                                                 shutil.copy2(com_tts, com_path)
                                                 from utils.dj import cleanup_tts_file
+
                                                 cleanup_tts_file(com_tts)
                                             except Exception:
                                                 com_path = com_tts
@@ -718,11 +767,15 @@ class DjPregenerator:
                                 hj_path = _hijack_pregen_path(guild_id, i, title_hash)
                                 if not os.path.isfile(hj_path):
                                     hj_text = await _gen_hijack(
-                                        station_name=getattr(config, "STATION_NAME", "MBot"),
+                                        station_name=getattr(
+                                            config, "STATION_NAME", "MBot"
+                                        ),
                                         dj_name=getattr(config, "DJ_NAME", "Nova"),
                                     )
                                     if hj_text:
-                                        hj_clean, hj_sounds = extract_sound_tags(hj_text)
+                                        hj_clean, hj_sounds = extract_sound_tags(
+                                            hj_text
+                                        )
                                         hj_voice = _get_hijack_voice(guild_id) or voice
                                         hj_tts = await generate_tts(
                                             hj_clean,
@@ -732,8 +785,10 @@ class DjPregenerator:
                                         if hj_tts:
                                             try:
                                                 import shutil
+
                                                 shutil.copy2(hj_tts, hj_path)
                                                 from utils.dj import cleanup_tts_file
+
                                                 cleanup_tts_file(hj_tts)
                                             except Exception:
                                                 hj_path = hj_tts
@@ -750,7 +805,9 @@ class DjPregenerator:
                                 # ── Recovery line pre-generation ──
                                 # Pre-gen the DJ's comeback line after a hijack.
                                 # Uses the main DJ voice (not a commercial voice).
-                                rec_path = _recovery_pregen_path(guild_id, i, title_hash)
+                                rec_path = _recovery_pregen_path(
+                                    guild_id, i, title_hash
+                                )
                                 if not os.path.isfile(rec_path):
                                     rec_text = _get_recovery()
                                     if rec_text:
@@ -763,8 +820,10 @@ class DjPregenerator:
                                         if rec_tts:
                                             try:
                                                 import shutil
+
                                                 shutil.copy2(rec_tts, rec_path)
                                                 from utils.dj import cleanup_tts_file
+
                                                 cleanup_tts_file(rec_tts)
                                             except Exception:
                                                 rec_path = rec_tts

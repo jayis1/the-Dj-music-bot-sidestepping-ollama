@@ -8,7 +8,6 @@ Presets are stored in the presets/ directory as JSON files.
 import json
 import os
 import logging
-from pathlib import Path
 
 PRESETS_DIR = "presets"
 

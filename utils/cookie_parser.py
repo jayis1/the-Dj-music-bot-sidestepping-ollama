@@ -12,7 +12,6 @@ import os
 import re
 import logging
 from datetime import datetime
-from http.cookiejar import MozillaCookieJar, Cookie
 
 
 def parse_all_cookies(header: str) -> dict:
@@ -108,6 +107,7 @@ def parse_set_cookie_to_netscape(header: str, domain: str = "") -> str:
                     try:
                         dt = datetime.strptime(expires_str, fmt)
                         import time
+
                         expires = int(time.mktime(dt.timetuple()))
                         break
                     except ValueError:
@@ -115,7 +115,9 @@ def parse_set_cookie_to_netscape(header: str, domain: str = "") -> str:
             except Exception:
                 expires = 0
 
-    include_subdomains = "TRUE" if cookie_domain and cookie_domain.startswith(".") else "FALSE"
+    include_subdomains = (
+        "TRUE" if cookie_domain and cookie_domain.startswith(".") else "FALSE"
+    )
     secure_str = "TRUE" if secure else "FALSE"
 
     if not cookie_domain:
@@ -135,7 +137,9 @@ def save_cookies_to_file(cookies: list, filepath: str = "") -> bool:
         True if successful, False otherwise.
     """
     if not filepath:
-        filepath = getattr(__import__("config"), "YTDDL_COOKIEFILE", "youtube_cookie.txt")
+        filepath = getattr(
+            __import__("config"), "YTDDL_COOKIEFILE", "youtube_cookie.txt"
+        )
 
     try:
         with open(filepath, "w") as f:
@@ -151,6 +155,7 @@ def save_cookies_to_file(cookies: list, filepath: str = "") -> bool:
 
 
 # ── Legacy log parsing (kept for backward compatibility) ──────────────
+
 
 def parse_log_entry(log_line: str) -> dict | None:
     """Parse a single log line into a dictionary of its components.

@@ -28,7 +28,11 @@ log = logging.getLogger("youtube-stream")
 # /dev/dri as a device mapping (see docker-compose.yml --profile amd-gpu).
 #
 # To check your GPU: vainfo (install: sudo apt install vainfo)
-_VAAPI_ENABLED = os.environ.get("AMD_GPU_VAAPI", "").strip().lower() in ("1", "true", "yes")
+_VAAPI_ENABLED = os.environ.get("AMD_GPU_VAAPI", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 if _VAAPI_ENABLED:
     _DRI_DEVICE = "/dev/dri/renderD128"
@@ -44,6 +48,7 @@ if _VAAPI_ENABLED:
         _gfx_info = "unknown"
         try:
             import glob as _glob
+
             for _path in _glob.glob("/sys/class/drm/card*/device/gpu_id"):
                 with open(_path) as _f:
                     _gfx_info = _f.read().strip()
@@ -63,6 +68,7 @@ TXT_STATE = "/tmp/radio_state.txt"
 TXT_TITLE = "/tmp/radio_title.txt"
 TXT_DJ = "/tmp/radio_dj.txt"
 TXT_WAITING = "/tmp/radio_waiting.txt"
+
 
 class YouTubeLiveStreamer:
     """Manages the Master YouTube Live RTMP connection via UDP polling.
@@ -117,7 +123,7 @@ class YouTubeLiveStreamer:
         self._last_error: str = ""
         self._use_vaapi = _VAAPI_ENABLED
         self._stream_starting = False  # Guard against concurrent start attempts
-        
+
         self.update_hud(station=self.station_name, waiting="Booting Mainframes...")
 
         # Warn immediately if stream key is missing — the #1 cause of
@@ -187,7 +193,9 @@ class YouTubeLiveStreamer:
         # If the OBS bridge is connected, use OBS as the streaming point.
         # This eliminates the need for Xvfb + Chromium as separate processes.
         if self._obs_bridge and self._obs_bridge.enabled:
-            log.info("YouTube Live: OBS Studio detected — using OBS as streaming backend")
+            log.info(
+                "YouTube Live: OBS Studio detected — using OBS as streaming backend"
+            )
             if await self._start_obs_stream():
                 self._using_obs = True
                 self._watchdog_task = asyncio.create_task(self._watchdog_obs())
@@ -216,14 +224,18 @@ class YouTubeLiveStreamer:
             await self._kill_process()
         log.info("YouTube Live: Master Engine halted.")
 
-    async def play_song(self, audio_url: str, title: str = "", thumbnail: str | None = None):
+    async def play_song(
+        self, audio_url: str, title: str = "", thumbnail: str | None = None
+    ):
         """Hook to update HUD text and dynamically download the track thumbnail."""
         self.update_hud(title=title)
-        
+
         if thumbnail:
+
             async def _download_thumb():
                 try:
                     import aiohttp
+
                     async with aiohttp.ClientSession() as session:
                         async with session.get(thumbnail) as resp:
                             if resp.status == 200:
@@ -234,7 +246,7 @@ class YouTubeLiveStreamer:
                                 os.rename(temp_path, "/tmp/radio_thumbnail.jpg")
                 except Exception as e:
                     log.debug(f"YouTube Live: Failed to fetch thumbnail: {e}")
-                    
+
             asyncio.create_task(_download_thumb())
 
     async def play_tts(self, tts_path: str, text: str = ""):
@@ -292,7 +304,9 @@ class YouTubeLiveStreamer:
     def _resolve_image(self) -> str | None:
         if self.stream_image and os.path.isfile(self.stream_image):
             return self.stream_image
-        assets_logo = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png")
+        assets_logo = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "logo.png"
+        )
         if os.path.isfile(assets_logo):
             return assets_logo
         return None
@@ -300,9 +314,13 @@ class YouTubeLiveStreamer:
     def _resolve_gif(self) -> str | None:
         if self.stream_gif and os.path.isfile(self.stream_gif):
             return self.stream_gif
-        assets_gif = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "sounds.gif")
+        assets_gif = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "assets", "sounds.gif"
+        )
         if not os.path.isfile(assets_gif):
-            assets_gif = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", "sound.gif")
+            assets_gif = os.path.join(
+                os.path.dirname(os.path.dirname(__file__)), "assets", "sound.gif"
+            )
         if os.path.isfile(assets_gif):
             return assets_gif
         return None
@@ -374,9 +392,7 @@ class YouTubeLiveStreamer:
             # Steps 2 (stream settings) and 3 (scene creation) share one
             # WebSocket connection. Step 4 (overlay) is batched internally
             # by create_native_overlay(). Steps 5-7.5 use a second batch.
-            overlay_scene = os.environ.get(
-                "OBS_SCENE_OVERLAY", "📺 Overlay Only"
-            )
+            overlay_scene = os.environ.get("OBS_SCENE_OVERLAY", "📺 Overlay Only")
 
             with self._obs_bridge._batch() as batch_client:
                 if batch_client is None:
@@ -396,7 +412,9 @@ class YouTubeLiveStreamer:
                     )
                     log.info("YouTube Live/OBS: Stream settings configured ✅")
                 except Exception as e:
-                    log.warning(f"YouTube Live/OBS: Failed to configure stream settings: {e}")
+                    log.warning(
+                        f"YouTube Live/OBS: Failed to configure stream settings: {e}"
+                    )
                     return False
 
                 # ── Step 3: Ensure the overlay scene exists ──
@@ -404,7 +422,9 @@ class YouTubeLiveStreamer:
                     scene_list = batch_client.get_scene_list()
                     existing_scenes = [
                         s.scene_name if hasattr(s, "scene_name") else str(s)
-                        for s in (scene_list.scenes if hasattr(scene_list, "scenes") else [])
+                        for s in (
+                            scene_list.scenes if hasattr(scene_list, "scenes") else []
+                        )
                     ]
                     if overlay_scene not in existing_scenes:
                         log.info(f"YouTube Live/OBS: Creating scene '{overlay_scene}'")
@@ -421,8 +441,11 @@ class YouTubeLiveStreamer:
             # if browser_source fails (e.g. Debian 12 apt OBS without obs-browser).
             try:
                 import config as _cfg
+
                 overlay_mode = getattr(_cfg, "OBS_OVERLAY_MODE", "auto").lower()
-                overlay_url = getattr(_cfg, "OBS_OVERLAY_URL", "http://localhost:8080/overlay")
+                overlay_url = getattr(
+                    _cfg, "OBS_OVERLAY_URL", "http://localhost:8080/overlay"
+                )
             except ImportError:
                 overlay_mode = "auto"
                 overlay_url = "http://localhost:8080/overlay"
@@ -436,7 +459,9 @@ class YouTubeLiveStreamer:
                     )
                     if result and not result.get("error"):
                         browser_overlay_created = True
-                        log.info("YouTube Live/OBS: Browser overlay created (full overlay + visualizer)")
+                        log.info(
+                            "YouTube Live/OBS: Browser overlay created (full overlay + visualizer)"
+                        )
                 except Exception as e:
                     if overlay_mode == "browser":
                         log.warning(
@@ -450,7 +475,9 @@ class YouTubeLiveStreamer:
                         )
 
             if not browser_overlay_created:
-                log.info("YouTube Live/OBS: Creating native overlay (color+text sources)")
+                log.info(
+                    "YouTube Live/OBS: Creating native overlay (color+text sources)"
+                )
                 result = self._obs_bridge.create_native_overlay(
                     scene_name=overlay_scene,
                 )
@@ -477,7 +504,9 @@ class YouTubeLiveStreamer:
                         "restart_on_activate": True,
                     }
                     try:
-                        existing_audio = batch_client.get_input_settings(name=_AUDIO_SOURCE)
+                        existing_audio = batch_client.get_input_settings(
+                            name=_AUDIO_SOURCE
+                        )
                         if existing_audio:
                             # Push correct settings to existing source
                             try:
@@ -486,7 +515,9 @@ class YouTubeLiveStreamer:
                                     settings=_AUDIO_SETTINGS,
                                     overlay=True,
                                 )
-                                log.info("YouTube Live/OBS: Updated audio source settings (overlay=True)")
+                                log.info(
+                                    "YouTube Live/OBS: Updated audio source settings (overlay=True)"
+                                )
                             except Exception:
                                 pass
                         else:
@@ -513,24 +544,39 @@ class YouTubeLiveStreamer:
                     #   - track=1 → assigned to streaming audio track 1
                     try:
                         batch_client.set_input_audio_monitor_type(
-                            name=_AUDIO_SOURCE, mon_type=2,
+                            name=_AUDIO_SOURCE,
+                            mon_type=2,
                         )
-                        log.info(f"YouTube Live/OBS: Set '{_AUDIO_SOURCE}' → Monitor and Output")
+                        log.info(
+                            f"YouTube Live/OBS: Set '{_AUDIO_SOURCE}' → Monitor and Output"
+                        )
                     except Exception as e:
-                        log.debug(f"YouTube Live/OBS: Could not set audio monitor type: {e}")
+                        log.debug(
+                            f"YouTube Live/OBS: Could not set audio monitor type: {e}"
+                        )
                     try:
                         batch_client.set_input_audio_tracks(
-                            name=_AUDIO_SOURCE, track=1,
+                            name=_AUDIO_SOURCE,
+                            track=1,
                         )
-                        log.info(f"YouTube Live/OBS: Set '{_AUDIO_SOURCE}' → track 1 (streaming)")
+                        log.info(
+                            f"YouTube Live/OBS: Set '{_AUDIO_SOURCE}' → track 1 (streaming)"
+                        )
                     except Exception as e:
                         log.debug(f"YouTube Live/OBS: Could not set audio tracks: {e}")
 
                     # ── Step 6: Mute OBS Desktop Audio ──
-                    for mute_name in ["Desktop Audio", "PulseAudio", "Audio Output", "DesktopAudioHandler"]:
+                    for mute_name in [
+                        "Desktop Audio",
+                        "PulseAudio",
+                        "Audio Output",
+                        "DesktopAudioHandler",
+                    ]:
                         try:
                             batch_client.set_input_mute(name=mute_name, muted=True)
-                            log.info(f"YouTube Live/OBS: Muted '{mute_name}' (using UDP source instead)")
+                            log.info(
+                                f"YouTube Live/OBS: Muted '{mute_name}' (using UDP source instead)"
+                            )
                             break
                         except Exception:
                             continue
@@ -538,7 +584,9 @@ class YouTubeLiveStreamer:
                     # ── Step 7: Switch to the overlay scene ──
                     try:
                         batch_client.set_current_program_scene(name=overlay_scene)
-                        log.info(f"YouTube Live/OBS: Switched to scene '{overlay_scene}'")
+                        log.info(
+                            f"YouTube Live/OBS: Switched to scene '{overlay_scene}'"
+                        )
                     except Exception as e:
                         log.debug(f"YouTube Live/OBS: Could not switch scene: {e}")
 
@@ -584,7 +632,9 @@ class YouTubeLiveStreamer:
                                 },
                             )
                         except Exception as e:
-                            log.debug(f"YouTube Live/OBS: SetProfileParameter({category}/{name}) failed: {e}")
+                            log.debug(
+                                f"YouTube Live/OBS: SetProfileParameter({category}/{name}) failed: {e}"
+                            )
                     log.info(
                         "YouTube Live/OBS: Encoder settings pushed via SetProfileParameter — "
                         "keyint_sec=2, keyint=60, bitrate=3000, CBR, veryfast, "
@@ -645,7 +695,9 @@ class YouTubeLiveStreamer:
         profile_name = os.environ.get("OBS_PROFILE_NAME", "RadioDJ")
         profile_dirs = [
             os.path.expanduser(f"~/.config/obs-studio/basic/profiles/{profile_name}"),
-            os.path.expanduser(f"~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/{profile_name}"),
+            os.path.expanduser(
+                f"~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/{profile_name}"
+            ),
         ]
 
         rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
@@ -663,7 +715,9 @@ class YouTubeLiveStreamer:
                 try:
                     os.makedirs(profile_dir, exist_ok=True)
                 except Exception as e:
-                    log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
+                    log.debug(
+                        f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}"
+                    )
                     continue
 
             service_json_path = os.path.join(profile_dir, "service.json")
@@ -675,7 +729,9 @@ class YouTubeLiveStreamer:
                     f"(server: {rtmp_endpoint}, key: ...{self.stream_key[-4:]})"
                 )
             except Exception as e:
-                log.warning(f"YouTube Live/OBS: Failed to write service.json to {profile_dir}: {e}")
+                log.warning(
+                    f"YouTube Live/OBS: Failed to write service.json to {profile_dir}: {e}"
+                )
 
     def _write_obs_encoder_json(self):
         """Write streamEncoder.json and fix basic.ini in the OBS profile directory.
@@ -709,7 +765,9 @@ class YouTubeLiveStreamer:
         # from its own sandboxed config dir, not from ~/.config/obs-studio/.
         profile_dirs = [
             os.path.expanduser(f"~/.config/obs-studio/basic/profiles/{profile_name}"),
-            os.path.expanduser(f"~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/{profile_name}"),
+            os.path.expanduser(
+                f"~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/{profile_name}"
+            ),
         ]
 
         # ── Write streamEncoder.json ──
@@ -733,7 +791,9 @@ class YouTubeLiveStreamer:
                 try:
                     os.makedirs(profile_dir, exist_ok=True)
                 except Exception as e:
-                    log.debug(f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}")
+                    log.debug(
+                        f"YouTube Live/OBS: Could not create profile dir {profile_dir}: {e}"
+                    )
                     continue
 
             encoder_json_path = os.path.join(profile_dir, "streamEncoder.json")
@@ -745,7 +805,9 @@ class YouTubeLiveStreamer:
                     f"(keyint_sec=2, bitrate=3000, CBR, veryfast, keyint=60)"
                 )
             except Exception as e:
-                log.warning(f"YouTube Live/OBS: Failed to write streamEncoder.json to {profile_dir}: {e}")
+                log.warning(
+                    f"YouTube Live/OBS: Failed to write streamEncoder.json to {profile_dir}: {e}"
+                )
 
             # ── Fix basic.ini: ApplyServiceSettings must be false ──
             # When true, OBS overrides our encoder settings with YouTube's
@@ -765,11 +827,15 @@ class YouTubeLiveStreamer:
                     original = content
                     # Fix ApplyServiceSettings (mixed-case, as OBS expects it)
                     if "ApplyServiceSettings=true" in content:
-                        content = content.replace("ApplyServiceSettings=true", "ApplyServiceSettings=false")
+                        content = content.replace(
+                            "ApplyServiceSettings=true", "ApplyServiceSettings=false"
+                        )
                     elif "ApplyServiceSettings" not in content:
                         # Not present at all — add it after [AdvOut] section header
                         if "[AdvOut]" in content:
-                            content = content.replace("[AdvOut]", "[AdvOut]\nApplyServiceSettings=false")
+                            content = content.replace(
+                                "[AdvOut]", "[AdvOut]\nApplyServiceSettings=false"
+                            )
                         else:
                             # Append section
                             content += "\n[AdvOut]\nApplyServiceSettings=false\n"
@@ -777,12 +843,14 @@ class YouTubeLiveStreamer:
                     # Also ensure keyint_sec and Bitrate are correct
                     if "keyint_sec=" in content:
                         # Replace any keyint_sec value with 2
-                        content = re.sub(r'keyint_sec=\d+', 'keyint_sec=2', content)
+                        content = re.sub(r"keyint_sec=\d+", "keyint_sec=2", content)
                     if "Bitrate=" in content and "[AdvOut]" in content:
                         # Replace AdvOut bitrate (not SimpleOutput bitrate)
-                        advout_section = content[content.index("[AdvOut]"):]
-                        advout_section = re.sub(r'Bitrate=\d+', 'Bitrate=3000', advout_section, count=1)
-                        content = content[:content.index("[AdvOut]")] + advout_section
+                        advout_section = content[content.index("[AdvOut]") :]
+                        advout_section = re.sub(
+                            r"Bitrate=\d+", "Bitrate=3000", advout_section, count=1
+                        )
+                        content = content[: content.index("[AdvOut]")] + advout_section
 
                     if content != original:
                         with open(basic_ini_path, "w") as f:
@@ -794,9 +862,13 @@ class YouTubeLiveStreamer:
                         )
                 else:
                     # basic.ini doesn't exist yet — write a minimal one
-                    log.debug(f"YouTube Live/OBS: basic.ini not found at {basic_ini_path}, will be created by start.sh")
+                    log.debug(
+                        f"YouTube Live/OBS: basic.ini not found at {basic_ini_path}, will be created by start.sh"
+                    )
             except Exception as e:
-                log.debug(f"YouTube Live/OBS: Could not fix basic.ini in {profile_dir}: {e}")
+                log.debug(
+                    f"YouTube Live/OBS: Could not fix basic.ini in {profile_dir}: {e}"
+                )
 
     async def _stop_obs_stream(self):
         """Stop OBS streaming."""
@@ -823,7 +895,9 @@ class YouTubeLiveStreamer:
                 if not status.get("connected"):
                     backoff += 1
                     if backoff > 6:
-                        log.warning("YouTube Live/OBS: OBS disconnected for 60s, attempting reconnect...")
+                        log.warning(
+                            "YouTube Live/OBS: OBS disconnected for 60s, attempting reconnect..."
+                        )
                         result = await self._start_obs_stream()
                         if result:
                             backoff = 0
@@ -842,8 +916,6 @@ class YouTubeLiveStreamer:
                             backoff = 0
         except asyncio.CancelledError:
             pass
-
-
 
     _FONT_BOLD: str | None = None
     _FONT_REGULAR: str | None = None
@@ -878,10 +950,16 @@ class YouTubeLiveStreamer:
     async def _start_master_ffmpeg(self):
         """Construct the FFmpeg process with Xvfb and Chromium headless screen capture!"""
         xvfb_path = shutil.which("Xvfb")
-        chromium_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
-        
+        chromium_path = (
+            shutil.which("chromium")
+            or shutil.which("chromium-browser")
+            or shutil.which("google-chrome")
+        )
+
         if not xvfb_path or not chromium_path:
-            log.error(f"YouTube Live: FATAL - Missing dependencies! Xvfb: {xvfb_path}, Chromium: {chromium_path}")
+            log.error(
+                f"YouTube Live: FATAL - Missing dependencies! Xvfb: {xvfb_path}, Chromium: {chromium_path}"
+            )
             log.error(
                 "YouTube Live: Cannot start Chromium+FFmpeg pipeline. Either:\n"
                 "  1. Install dependencies: sudo apt install xvfb chromium-browser (or chromium)\n"
@@ -895,7 +973,7 @@ class YouTubeLiveStreamer:
             return
 
         primary_url = f"{self.rtmp_url.rstrip('/')}/{self.stream_key}"
-        
+
         # Cleanup previously running headless processes upon restarts
         if self._chromium:
             try:
@@ -912,7 +990,7 @@ class YouTubeLiveStreamer:
                 self._process.kill()
             except Exception:
                 pass
-                
+
         try:
             os.remove("/tmp/.X99-lock")
         except Exception:
@@ -921,27 +999,34 @@ class YouTubeLiveStreamer:
             os.remove("/tmp/.X11-unix/X99")
         except Exception:
             pass
-        
+
         # Kill only the Xvfb process WE started (by PID), not all Xvfb
         # instances on the system. Using pkill -f would kill unrelated
         # processes which is dangerous in shared environments.
         if self._xvfb is not None and hasattr(self._xvfb, "pid"):
             try:
                 import signal as _signal
+
                 os.kill(self._xvfb.pid, _signal.SIGTERM)
-                log.info(f"YouTube Live: Sent SIGTERM to stale Xvfb (PID {self._xvfb.pid})")
+                log.info(
+                    f"YouTube Live: Sent SIGTERM to stale Xvfb (PID {self._xvfb.pid})"
+                )
             except (ProcessLookupError, PermissionError, OSError):
                 pass  # Process already gone or not ours
         log.info(f"YouTube Live: Spawning Headless ({xvfb_path}) overlay capture...")
-        
+
         # 1. Spawn Xvfb virtual frame buffer
         try:
             self._xvfb = await asyncio.create_subprocess_exec(
-                xvfb_path, ":99", "-screen", "0", f"{self.WIDTH}x{self.HEIGHT}x24",
+                xvfb_path,
+                ":99",
+                "-screen",
+                "0",
+                f"{self.WIDTH}x{self.HEIGHT}x24",
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
+                stderr=asyncio.subprocess.DEVNULL,
             )
-            await asyncio.sleep(1) # Allow X11 daemon to initialize
+            await asyncio.sleep(1)  # Allow X11 daemon to initialize
         except Exception as e:
             log.error(f"YouTube Live: Failed to launch Xvfb: {e}")
             return
@@ -953,17 +1038,27 @@ class YouTubeLiveStreamer:
         if self._use_vaapi:
             # Disable --disable-gpu so Chromium can use GPU compositing
             chromium_flags = [
-                "--kiosk", "--no-sandbox", "--disable-dev-shm-usage",
-                "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
-                f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",
+                "--kiosk",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--hide-scrollbars",
+                "--autoplay-policy=no-user-gesture-required",
+                f"--window-size={self.WIDTH},{self.HEIGHT}",
+                "--incognito",
                 # Enable GPU compositing for better overlay rendering
-                "--enable-gpu", "--enable-unsafe-swiftshader",
+                "--enable-gpu",
+                "--enable-unsafe-swiftshader",
             ]
         else:
             chromium_flags = [
-                "--kiosk", "--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage",
-                "--hide-scrollbars", "--autoplay-policy=no-user-gesture-required",
-                f"--window-size={self.WIDTH},{self.HEIGHT}", "--incognito",
+                "--kiosk",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--hide-scrollbars",
+                "--autoplay-policy=no-user-gesture-required",
+                f"--window-size={self.WIDTH},{self.HEIGHT}",
+                "--incognito",
             ]
         try:
             self._chromium = await asyncio.create_subprocess_exec(
@@ -972,9 +1067,9 @@ class YouTubeLiveStreamer:
                 "http://127.0.0.1:8080/overlay",
                 env=env,
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL
+                stderr=asyncio.subprocess.DEVNULL,
             )
-            await asyncio.sleep(5) # Allow page to fully render resources
+            await asyncio.sleep(5)  # Allow page to fully render resources
         except Exception as e:
             log.error(f"YouTube Live: Failed to launch Chromium: {e}")
 
@@ -987,20 +1082,31 @@ class YouTubeLiveStreamer:
             # and AMD_GPU_VAAPI=1 in the environment.
             log.info("YouTube Live: Using VA-API (h264_vaapi) hardware encoding")
             vaapi_init = [
-                "-vaapi_device", "/dev/dri/renderD128",
+                "-vaapi_device",
+                "/dev/dri/renderD128",
             ]
             video_encode = [
                 # Upload x11grab frames to VA-API surface
-                "-vf", "setpts=PTS-STARTPTS,format=nv12,hwupload",
-                "-c:v", "h264_vaapi",
-                "-b:v", f"{self.bitrate_video}k",
-                "-maxrate", f"{self.bitrate_video}k",
-                "-minrate", f"{self.bitrate_video}k",
-                "-bufsize", f"{self.bitrate_video * 2}k",
-                "-g", str(self.fps * 2),
-                "-keyint_min", str(self.fps * 2),
-                "-sc_threshold", "0",
-                "-r", str(self.fps),
+                "-vf",
+                "setpts=PTS-STARTPTS,format=nv12,hwupload",
+                "-c:v",
+                "h264_vaapi",
+                "-b:v",
+                f"{self.bitrate_video}k",
+                "-maxrate",
+                f"{self.bitrate_video}k",
+                "-minrate",
+                f"{self.bitrate_video}k",
+                "-bufsize",
+                f"{self.bitrate_video * 2}k",
+                "-g",
+                str(self.fps * 2),
+                "-keyint_min",
+                str(self.fps * 2),
+                "-sc_threshold",
+                "0",
+                "-r",
+                str(self.fps),
             ]
         else:
             # ── CPU software encoding (libx264) ────────────────────────────
@@ -1008,37 +1114,85 @@ class YouTubeLiveStreamer:
             log.info("YouTube Live: Using software encoding (libx264)")
             vaapi_init = []
             video_encode = [
-                "-vf", "setpts=PTS-STARTPTS",
-                "-c:v", "libx264", "-preset", "ultrafast", "-tune", "zerolatency",
-                "-b:v", f"{self.bitrate_video}k", "-maxrate", f"{self.bitrate_video}k",
-                "-minrate", f"{self.bitrate_video}k",
-                "-bufsize", f"{self.bitrate_video * 2}k", "-pix_fmt", "yuv420p",
-                "-g", str(self.fps * 2), "-keyint_min", str(self.fps * 2),
-                "-sc_threshold", "0",
-                "-nal-hrd", "cbr",
-                "-r", str(self.fps),
+                "-vf",
+                "setpts=PTS-STARTPTS",
+                "-c:v",
+                "libx264",
+                "-preset",
+                "ultrafast",
+                "-tune",
+                "zerolatency",
+                "-b:v",
+                f"{self.bitrate_video}k",
+                "-maxrate",
+                f"{self.bitrate_video}k",
+                "-minrate",
+                f"{self.bitrate_video}k",
+                "-bufsize",
+                f"{self.bitrate_video * 2}k",
+                "-pix_fmt",
+                "yuv420p",
+                "-g",
+                str(self.fps * 2),
+                "-keyint_min",
+                str(self.fps * 2),
+                "-sc_threshold",
+                "0",
+                "-nal-hrd",
+                "cbr",
+                "-r",
+                str(self.fps),
             ]
 
         cmd = [
             "ffmpeg",
             *vaapi_init,
-            "-thread_queue_size", "4096",
-            "-f", "x11grab", "-video_size", f"{self.WIDTH}x{self.HEIGHT}",
-            "-framerate", str(self.fps),
-            "-i", ":99.0+0,0",
+            "-thread_queue_size",
+            "4096",
+            "-f",
+            "x11grab",
+            "-video_size",
+            f"{self.WIDTH}x{self.HEIGHT}",
+            "-framerate",
+            str(self.fps),
+            "-i",
+            ":99.0+0,0",
             # Audio source from the PCMBroadcaster master node
-            "-thread_queue_size", "4096",
-            "-f", "s16le", "-ar", "48000", "-ac", "2",
-            "-i", f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1&timeout=15000000",
-            # Normalize ALL timestamps perfectly to 0.0s to align audio with screen 
-            "-map", "0:v", "-map", "1:a",
+            "-thread_queue_size",
+            "4096",
+            "-f",
+            "s16le",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-i",
+            f"udp://127.0.0.1:{self.udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1&timeout=15000000",
+            # Normalize ALL timestamps perfectly to 0.0s to align audio with screen
+            "-map",
+            "0:v",
+            "-map",
+            "1:a",
             *video_encode,
             # Audio codec (always AAC — no GPU acceleration needed for audio)
-            "-af", "asetpts=PTS-STARTPTS",
-            "-c:a", "aac", "-b:a", f"{self.bitrate_audio}k", "-ar", "48000",
-            "-max_muxing_queue_size", "9999",
-            "-f", "flv", "-flvflags", "no_duration_filesize",
-            "-rtmp_live", "live", "-rtmp_buffer", "2000"
+            "-af",
+            "asetpts=PTS-STARTPTS",
+            "-c:a",
+            "aac",
+            "-b:a",
+            f"{self.bitrate_audio}k",
+            "-ar",
+            "48000",
+            "-max_muxing_queue_size",
+            "9999",
+            "-f",
+            "flv",
+            "-flvflags",
+            "no_duration_filesize",
+            "-rtmp_live",
+            "live",
+            "-rtmp_buffer",
+            "2000",
         ]
 
         if self.rtmp_url.startswith("rtmps://"):
@@ -1047,7 +1201,7 @@ class YouTubeLiveStreamer:
         cmd.append(primary_url)
 
         log.info("YouTube Live: Executing Chromium FFmpeg x11grab RTMP wrapper...")
-        
+
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -1080,7 +1234,9 @@ class YouTubeLiveStreamer:
                 if not line:
                     # EOF — FFmpeg closed stderr (likely exiting)
                     break
-                log.debug(f"YouTube Live/FFmpeg: {line.decode(errors='replace').rstrip()}")
+                log.debug(
+                    f"YouTube Live/FFmpeg: {line.decode(errors='replace').rstrip()}"
+                )
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -1101,14 +1257,20 @@ class YouTubeLiveStreamer:
                         except Exception:
                             pass
                     self._last_error = f"Exited code {self._process.returncode}"
-                    log.error(f"YouTube Live: Master FFmpeg crashed: {self._last_error} | {err[-500:]}")
-                    
+                    log.error(
+                        f"YouTube Live: Master FFmpeg crashed: {self._last_error} | {err[-500:]}"
+                    )
+
                     if consecutive_failures > 5:
                         backoff = min(30, 5 * (consecutive_failures - 5))
-                        log.error(f"Master Stream halted entirely. Rebooting in {backoff}s...")
+                        log.error(
+                            f"Master Stream halted entirely. Rebooting in {backoff}s..."
+                        )
                         await asyncio.sleep(backoff)
-                        
-                    await self._kill_process() # Cleanup dead xvfb instances before reviving!
+
+                    await (
+                        self._kill_process()
+                    )  # Cleanup dead xvfb instances before reviving!
                     await self._start_master_ffmpeg()
                 else:
                     consecutive_failures = 0
@@ -1148,16 +1310,24 @@ class YouTubeLiveStreamer:
                     except Exception:
                         pass
         self._process = None
-        
+
         # Aggressively cleanup Xvfb and Chromium headless instances too
-        if hasattr(self, '_chromium') and self._chromium and getattr(self._chromium, 'returncode', None) is None:
+        if (
+            hasattr(self, "_chromium")
+            and self._chromium
+            and getattr(self._chromium, "returncode", None) is None
+        ):
             try:
                 self._chromium.kill()
             except Exception:
                 pass
             self._chromium = None
-            
-        if hasattr(self, '_xvfb') and self._xvfb and getattr(self._xvfb, 'returncode', None) is None:
+
+        if (
+            hasattr(self, "_xvfb")
+            and self._xvfb
+            and getattr(self._xvfb, "returncode", None) is None
+        ):
             try:
                 self._xvfb.kill()
             except Exception:

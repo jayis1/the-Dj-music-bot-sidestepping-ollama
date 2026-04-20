@@ -1,28 +1,34 @@
 import re
 from datetime import datetime
 
+
 def parse_log_entry(log_line: str) -> dict | None:
     """
     Parses a single log line into a dictionary of its components.
     Assumes log format: YYYY-MM-DD HH:MM:SS,ms:LEVEL:NAME: MESSAGE
     """
-    match = re.match(r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):([A-Z]+):([^:]+): (.*)', log_line)
+    match = re.match(
+        r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3}):([A-Z]+):([^:]+): (.*)", log_line
+    )
     if match:
         timestamp_str, level, name, message = match.groups()
         try:
             # Parse timestamp, ignoring milliseconds for simplicity in datetime object
-            dt_object = datetime.strptime(timestamp_str.split(',')[0], "%Y-%m-%d %H:%M:%S")
+            dt_object = datetime.strptime(
+                timestamp_str.split(",")[0], "%Y-%m-%d %H:%M:%S"
+            )
         except ValueError:
-            dt_object = None # Or handle more robustly if needed
-        
+            dt_object = None  # Or handle more robustly if needed
+
         return {
             "timestamp": timestamp_str,
             "datetime": dt_object,
             "level": level,
             "name": name,
-            "message": message.strip()
+            "message": message.strip(),
         }
     return None
+
 
 def parse_log_file(file_path: str) -> list[dict]:
     """
@@ -30,7 +36,7 @@ def parse_log_file(file_path: str) -> list[dict]:
     """
     parsed_data = []
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(file_path, "r", encoding="utf-8") as f:
             for line in f:
                 entry = parse_log_entry(line)
                 if entry:
@@ -40,6 +46,7 @@ def parse_log_file(file_path: str) -> list[dict]:
     except Exception as e:
         print(f"Error reading or parsing log file: {e}")
     return parsed_data
+
 
 if __name__ == "__main__":
     # Example usage: Create a dummy log file for testing
@@ -54,8 +61,11 @@ if __name__ == "__main__":
     parsed_logs = parse_log_file("dummy_bot_activity.log")
 
     for log_entry in parsed_logs:
-        print(f"Timestamp: {log_entry['timestamp']}, Level: {log_entry['level']}, Message: {log_entry['message']}")
+        print(
+            f"Timestamp: {log_entry['timestamp']}, Level: {log_entry['level']}, Message: {log_entry['message']}"
+        )
 
     # Clean up dummy file
     import os
+
     os.remove("dummy_bot_activity.log")

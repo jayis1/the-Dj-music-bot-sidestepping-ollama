@@ -117,7 +117,7 @@ VIBEVOICE_TTS_URL = getattr(config, "VIBEVOICE_TTS_URL", "") or getattr(
 # Log the active TTS configuration at startup
 if TTS_MODE == "kokoro":
     logging.info(f"DJ: Using Kokoro-FastAPI server at {KOKORO_TTS_URL}")
-    logging.info(f"DJ: Fallback chain: kokoro → moss → edge-tts")
+    logging.info("DJ: Fallback chain: kokoro → moss → edge-tts")
 elif TTS_MODE == "moss":
     logging.info(f"DJ: Using MOSS-TTS-Nano server at {MOSS_TTS_URL}")
     logging.info(f"DJ: MOSS voice prompts directory: {MOSS_VOICES_DIR}")
@@ -1433,7 +1433,9 @@ def extract_sound_tags(text: str) -> tuple[str, list[str]]:
     tags = re.findall(pattern, text, re.IGNORECASE)
 
     # Remove all sound tag patterns from the text
-    cleaned = re.sub(r"\s*[{(\<\[]\s*sound\s*:\s*[^})\>\]]+\s*[})\>\]]\s*", " ", text).strip()
+    cleaned = re.sub(
+        r"\s*[{(\<\[]\s*sound\s*:\s*[^})\>\]]+\s*[})\>\]]\s*", " ", text
+    ).strip()
 
     # Build the sound_id with the right extension
     from utils.soundboard import list_sounds
@@ -1455,11 +1457,20 @@ def extract_sound_tags(text: str) -> tuple[str, list[str]]:
 def generate_intro(title: str, queue_size: int = 0) -> str:
     """Generate a DJ intro message before the first song of a session."""
     greeting = _time_greeting()
-    msg = _format_line(random.choice(_pool("intros")), greeting=greeting, title=title, dj_name=config.DJ_NAME)
+    msg = _format_line(
+        random.choice(_pool("intros")),
+        greeting=greeting,
+        title=title,
+        dj_name=config.DJ_NAME,
+    )
 
     # 30% chance to prepend a station ID
     if random.random() < 0.30:
-        msg = _format_line(random.choice(_pool("station_ids")), dj_name=config.DJ_NAME) + " " + msg
+        msg = (
+            _format_line(random.choice(_pool("station_ids")), dj_name=config.DJ_NAME)
+            + " "
+            + msg
+        )
 
     return msg
 
@@ -1470,12 +1481,20 @@ def generate_song_intro(title: str, queue_size: int = 0) -> str:
 
     # Late night? Go mellow 40% of the time
     if tod in ("night", "late night") and random.random() < 0.40:
-        msg = _format_line(random.choice(_pool("hype_intros")), title=title, dj_name=config.DJ_NAME)
+        msg = _format_line(
+            random.choice(_pool("hype_intros")), title=title, dj_name=config.DJ_NAME
+        )
     # 20% chance of a loud/hype intro
     elif random.random() < 0.20:
-        msg = _format_line(random.choice(_pool("hype_intros_loud")), title=title, dj_name=config.DJ_NAME)
+        msg = _format_line(
+            random.choice(_pool("hype_intros_loud")),
+            title=title,
+            dj_name=config.DJ_NAME,
+        )
     else:
-        msg = _format_line(random.choice(_pool("hype_intros")), title=title, dj_name=config.DJ_NAME)
+        msg = _format_line(
+            random.choice(_pool("hype_intros")), title=title, dj_name=config.DJ_NAME
+        )
 
     # 15% chance to tack on a listener callout
     if random.random() < 0.15:
@@ -1529,18 +1548,26 @@ def generate_outro(
 
     elif has_next:
         # Next track exists but we don't know its title
-        msg = _format_line(random.choice(_pool("outros")), title=title, dj_name=config.DJ_NAME)
+        msg = _format_line(
+            random.choice(_pool("outros")), title=title, dj_name=config.DJ_NAME
+        )
         banter = _queue_banter(queue_size)
         if banter:
             msg += " " + banter
 
     else:
         # Last song — queue is empty after this
-        msg = _format_line(random.choice(_pool("outros_final")), title=title, dj_name=config.DJ_NAME)
+        msg = _format_line(
+            random.choice(_pool("outros_final")), title=title, dj_name=config.DJ_NAME
+        )
 
     # 20% chance to prepend a station ID on the outro too
     if random.random() < 0.20:
-        msg = _format_line(random.choice(_pool("station_ids")), dj_name=config.DJ_NAME) + " " + msg
+        msg = (
+            _format_line(random.choice(_pool("station_ids")), dj_name=config.DJ_NAME)
+            + " "
+            + msg
+        )
 
     return msg
 
@@ -1560,8 +1587,8 @@ DEFAULT_VOICE_VIBEVOICE = "en-Carter_man"
 # falling back to en-US-AriaNeural which would sound wrong.
 EDGE_VOICE_BY_LANG: dict[str, str] = {
     "en": "en-US-AriaNeural",
-    "da": "da-DK-JeppeNeural",       # Danish male
-    "da_f": "da-DK-SofieNeural",     # Danish female
+    "da": "da-DK-JeppeNeural",  # Danish male
+    "da_f": "da-DK-SofieNeural",  # Danish female
     "zh": "zh-CN-XiaoxiaoNeural",
     "ja": "ja-JP-NanamiNeural",
     "ko": "ko-KR-SunHiNeural",
@@ -1710,7 +1737,8 @@ def _is_kokoro_voice(voice: str) -> bool:
         return True
     # Check prefix pattern: first two chars should be [abefhjpz][fm] followed by _
     import re
-    if re.match(r'^[abefhjpz][fm]_\w+$', voice):
+
+    if re.match(r"^[abefhjpz][fm]_\w+$", voice):
         return True
     # Also match voice combos like "af_bella(2)+af_sky(1)"
     if "+" in voice:
@@ -1793,7 +1821,10 @@ def _kokoro_voice_for_name(voice: str) -> str:
     voice_lower = voice.lower()
 
     # Detect gender/female from suffix
-    is_female = any(w in voice_lower for w in ("female", "woman", "girl", "_f", "aria", "sofie", "bella", "emma"))
+    is_female = any(
+        w in voice_lower
+        for w in ("female", "woman", "girl", "_f", "aria", "sofie", "bella", "emma")
+    )
 
     # Language mapping: language prefix → Kokoro voice
     voice_map = {
@@ -1801,17 +1832,17 @@ def _kokoro_voice_for_name(voice: str) -> str:
         "da": "af_bella",  # Danish → fallback to English (Kokoro has no Danish voice yet)
         "zh": "zf_xiaoxiao" if is_female else "zm_yunyang",
         "ja": "af_bella",  # Japanese → fallback to English for now
-        "ko": "af_bella",   # Korean → fallback to English
-        "de": "af_bella",   # German → fallback to English
-        "es": "af_bella",   # Spanish → fallback to English
+        "ko": "af_bella",  # Korean → fallback to English
+        "de": "af_bella",  # German → fallback to English
+        "es": "af_bella",  # Spanish → fallback to English
         "fr": "ff_siwss" if is_female else "fm_siwss",
-        "it": "af_bella",   # Italian → fallback to English
+        "it": "af_bella",  # Italian → fallback to English
         "pt": "pf_dora" if is_female else "pm_santa",
-        "ru": "af_bella",   # Russian → fallback to English
-        "ar": "af_bella",   # Arabic → fallback to English
-        "sv": "af_bella",   # Swedish → fallback to English
-        "nl": "af_bella",   # Dutch → fallback to English
-        "pl": "af_bella",   # Polish → fallback to English
+        "ru": "af_bella",  # Russian → fallback to English
+        "ar": "af_bella",  # Arabic → fallback to English
+        "sv": "af_bella",  # Swedish → fallback to English
+        "nl": "af_bella",  # Dutch → fallback to English
+        "pl": "af_bella",  # Polish → fallback to English
         "hi": "hf_alpha" if is_female else "hm_alpha",
     }
 
@@ -1931,6 +1962,36 @@ async def list_voices(language: str = "en") -> list[dict]:
         return []
 
 
+async def _list_voices_moss(language: str = "en") -> list[dict]:
+    """List MOSS-TTS-Nano voices from the assets/moss_voices/ directory.
+
+    Each .wav file is a voice prompt — the filename (without extension)
+    becomes the voice name.
+    """
+    import glob as _glob
+
+    result = []
+    voice_dir = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "assets", "moss_voices"
+    )
+    if not os.path.isdir(voice_dir):
+        return result
+
+    for wav_path in sorted(_glob.glob(os.path.join(voice_dir, "*.wav"))):
+        name = os.path.splitext(os.path.basename(wav_path))[0]
+        if not name:
+            continue
+        result.append(
+            {
+                "ShortName": name,
+                "name": name,
+                "Gender": "Unknown",
+                "Locale": "en-US",
+            }
+        )
+    return result
+
+
 async def _list_voices_kokoro(language: str = "en") -> list[dict]:
     """List Kokoro-FastAPI voices.
 
@@ -1959,9 +2020,14 @@ async def _list_voices_kokoro(language: str = "en") -> list[dict]:
                             prefix = parts[0] if parts else ""
                             # Parse Kokoro prefix: af, am, bf, bm, ef, em, ff, fm, hf, hm, pf, pm, zf, zm
                             locale_map = {
-                                "a": "en-US", "b": "en-GB", "e": "en-IN",
-                                "f": "fr-FR", "h": "hi-IN", "p": "pt-BR",
-                                "z": "zh-CN", "j": "ja-JP",
+                                "a": "en-US",
+                                "b": "en-GB",
+                                "e": "en-IN",
+                                "f": "fr-FR",
+                                "h": "hi-IN",
+                                "p": "pt-BR",
+                                "z": "zh-CN",
+                                "j": "ja-JP",
                             }
                             gender_map = {"f": "Female", "m": "Male"}
                             lang_code = prefix[0] if len(prefix) >= 1 else "a"
@@ -1969,19 +2035,29 @@ async def _list_voices_kokoro(language: str = "en") -> list[dict]:
                             locale = locale_map.get(lang_code, "en-US")
                             gender = gender_map.get(gender_code, "Unknown")
 
-                            if language and not locale.lower().startswith(language.lower()):
-                                if not locale.split("-")[0].lower().startswith(language.lower()):
+                            if language and not locale.lower().startswith(
+                                language.lower()
+                            ):
+                                if (
+                                    not locale.split("-")[0]
+                                    .lower()
+                                    .startswith(language.lower())
+                                ):
                                     continue
 
-                            desc = KOKORO_VOICE_CATALOG.get(name, f"Kokoro voice ({locale})")
-                            result.append({
-                                "ShortName": name,
-                                "Gender": gender,
-                                "Locale": locale,
-                                "name": name,
-                                "default": name == DEFAULT_VOICE_KOKORO,
-                                "description": desc,
-                            })
+                            desc = KOKORO_VOICE_CATALOG.get(
+                                name, f"Kokoro voice ({locale})"
+                            )
+                            result.append(
+                                {
+                                    "ShortName": name,
+                                    "Gender": gender,
+                                    "Locale": locale,
+                                    "name": name,
+                                    "default": name == DEFAULT_VOICE_KOKORO,
+                                    "description": desc,
+                                }
+                            )
                         if result:
                             return result
         except Exception as e:
@@ -1993,9 +2069,14 @@ async def _list_voices_kokoro(language: str = "en") -> list[dict]:
         lang_code = prefix[0] if len(prefix) >= 1 else "a"
         gender_code = prefix[1] if len(prefix) >= 2 else "f"
         locale_map = {
-            "a": "en-US", "b": "en-GB", "e": "en-IN",
-            "f": "fr-FR", "h": "hi-IN", "p": "pt-BR",
-            "z": "zh-CN", "j": "ja-JP",
+            "a": "en-US",
+            "b": "en-GB",
+            "e": "en-IN",
+            "f": "fr-FR",
+            "h": "hi-IN",
+            "p": "pt-BR",
+            "z": "zh-CN",
+            "j": "ja-JP",
         }
         gender_map = {"f": "Female", "m": "Male"}
         locale = locale_map.get(lang_code, "en-US")
@@ -2005,14 +2086,16 @@ async def _list_voices_kokoro(language: str = "en") -> list[dict]:
             if not locale.split("-")[0].lower().startswith(language.lower()):
                 continue
 
-        result.append({
-            "ShortName": name,
-            "Gender": gender,
-            "Locale": locale,
-            "name": name,
-            "default": name == DEFAULT_VOICE_KOKORO,
-            "description": desc,
-        })
+        result.append(
+            {
+                "ShortName": name,
+                "Gender": gender,
+                "Locale": locale,
+                "name": name,
+                "default": name == DEFAULT_VOICE_KOKORO,
+                "description": desc,
+            }
+        )
 
     return result
     """List MOSS-TTS-Nano voices from the prompt audio files directory.
@@ -2216,7 +2299,9 @@ async def _check_kokoro_health() -> bool:
     import time as _time
 
     now = _time.monotonic()
-    cache_ttl = _KOKORO_HEALTH_CACHE_TTL if _kokoro_healthy else _KOKORO_HEALTH_CACHE_TTL_DOWN
+    cache_ttl = (
+        _KOKORO_HEALTH_CACHE_TTL if _kokoro_healthy else _KOKORO_HEALTH_CACHE_TTL_DOWN
+    )
     if _kokoro_healthy is not None and (now - _kokoro_last_health_check) < cache_ttl:
         return _kokoro_healthy
 
@@ -2234,9 +2319,7 @@ async def _check_kokoro_health() -> bool:
                 _kokoro_healthy = resp.status == 200
                 _kokoro_last_health_check = now
                 if not _kokoro_healthy:
-                    logging.warning(
-                        f"DJ: Kokoro health check returned {resp.status}"
-                    )
+                    logging.warning(f"DJ: Kokoro health check returned {resp.status}")
                 return _kokoro_healthy
     except Exception as e:
         logging.warning(f"DJ: Kokoro server at {KOKORO_TTS_URL} is unreachable: {e}")
@@ -2411,8 +2494,7 @@ async def generate_tts(
             if result is not None:
                 return result
             logging.warning(
-                f"{source}: MOSS TTS generation also failed. "
-                "Falling back to edge-tts."
+                f"{source}: MOSS TTS generation also failed. Falling back to edge-tts."
             )
         else:
             logging.warning(

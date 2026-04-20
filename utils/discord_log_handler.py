@@ -69,9 +69,7 @@ class DiscordLogHandler(logging.Handler):
             # Only schedule one flush at a time to avoid piling up coroutines
             if not self._flush_scheduled:
                 self._flush_scheduled = True
-                asyncio.run_coroutine_threadsafe(
-                    self._flush_to_discord(), loop
-                )
+                asyncio.run_coroutine_threadsafe(self._flush_to_discord(), loop)
         except RuntimeError:
             # Event loop is shutting down — silently skip Discord dispatch
             pass
@@ -109,18 +107,12 @@ class DiscordLogHandler(logging.Handler):
                         await channel.send(f"```\n{chunk}\n```")
                 except discord.HTTPException as e:
                     print(f"Failed to send log to Discord (HTTPException): {e}")
-                    logging.error(
-                        f"Failed to send log to Discord (HTTPException): {e}"
-                    )
+                    logging.error(f"Failed to send log to Discord (HTTPException): {e}")
                 except Exception as e:
                     print(f"Failed to send log to Discord (General Error): {e}")
-                    logging.error(
-                        f"Failed to send log to Discord (General Error): {e}"
-                    )
+                    logging.error(f"Failed to send log to Discord (General Error): {e}")
             else:
-                print(
-                    f"Discord log channel with ID {self.log_channel_id} not found."
-                )
+                print(f"Discord log channel with ID {self.log_channel_id} not found.")
 
     # ------------------------------------------------------------------
     # Helpers
@@ -137,7 +129,7 @@ class DiscordLogHandler(logging.Handler):
         """
         # 1. Try bot.loop first — works on older discord.py (pre-2.0)
         loop = getattr(self.bot, "loop", None)
-        if loop is not None and hasattr(loop, 'is_closed') and not loop.is_closed():
+        if loop is not None and hasattr(loop, "is_closed") and not loop.is_closed():
             return loop
 
         # 2. Try to get the running event loop (works on Python 3.10+
@@ -147,7 +139,7 @@ class DiscordLogHandler(logging.Handler):
             # On Python 3.10+, get_event_loop() can return an internal
             # _MissingSentinel object when no loop is set. Check for
             # the is_closed attribute to handle this gracefully.
-            if loop is not None and hasattr(loop, 'is_closed') and not loop.is_closed():
+            if loop is not None and hasattr(loop, "is_closed") and not loop.is_closed():
                 return loop
         except RuntimeError:
             pass

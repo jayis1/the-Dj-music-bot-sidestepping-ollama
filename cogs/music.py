@@ -5,7 +5,6 @@ from googleapiclient.discovery import build
 import json
 import os
 import random
-import re
 import logging
 import time
 import threading
@@ -24,14 +23,16 @@ try:
 except ImportError:
     # Fallback for older youtube.py — use deep copy to avoid shared references
     import copy as _copy
-    get_ytdl_format_options = lambda: _copy.deepcopy(YTDL_FORMAT_OPTIONS)
+
+    def get_ytdl_format_options():
+        return _copy.deepcopy(YTDL_FORMAT_OPTIONS)
+
+
 from utils.suno import is_suno_url, get_suno_track
 from utils.dj import (
-    EDGE_TTS_AVAILABLE,
     TTS_MODE,
     TTS_AVAILABLE,
     generate_intro,
-    generate_song_intro,
     generate_outro,
     generate_tts,
     cleanup_tts_file,
@@ -65,7 +66,7 @@ except ImportError:
     YOUTUBE_STREAMER_CLASS = None
 
 
-from utils.broadcaster import PCMBroadcaster, PCMBroadcasterWrapper
+from utils.broadcaster import PCMBroadcasterWrapper
 
 
 class Music(commands.Cog):
@@ -164,6 +165,7 @@ class Music(commands.Cog):
                 document_session_end,
                 update_dashboard,
             )
+
             func_map = {
                 "incident": document_incident,
                 "track": document_track,
@@ -178,6 +180,7 @@ class Music(commands.Cog):
             if fn:
                 # Run in a background thread to avoid blocking the event loop
                 import threading
+
                 t = threading.Thread(target=fn, kwargs=kwargs, daemon=True)
                 t.start()
         except Exception as e:
@@ -201,6 +204,7 @@ class Music(commands.Cog):
                     # Register for OBS audio visualizer readout
                     try:
                         from utils.broadcaster import register_broadcaster
+
                         register_broadcaster(self._broadcasters[guild_id])
                     except Exception:
                         pass
@@ -217,6 +221,7 @@ class Music(commands.Cog):
             # Register for OBS audio visualizer readout
             try:
                 from utils.broadcaster import register_broadcaster
+
                 register_broadcaster(self._broadcasters[guild_id])
             except Exception:
                 pass
@@ -279,6 +284,7 @@ class Music(commands.Cog):
                 # Register for OBS audio visualizer readout
                 try:
                     from utils.broadcaster import register_broadcaster
+
                     register_broadcaster(self._broadcasters[guild_id])
                 except Exception:
                     pass
@@ -303,6 +309,7 @@ class Music(commands.Cog):
         """Get the OBS bridge instance if available and connected."""
         try:
             from utils.obs_bridge import get_bridge
+
             bridge = get_bridge()
             if bridge and bridge.enabled:
                 return bridge
@@ -328,11 +335,14 @@ class Music(commands.Cog):
         def _switch():
             try:
                 from utils.obs_bridge import get_bridge
+
                 bridge = get_bridge()
                 if bridge and bridge.enabled:
                     bridge.switch_scene(scene_name)
             except Exception as e:
-                logging.debug(f"OBS auto-scene: Failed to switch to '{scene_name}': {e}")
+                logging.debug(
+                    f"OBS auto-scene: Failed to switch to '{scene_name}': {e}"
+                )
 
         t = threading.Thread(target=_switch, daemon=True)
         t.start()
@@ -380,7 +390,7 @@ class Music(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         """Bot ready event — no auto-start of streams.
-        
+
         YouTube Live streams are started manually via ?golive/?stoplive
         or Mission Control, in mirror or curated (Shadow DJ) mode only.
         """
@@ -433,6 +443,7 @@ class Music(commands.Cog):
                 # Register for OBS audio visualizer readout
                 try:
                     from utils.broadcaster import register_broadcaster
+
                     register_broadcaster(self._broadcasters[guild.id])
                 except Exception:
                     pass
@@ -457,7 +468,9 @@ class Music(commands.Cog):
                     # Ensure channel is never None — many code paths access
                     # ctx.channel.id which would crash on None.
                     self.channel = (
-                        guild.text_channels[0] if guild.text_channels else _SilentChannel(guild)
+                        guild.text_channels[0]
+                        if guild.text_channels
+                        else _SilentChannel(guild)
                     )
                     self.message = type("Mock", (), {"author": self.author})()
 
@@ -556,9 +569,10 @@ class Music(commands.Cog):
             await self._obs_scene_overlay()
 
             # Document session start to SilverBullet
-            self._doc("session_start",
-                source=self.autodj_source.get(guild_id, ""),
-                autodj_enabled=self.autodj_enabled.get(guild_id, False),
+            self._doc(
+                "session_start",
+                source=self.autodj_source.get(guild.id, ""),
+                autodj_enabled=self.autodj_enabled.get(guild.id, False),
             )
         except Exception as e:
             logging.error(f"YouTube Live: Auto-start failed: {e}")
@@ -813,7 +827,7 @@ class Music(commands.Cog):
         # Clean up DJ TTS state
         self.dj_playing_tts.pop(guild_id, None)
         self._dj_pending_sounds.pop(guild_id, None)
-        pending = getattr(self, "_dj_pending", {}).pop(guild_id, None)
+        getattr(self, "_dj_pending", {}).pop(guild_id, None)
         tts_path = self._current_tts_path.pop(guild_id, None)
         if tts_path:
             cleanup_tts_file(tts_path)
@@ -823,9 +837,7 @@ class Music(commands.Cog):
             # the bot leaves the Discord voice channel.
             stream_msg = ""
             if self._yt_stream_active:
-                stream_msg = (
-                    "\n\n🔴 **YouTube Live** stream continues running!"
-                )
+                stream_msg = "\n\n🔴 **YouTube Live** stream continues running!"
 
             await ctx.voice_client.disconnect()
             logging.info(f"Bot disconnected from voice channel in {ctx.guild.name}")
@@ -841,9 +853,7 @@ class Music(commands.Cog):
 
             stream_msg = ""
             if self._yt_stream_active:
-                stream_msg = (
-                    "\n\n🔴 **YouTube Live** stream continues running!"
-                )
+                stream_msg = "\n\n🔴 **YouTube Live** stream continues running!"
             await ctx.send(
                 embed=self.create_embed(
                     "Left Channel",
@@ -1277,12 +1287,13 @@ class Music(commands.Cog):
                     self._yt_auth_blocked = True
                     self._yt_auth_blocked_at = time.time()
                     # Document the auth block to SilverBullet
-                    self._doc("incident",
+                    self._doc(
+                        "incident",
                         title="YouTube Auth Block",
                         severity="critical",
                         category="cookie",
                         body=f"{_skip_count} consecutive resolution failures in guild {ctx.guild.name}. "
-                             f"Possible cookie expiration or yt-dlp version issue.",
+                        f"Possible cookie expiration or yt-dlp version issue.",
                         guild_id=guild_id,
                     )
                     channel = self.bot.get_channel(ctx.channel.id)
@@ -1422,7 +1433,6 @@ class Music(commands.Cog):
             # from another dimension/kosmos bleeds onto the frequency. If so,
             # the hijack replaces the commercial break. After the hijack, the
             # DJ speaks a recovery line, then the normal DJ intro, then the song.
-            hijack_played = False
             if (
                 self.dj_enabled.get(guild_id, False)
                 and TTS_AVAILABLE
@@ -1438,9 +1448,8 @@ class Music(commands.Cog):
                         record_commercial_played,
                     )
 
-                    if (
-                        is_commercial_enabled(guild_id)
-                        and should_play_hijack(guild_id, queue_size=queue.qsize())
+                    if is_commercial_enabled(guild_id) and should_play_hijack(
+                        guild_id, queue_size=queue.qsize()
                     ):
                         # ── Pre-generation cache check ──
                         # If the hijack was pre-generated while the previous
@@ -1452,7 +1461,9 @@ class Music(commands.Cog):
                             prev_song = self.current_song.get(guild_id)
                             prev_title = prev_song.title if prev_song else ""
                             pregen_hijack = pregen.lookup_hijack(
-                                guild_id, next_title, prev_title=prev_title,
+                                guild_id,
+                                next_title,
+                                prev_title=prev_title,
                             )
                         except Exception:
                             pregen_hijack = None
@@ -1497,26 +1508,34 @@ class Music(commands.Cog):
                                 # Pregen hit — play the TTS file directly (zero latency)
                                 # Same play-tts pipeline but skips TTS generation
                                 spoke = await self._dj_speak(
-                                    ctx.voice_client, hijack_full, guild_id,
+                                    ctx.voice_client,
+                                    hijack_full,
+                                    guild_id,
                                     voice=hijack_voice,
                                 )
                             else:
                                 # No pregen — generate TTS on the fly
                                 spoke = await self._dj_speak(
-                                    ctx.voice_client, hijack_full, guild_id,
+                                    ctx.voice_client,
+                                    hijack_full,
+                                    guild_id,
                                     voice=get_hijack_voice(guild_id),
                                 )
                             if spoke:
                                 await self._obs_scene_dj_speaking()
                                 record_commercial_played(guild_id)
-                                hijack_played = True
                                 logging.info(
                                     f"Station Wars: Frequency hijack played for guild {guild_id}"
                                 )
                                 # Document the hijack to SilverBullet
-                                self._doc("hijack",
-                                    station_name=getattr(config, "STATION_NAME", "Unknown Kosmos"),
-                                    voice=hijack_voice if pregen_hijack else get_hijack_voice(guild_id),
+                                self._doc(
+                                    "hijack",
+                                    station_name=getattr(
+                                        config, "STATION_NAME", "Unknown Kosmos"
+                                    ),
+                                    voice=hijack_voice
+                                    if pregen_hijack
+                                    else get_hijack_voice(guild_id),
                                     body=hijack_text,
                                 )
                                 # TTS started — _on_tts_done will fire,
@@ -1539,7 +1558,6 @@ class Music(commands.Cog):
             # ── Commercial Break: Play before DJ intro ────────────────
             # Commercial breaks are inserted between songs for that
             # authentic 24/7 radio feel. They play BEFORE the DJ intro.
-            commercial_played = False
             if (
                 self.dj_enabled.get(guild_id, False)
                 and TTS_AVAILABLE
@@ -1554,9 +1572,8 @@ class Music(commands.Cog):
                         get_commercial_voice,
                     )
 
-                    if (
-                        is_commercial_enabled(guild_id)
-                        and should_play_commercial(guild_id, queue_size=queue.qsize())
+                    if is_commercial_enabled(guild_id) and should_play_commercial(
+                        guild_id, queue_size=queue.qsize()
                     ):
                         # ── Pre-generation cache check ──
                         # If a commercial was pre-generated while the previous
@@ -1568,14 +1585,18 @@ class Music(commands.Cog):
                             prev_song = self.current_song.get(guild_id)
                             prev_title = prev_song.title if prev_song else ""
                             pregen_commercial = pregen.lookup_commercial(
-                                guild_id, next_title, prev_title=prev_title,
+                                guild_id,
+                                next_title,
+                                prev_title=prev_title,
                             )
                         except Exception:
                             pregen_commercial = None
 
                         if pregen_commercial:
                             # Use pre-generated commercial — skip TTS generation
-                            com_tts_path, com_text, com_sounds, com_voice = pregen_commercial
+                            com_tts_path, com_text, com_sounds, com_voice = (
+                                pregen_commercial
+                            )
                             commercial_text = com_text
                             commercial_voice = com_voice
                             logging.info(
@@ -1628,18 +1649,20 @@ class Music(commands.Cog):
                                 commercial_voice = get_commercial_voice(guild_id)
 
                             spoke = await self._dj_speak(
-                                ctx.voice_client, commercial_text, guild_id,
+                                ctx.voice_client,
+                                commercial_text,
+                                guild_id,
                                 voice=commercial_voice,
                             )
                             if spoke:
                                 await self._obs_scene_dj_speaking()
                                 record_commercial_played(guild_id)
-                                commercial_played = True
                                 logging.info(
                                     f"Commercial: Break played for guild {guild_id}"
                                 )
                                 # Document the commercial to SilverBullet
-                                self._doc("commercial",
+                                self._doc(
+                                    "commercial",
                                     category="radio_commercial",
                                     voice=commercial_voice,
                                     body=commercial_text,
@@ -1674,10 +1697,9 @@ class Music(commands.Cog):
                 if prev_song:
                     # Transition from a previous track — outro the old,
                     # intro the new, all in one spoken line
-                    peek_title = None
                     next_item = self.peek_queue_first(guild_id)
                     if next_item:
-                        peek_title = getattr(next_item, "title", None)
+                        getattr(next_item, "title", None)
                     intro_text = generate_outro(
                         prev_song.title,
                         has_next=True,
@@ -2013,9 +2035,7 @@ class Music(commands.Cog):
                 # current_song_data is a YTDLSource/PlaceholderTrack object,
                 # not a dict — use attribute access, not .get()
                 song_title = getattr(current_song_data, "title", "Unknown")
-                logging.info(
-                    f"Looping enabled. Re-added {song_title} to queue."
-                )
+                logging.info(f"Looping enabled. Re-added {song_title} to queue.")
 
         # Play the next song in the queue
         await self.play_next(ctx)
@@ -2081,7 +2101,6 @@ class Music(commands.Cog):
         # If NOWPLAYING_CHANNEL_ID is set, always send there. Otherwise use ctx.channel.
         np_channel = self._get_np_channel(ctx.guild)
         target_channel = np_channel or ctx.channel
-        channel_id = target_channel.id
 
         # If invoked by a user, send a new message and store it for future updates
         if not silent:
@@ -2191,8 +2210,7 @@ class Music(commands.Cog):
         queue_items = self.peek_queue(ctx.guild.id)
         if queue_items:
             queue_list = "\n".join(
-                f"**{i + 1}.** {item.title}"
-                for i, item in enumerate(queue_items)
+                f"**{i + 1}.** {item.title}" for i, item in enumerate(queue_items)
             )
             logging.info(
                 f"Displaying queue with {queue.qsize()} songs for {ctx.guild.name})"
@@ -2315,7 +2333,7 @@ class Music(commands.Cog):
 
         # Cancel any DJ TTS playback
         self.dj_playing_tts[guild_id] = False
-        pending = getattr(self, "_dj_pending", {}).pop(guild_id, None)
+        getattr(self, "_dj_pending", {}).pop(guild_id, None)
         tts_path = self._current_tts_path.get(guild_id)
         if tts_path:
             cleanup_tts_file(tts_path)
@@ -2836,7 +2854,11 @@ class Music(commands.Cog):
         guild_id = ctx.guild.id
 
         try:
-            from utils.commercials import toggle_commercials, is_commercial_enabled, get_commercial_state
+            from utils.commercials import (
+                toggle_commercials,
+                is_commercial_enabled,
+                get_commercial_state,
+            )
         except ImportError:
             return await ctx.send(
                 embed=self.create_embed(
@@ -2861,8 +2883,8 @@ class Music(commands.Cog):
             embed.add_field(
                 name="How it works",
                 value=f"Every **{state['min_songs']}+** songs, there's a "
-                      f"**{int(state['chance'] * 100)}%** chance of a commercial break. "
-                      f"Ads use rotating voices: {voice_str}.",
+                f"**{int(state['chance'] * 100)}%** chance of a commercial break. "
+                f"Ads use rotating voices: {voice_str}.",
                 inline=False,
             )
             embed.add_field(
@@ -2924,8 +2946,12 @@ class Music(commands.Cog):
         async with ctx.typing():
             # Validate category
             valid_categories = [
-                "sponsor_fake", "local_business", "tech_product",
-                "stream_meta", "absurdist", "emergency",
+                "sponsor_fake",
+                "local_business",
+                "tech_product",
+                "stream_meta",
+                "absurdist",
+                "emergency",
             ]
             if category and category.lower() not in valid_categories:
                 return await ctx.send(
@@ -2950,7 +2976,11 @@ class Music(commands.Cog):
                 station_name=getattr(config, "STATION_NAME", "MBot"),
                 category=category.lower() if category else None,
                 song_title=getattr(self.current_song.get(guild_id), "title", ""),
-                queue_size=len(getattr(self.song_queues.get(guild_id, asyncio.Queue()), "_queue", [])),
+                queue_size=len(
+                    getattr(
+                        self.song_queues.get(guild_id, asyncio.Queue()), "_queue", []
+                    )
+                ),
                 listener_count=listener_count,
             )
 
@@ -2972,7 +3002,10 @@ class Music(commands.Cog):
             # Speak it
             self.dj_enabled[guild_id] = self.dj_enabled.get(guild_id, False)
             spoke = await self._dj_speak(
-                ctx.voice_client, preview_text, guild_id, voice=commercial_voice,
+                ctx.voice_client,
+                preview_text,
+                guild_id,
+                voice=commercial_voice,
             )
 
             if spoke:
@@ -3075,7 +3108,9 @@ class Music(commands.Cog):
             # Speak the hijack (transmission from another dimension)
             self.dj_enabled[guild_id] = self.dj_enabled.get(guild_id, False)
             spoke = await self._dj_speak(
-                ctx.voice_client, f"📡 {hijack_text}", guild_id,
+                ctx.voice_client,
+                f"📡 {hijack_text}",
+                guild_id,
                 voice=hijack_voice,
             )
 
@@ -3136,7 +3171,7 @@ class Music(commands.Cog):
                 close = [v for v in voice_names if voice_name.lower() in v.lower()]
                 suggestion = ""
                 if close:
-                    suggestion = f"\nDid you mean one of these?\n" + "\n".join(
+                    suggestion = "\nDid you mean one of these?\n" + "\n".join(
                         f"• `{v}`" for v in close[:10]
                     )
                 return await ctx.send(
@@ -3310,7 +3345,9 @@ class Music(commands.Cog):
             # different voice from OLLAMA_DJ_VOICE config to sound distinct from
             # the main DJ. Pregeneration caches TTS files for zero-latency playback.
             if is_ai:
-                tts_engine = TTS_MODE  # Use the configured engine (kokoro/moss/edge-tts)
+                tts_engine = (
+                    TTS_MODE  # Use the configured engine (kokoro/moss/edge-tts)
+                )
                 # The AI side host voice should already be set from the caller,
                 # which uses OLLAMA_DJ_VOICE config (per-engine defaults).
                 # If somehow unset, resolve it for the active engine.
@@ -3417,7 +3454,9 @@ class Music(commands.Cog):
         # Check if TTS was cancelled by skip/stop — if so, bail out.
         # The skip/stop handler already re-queued the pending song
         # and scheduled play_next, so we shouldn't also try to play it.
-        if not self.dj_playing_tts.get(guild_id, False) and not getattr(self, "_dj_pending", {}).get(guild_id):
+        if not self.dj_playing_tts.get(guild_id, False) and not getattr(
+            self, "_dj_pending", {}
+        ).get(guild_id):
             # TTS was already cancelled and pending song was already handled.
             # Just clean up and return.
             logging.debug(
@@ -3609,7 +3648,9 @@ class Music(commands.Cog):
         # a transmission from another kosmos but hasn't heard the DJ take
         # back the frequency yet. Play the DJ recovery line NOW, then set
         # _commercial_pending_intro so the DJ intro plays next, then the song.
-        hijack_recovery = getattr(self, "_hijack_pending_recovery", {}).pop(guild_id, False)
+        hijack_recovery = getattr(self, "_hijack_pending_recovery", {}).pop(
+            guild_id, False
+        )
         if hijack_recovery:
             logging.info(f"Station Wars: playing DJ recovery line for guild {guild_id}")
 
@@ -3624,7 +3665,9 @@ class Music(commands.Cog):
                     prev_song = self.current_song.get(guild_id)
                     prev_title = prev_song.title if prev_song else ""
                     pregen_recovery = pregen.lookup_recovery(
-                        guild_id, next_title, prev_title=prev_title,
+                        guild_id,
+                        next_title,
+                        prev_title=prev_title,
                     )
             except Exception:
                 pregen_recovery = None
@@ -3639,6 +3682,7 @@ class Music(commands.Cog):
             else:
                 try:
                     from utils.commercials import get_recovery_line
+
                     recovery_line = get_recovery_line()
                 except ImportError:
                     recovery_line = "We're back. Don't touch that dial."
@@ -3671,9 +3715,13 @@ class Music(commands.Cog):
         # If a commercial just played, the listener heard an ad but hasn't
         # heard the DJ intro for the next song yet. Play the DJ intro now
         # before the AI side host check and the actual song.
-        commercial_intro = getattr(self, "_commercial_pending_intro", {}).pop(guild_id, False)
+        commercial_intro = getattr(self, "_commercial_pending_intro", {}).pop(
+            guild_id, False
+        )
         if commercial_intro:
-            logging.info(f"Commercial: playing DJ intro after commercial break for guild {guild_id}")
+            logging.info(
+                f"Commercial: playing DJ intro after commercial break for guild {guild_id}"
+            )
             # Generate the DJ intro for this song
             prev_song = self.current_song.get(guild_id)
             if prev_song:
@@ -3737,14 +3785,18 @@ class Music(commands.Cog):
                     )
                     ai_line = None
                 except Exception as e:
-                    logging.error(f"AI Side Host: prefetch error for guild {guild_id}: {e}")
+                    logging.error(
+                        f"AI Side Host: prefetch error for guild {guild_id}: {e}"
+                    )
                     ai_line = None
             elif prefetch_task and prefetch_task.done():
                 # Already done — instant!
                 try:
                     ai_line = prefetch_task.result()
                 except Exception as e:
-                    logging.error(f"AI Side Host: prefetch result error for guild {guild_id}: {e}")
+                    logging.error(
+                        f"AI Side Host: prefetch result error for guild {guild_id}: {e}"
+                    )
                     ai_line = None
                 if ai_line:
                     logging.info(
@@ -3818,7 +3870,9 @@ class Music(commands.Cog):
                 line = await self._try_ai_side_host(guild_id, dj_line=dj_line)
                 return line
             except Exception as e:
-                logging.warning(f"AI Side Host prefetch failed for guild {guild_id}: {e}")
+                logging.warning(
+                    f"AI Side Host prefetch failed for guild {guild_id}: {e}"
+                )
                 return None
 
         task = asyncio.ensure_future(_generate(), loop=self.bot.loop)
@@ -3839,7 +3893,7 @@ class Music(commands.Cog):
             dj_line: What the main DJ just said (for reactive context)
         """
         if not should_side_host_speak():
-            logging.info(f"AI Side Host: skipped (random chance or disabled)")
+            logging.info("AI Side Host: skipped (random chance or disabled)")
             return None
 
         logging.info(
@@ -3960,6 +4014,7 @@ class Music(commands.Cog):
         # Track song count for commercial break timing
         try:
             from utils.commercials import record_song_played
+
             record_song_played(guild_id)
         except Exception:
             pass
@@ -4180,7 +4235,7 @@ class Music(commands.Cog):
                     "ie_key": "Youtube",
                 }
                 await queue.put(PlaceholderTrack(entry))
-                logging.info(f"Auto-DJ: Queued single track from source")
+                logging.info("Auto-DJ: Queued single track from source")
                 return True
         except Exception as e:
             logging.error(f"Auto-DJ: Failed to fill queue: {e}")
@@ -4322,7 +4377,7 @@ class Music(commands.Cog):
             # Try mp3
             bed_path = os.path.join("sounds", "bed_music.mp3")
         if not os.path.exists(bed_path):
-            logging.debug(f"DJ Bed: No bed music file found, skipping")
+            logging.debug("DJ Bed: No bed music file found, skipping")
             return False
 
         if self._bed_playing.get(guild_id, False):
@@ -4994,7 +5049,11 @@ class BattleView(discord.ui.View):
         """Check the YouTube Live stream status."""
         if self._yt_stream_active and self._yt_streamer:
             status = "🔴 Live" if self._yt_streamer.is_running else "⚠️ Reconnecting"
-            mode_str = "🎙️ Curated (Shadow DJ)" if self._yt_curated_mode else "🪞 Mirror (Discord)"
+            mode_str = (
+                "🎙️ Curated (Shadow DJ)"
+                if self._yt_curated_mode
+                else "🪞 Mirror (Discord)"
+            )
             lines = [
                 f"Status: **{status}**",
                 f"Mode: **{mode_str}**",

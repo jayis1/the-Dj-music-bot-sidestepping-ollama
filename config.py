@@ -161,6 +161,7 @@ _OLLAMA_DJ_CHANCE_RAW = float(os.environ.get("OLLAMA_DJ_CHANCE", "0.25"))
 OLLAMA_DJ_CHANCE = max(0.0, min(1.0, _OLLAMA_DJ_CHANCE_RAW))
 if _OLLAMA_DJ_CHANCE_RAW != OLLAMA_DJ_CHANCE:
     import warnings
+
     warnings.warn(
         f"OLLAMA_DJ_CHANCE={_OLLAMA_DJ_CHANCE_RAW} is out of range [0.0, 1.0], "
         f"clamped to {OLLAMA_DJ_CHANCE}",
@@ -290,9 +291,7 @@ YOUTUBE_STREAM_PLAYLIST = os.environ.get("YOUTUBE_STREAM_PLAYLIST", "")
 # When streaming via OBS Studio, this URL is used as the browser source
 # for the overlay page. Defaults to localhost:8080 (bare-metal) or can
 # be set to http://bot:8080 (Docker) or any other URL.
-OBS_OVERLAY_URL = os.environ.get(
-    "OBS_OVERLAY_URL", "http://localhost:8080/overlay"
-)
+OBS_OVERLAY_URL = os.environ.get("OBS_OVERLAY_URL", "http://localhost:8080/overlay")
 
 # OBS Overlay Mode — how the overlay is rendered in OBS:
 #   "browser" — Use a browser_source pointing to OBS_OVERLAY_URL.
@@ -426,7 +425,9 @@ COMMERCIAL_MIN_QUEUE = int(os.environ.get("COMMERCIAL_MIN_QUEUE", "2"))
 # it sounds like Nova is reading ads, which kills the illusion).
 _COMMERCIAL_VOICES_RAW = os.environ.get("COMMERCIAL_VOICES", "")
 if _COMMERCIAL_VOICES_RAW:
-    COMMERCIAL_VOICES = [v.strip() for v in _COMMERCIAL_VOICES_RAW.split(",") if v.strip()]
+    COMMERCIAL_VOICES = [
+        v.strip() for v in _COMMERCIAL_VOICES_RAW.split(",") if v.strip()
+    ]
 else:
     # Default: 3 distinct Kokoro voices that don't overlap with the DJ
     # (af_bella is the default DJ voice, so we use different ones)

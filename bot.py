@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
 import os
-import re
 import sys
 import threading
 import discord
@@ -197,7 +196,7 @@ async def main():
             or "format is not available" in _err
             or "signature" in _err
         ):
-            logging.error(f"  yt-dlp: ❌ BROKEN — cannot extract YouTube")
+            logging.error("  yt-dlp: ❌ BROKEN — cannot extract YouTube")
             logging.error(f"  yt-dlp: Error: {_e}")
 
             import subprocess
@@ -433,12 +432,17 @@ async def main():
                     logging.error(f"Failed to load extension {filename}: {e}")
 
         try:
-            if not config.DISCORD_TOKEN or config.DISCORD_TOKEN == "your_discord_bot_token":
+            if (
+                not config.DISCORD_TOKEN
+                or config.DISCORD_TOKEN == "your_discord_bot_token"
+            ):
                 raise discord.errors.LoginFailure("Invalid or default Discord token")
             await bot.start(config.DISCORD_TOKEN)
         except discord.errors.LoginFailure:
             logging.warning("⚠️ Invalid or missing Discord Token.")
-            logging.warning("📻 Running in Pure Headless Radio Mode (No Discord connection).")
+            logging.warning(
+                "📻 Running in Pure Headless Radio Mode (No Discord connection)."
+            )
             # Keep event loop alive so the Web Dashboard and Headless Radio can function
             while True:
                 await asyncio.sleep(3600)
@@ -482,6 +486,7 @@ def run_web_server():
         # Initialize OBS Bridge if configured
         try:
             from utils.obs_bridge import init_bridge
+
             init_bridge(
                 host=config.OBS_WS_HOST,
                 port=config.OBS_WS_PORT,
@@ -516,18 +521,24 @@ def run_web_server():
             _obs_use_flatpak = getattr(config, "OBS_USE_FLATPAK", "auto").lower()
             if _obs_use_flatpak == "auto":
                 import shutil as _shutil
+
                 if _shutil.which("flatpak"):
                     try:
                         _fp_result = __import__("subprocess").run(
-                            ["flatpak", "list"], capture_output=True, text=True, timeout=5
+                            ["flatpak", "list"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         )
                         if "com.obsproject.Studio" in _fp_result.stdout:
                             _obs_use_flatpak = "true"
                     except Exception:
                         pass
-            _flatpak_obs_dir = os.path.expanduser(
-                "~/.var/app/com.obsproject.Studio/config/obs-studio"
-            ) if _obs_use_flatpak == "true" else None
+            _flatpak_obs_dir = (
+                os.path.expanduser("~/.var/app/com.obsproject.Studio/config/obs-studio")
+                if _obs_use_flatpak == "true"
+                else None
+            )
 
             def _fix_obs_user_ini(obs_base_dir):
                 """Fix or create user.ini for an OBS config directory."""
@@ -552,32 +563,45 @@ def run_web_server():
                     import re
 
                     if "SceneCollection=" in content:
-                        content = re.sub(r'SceneCollection=.*', 'SceneCollection=Radio DJ', content)
+                        content = re.sub(
+                            r"SceneCollection=.*", "SceneCollection=Radio DJ", content
+                        )
                     else:
                         content = content.rstrip("\n") + "\nSceneCollection=Radio DJ\n"
 
                     if "SceneCollectionFile=" in content:
-                        content = re.sub(r'SceneCollectionFile=.*', 'SceneCollectionFile=Radio DJ.json', content)
+                        content = re.sub(
+                            r"SceneCollectionFile=.*",
+                            "SceneCollectionFile=Radio DJ.json",
+                            content,
+                        )
                     else:
-                        content = content.rstrip("\n") + "\nSceneCollectionFile=Radio DJ.json\n"
+                        content = (
+                            content.rstrip("\n")
+                            + "\nSceneCollectionFile=Radio DJ.json\n"
+                        )
 
                     if "Profile=" in content:
-                        val = re.search(r'Profile=(.*)', content)
+                        val = re.search(r"Profile=(.*)", content)
                         if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
-                            content = re.sub(r'Profile=.*', 'Profile=RadioDJ', content)
+                            content = re.sub(r"Profile=.*", "Profile=RadioDJ", content)
                     else:
                         content = content.rstrip("\n") + "\nProfile=RadioDJ\n"
 
                     if "ProfileDir=" in content:
-                        val = re.search(r'ProfileDir=(.*)', content)
+                        val = re.search(r"ProfileDir=(.*)", content)
                         if val and val.group(1).strip() in ("", "Untitled", "Unnamed"):
-                            content = re.sub(r'ProfileDir=.*', 'ProfileDir=RadioDJ', content)
+                            content = re.sub(
+                                r"ProfileDir=.*", "ProfileDir=RadioDJ", content
+                            )
                     else:
                         content = content.rstrip("\n") + "\nProfileDir=RadioDJ\n"
 
                     # Remove ConfigOnNewProfile — causes OBS to create blank
                     # profile every startup, ignoring our --profile flag
-                    content = re.sub(r'^ConfigOnNewProfile=.*\n?', '', content, flags=re.MULTILINE)
+                    content = re.sub(
+                        r"^ConfigOnNewProfile=.*\n?", "", content, flags=re.MULTILINE
+                    )
 
                     if content != original:
                         with open(user_ini_path, "w") as f:
@@ -602,7 +626,11 @@ def run_web_server():
                 if not _obs_base:
                     continue
                 _obs_scenes_dir = os.path.join(_obs_base, "basic", "scenes")
-                for name in ["Untitled.json", "Untitled.json.bak", "Untitled.json.bak.1"]:
+                for name in [
+                    "Untitled.json",
+                    "Untitled.json.bak",
+                    "Untitled.json.bak.1",
+                ]:
                     untitled_path = os.path.join(_obs_scenes_dir, name)
                     if os.path.exists(untitled_path):
                         try:
@@ -614,7 +642,9 @@ def run_web_server():
             # Push stream settings (RTMP server + stream key) to OBS at startup
             # so OBS is ready to stream when the user clicks Start Streaming.
             stream_key = getattr(config, "YOUTUBE_STREAM_KEY", "")
-            rtmp_server = getattr(config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2")
+            rtmp_server = getattr(
+                config, "YOUTUBE_STREAM_URL", "rtmp://a.rtmp.youtube.com/live2"
+            )
 
             # Import get_bridge ONCE at this scope so it's available for all
             # the OBS setup below — not just inside the if stream_key block.
@@ -627,10 +657,14 @@ def run_web_server():
             obs_use_flatpak = getattr(config, "OBS_USE_FLATPAK", "auto").lower()
             if obs_use_flatpak == "auto":
                 import shutil
+
                 if shutil.which("flatpak"):
                     try:
                         result = __import__("subprocess").run(
-                            ["flatpak", "list"], capture_output=True, text=True, timeout=5
+                            ["flatpak", "list"],
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         )
                         if "com.obsproject.Studio" in result.stdout:
                             obs_use_flatpak = "true"
@@ -650,7 +684,9 @@ def run_web_server():
             profile_dirs = [
                 primary_profile_dir,
                 os.path.expanduser("~/.config/obs-studio/basic/profiles/RadioDJ"),
-                os.path.expanduser("~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/RadioDJ"),
+                os.path.expanduser(
+                    "~/.var/app/com.obsproject.Studio/config/obs-studio/basic/profiles/RadioDJ"
+                ),
             ]
             # Deduplicate (primary dir may match one of the two above)
             profile_dirs = list(dict.fromkeys(profile_dirs))
@@ -662,6 +698,7 @@ def run_web_server():
                     # OBS reads this file when initializing the output module.
                     # Without it, OBS falls back to RTMPS with no key → TLS errors.
                     import json
+
                     service_data = {
                         "type": "rtmp_custom",
                         "settings": {
@@ -679,7 +716,9 @@ def run_web_server():
                                 f"(server: {rtmp_server}, key: ...{stream_key[-4:]})"
                             )
                         except Exception as e:
-                            logging.warning(f"OBS: Failed to write service.json to {p_dir}: {e}")
+                            logging.warning(
+                                f"OBS: Failed to write service.json to {p_dir}: {e}"
+                            )
 
                     # Write streamEncoder.json to ALL OBS profile directories.
                     # OBS 29 uses per-encoder JSON files that take PRECEDENCE
@@ -703,14 +742,18 @@ def run_web_server():
                     for p_dir in profile_dirs:
                         try:
                             os.makedirs(p_dir, exist_ok=True)
-                            with open(os.path.join(p_dir, "streamEncoder.json"), "w") as f:
+                            with open(
+                                os.path.join(p_dir, "streamEncoder.json"), "w"
+                            ) as f:
                                 json.dump(encoder_data, f, indent=4)
                             logging.info(
                                 f"OBS: Wrote streamEncoder.json → {p_dir} "
                                 f"(keyint_sec=2, bitrate=3000)"
                             )
                         except Exception as e:
-                            logging.warning(f"OBS: Failed to write streamEncoder.json to {p_dir}: {e}")
+                            logging.warning(
+                                f"OBS: Failed to write streamEncoder.json to {p_dir}: {e}"
+                            )
 
                     # ALSO push via WebSocket API (OBS applies these immediately)
                     result = bridge.set_stream_settings(
@@ -719,9 +762,13 @@ def run_web_server():
                         key=stream_key,
                     )
                     if result.get("error") and not result.get("connected"):
-                        logging.warning(f"OBS: Failed to push stream settings at startup: {result}")
+                        logging.warning(
+                            f"OBS: Failed to push stream settings at startup: {result}"
+                        )
                     else:
-                        logging.info(f"OBS: Stream settings pushed (RTMP: {rtmp_server}, key: ...{stream_key[-4:]})")
+                        logging.info(
+                            f"OBS: Stream settings pushed (RTMP: {rtmp_server}, key: ...{stream_key[-4:]})"
+                        )
             else:
                 logging.warning(
                     "OBS: ⚠️ No YOUTUBE_STREAM_KEY configured. "
@@ -755,13 +802,16 @@ def run_web_server():
                     # too early triggers a null pointer crash:
                     #   "basic_string: construction from null is not valid"
                     import time as _time
+
                     _time.sleep(8)
 
                     try:
                         bridge.ensure_scenes_exist()
                         logging.info("OBS: Scene setup complete ✅")
                     except Exception as e:
-                        logging.warning(f"OBS: Scene setup failed (will retry on stream start): {e}")
+                        logging.warning(
+                            f"OBS: Scene setup failed (will retry on stream start): {e}"
+                        )
                 else:
                     logging.warning(
                         "OBS: Timed out waiting for OBS WebSocket. "
@@ -779,7 +829,9 @@ def run_web_server():
                 try:
                     result = bridge.set_source_mute("Desktop Audio", muted=True)
                     if not result.get("error"):
-                        logging.info("OBS: Muted Desktop Audio (bot audio comes via UDP, not PulseAudio)")
+                        logging.info(
+                            "OBS: Muted Desktop Audio (bot audio comes via UDP, not PulseAudio)"
+                        )
                 except Exception:
                     pass
 
@@ -790,9 +842,13 @@ def run_web_server():
                 # "sample_rate=48000 channels=2" before any audio plays.
                 try:
                     bridge.create_audio_source(scene_name="📺 Overlay Only")
-                    logging.info("OBS: Audio source settings force-updated (sample_rate=48000 channels=2)")
+                    logging.info(
+                        "OBS: Audio source settings force-updated (sample_rate=48000 channels=2)"
+                    )
                 except Exception as e:
-                    logging.debug(f"OBS: Audio source pre-update failed (will retry on stream start): {e}")
+                    logging.debug(
+                        f"OBS: Audio source pre-update failed (will retry on stream start): {e}"
+                    )
         except Exception as e:
             logging.warning(f"OBS Bridge initialization failed: {e}")
 

@@ -60,8 +60,17 @@ _IS_LINUX = sys.platform == "linux"
 _TEXT_INPUT_KIND = "text_ft2_source_v2" if _IS_LINUX else "text_gdiplus_v2"
 
 
-def _text_settings(text, font_face, font_style, font_size, color,
-                    align=0, valign=0, read_from_file=False, file_path=""):
+def _text_settings(
+    text,
+    font_face,
+    font_style,
+    font_size,
+    color,
+    align=0,
+    valign=0,
+    read_from_file=False,
+    file_path="",
+):
     """Build platform-appropriate text source settings.
 
     text_ft2_source_v2 (Linux/macOS FreeType2) uses:
@@ -98,6 +107,7 @@ def _text_settings(text, font_face, font_style, font_size, color,
 
     return base
 
+
 # ── Suppress obsws-python's verbose logging ──────────────────────────────
 # obsws_python logs "Connecting with parameters: ..." at INFO level on every
 # connection attempt, plus full tracebacks on failure. We only want our own
@@ -117,6 +127,7 @@ def _get_obsws():
         return _obsws
     try:
         import obsws_python as obsws
+
         _obsws = obsws
         return _obsws
     except ImportError:
@@ -151,7 +162,13 @@ class OBSBridge:
     # polling should respect this limit.
     MIN_CONNECT_INTERVAL = 0.2  # max ~5 WebSocket connections/sec
 
-    def __init__(self, host: str = "localhost", port: int = 4455, password: str = "", enabled: bool = True):
+    def __init__(
+        self,
+        host: str = "localhost",
+        port: int = 4455,
+        password: str = "",
+        enabled: bool = True,
+    ):
         self.host = host
         self.port = port
         self.password = password
@@ -253,7 +270,7 @@ class OBSBridge:
         except Exception as e:
             self._last_connect_fail = time.time()
             # Only log the first line of the error — obsws dumps full tracebacks
-            error_brief = str(e).split('\n')[0]
+            error_brief = str(e).split("\n")[0]
             log.warning(
                 f"OBS Bridge: Cannot connect to {self.host}:{self.port} — "
                 f"{error_brief}. Will retry in {self.CONNECTION_RETRY_INTERVAL}s."
@@ -284,7 +301,10 @@ class OBSBridge:
         if client is None:
             # Check if we're in backoff
             if self._last_connect_fail > 0:
-                return {"error": "OBS is not running or WebSocket is not enabled", "connected": False}
+                return {
+                    "error": "OBS is not running or WebSocket is not enabled",
+                    "connected": False,
+                }
             return {"error": "Could not connect to OBS", "connected": False}
 
         try:
@@ -299,24 +319,31 @@ class OBSBridge:
                 result["data"] = {}
             elif isinstance(response, dict):
                 result["data"] = response
-            elif hasattr(response, "__dict__") and not isinstance(response, (str, int, float, bool)):
+            elif hasattr(response, "__dict__") and not isinstance(
+                response, (str, int, float, bool)
+            ):
                 # Dataclass-like object — convert attributes to dict
                 data = {}
                 for key, value in response.__dict__.items():
                     if not key.startswith("_"):
                         # Recursively convert nested dataclasses
-                        if hasattr(value, "__dict__") and not isinstance(value, (str, int, float, bool, list)):
+                        if hasattr(value, "__dict__") and not isinstance(
+                            value, (str, int, float, bool, list)
+                        ):
                             data[key] = {
-                                k: v for k, v in value.__dict__.items()
+                                k: v
+                                for k, v in value.__dict__.items()
                                 if not k.startswith("_")
                             }
                         elif isinstance(value, list):
                             data[key] = [
                                 {
-                                    k: v for k, v in item.__dict__.items()
+                                    k: v
+                                    for k, v in item.__dict__.items()
                                     if not k.startswith("_")
                                 }
-                                if hasattr(item, "__dict__") and not isinstance(item, (str, int, float, bool))
+                                if hasattr(item, "__dict__")
+                                and not isinstance(item, (str, int, float, bool))
                                 else item
                                 for item in value
                             ]
@@ -378,7 +405,10 @@ class OBSBridge:
     def get_status(self) -> dict:
         """Get overall OBS status: streaming, recording, replay buffer, current scene."""
         # Use cached status if fresh
-        if self._last_status and (time.time() - self._last_status_time) < self._status_cache_ttl:
+        if (
+            self._last_status
+            and (time.time() - self._last_status_time) < self._status_cache_ttl
+        ):
             return self._last_status
 
         result = {
@@ -440,7 +470,9 @@ class OBSBridge:
                 resp = client.get_scene_list()
                 if hasattr(resp, "scenes"):
                     result["scenes"] = [
-                        s.scene_name if hasattr(s, "scene_name") else s.get("sceneName", "")
+                        s.scene_name
+                        if hasattr(s, "scene_name")
+                        else s.get("sceneName", "")
                         for s in resp.scenes
                     ]
                 elif isinstance(resp, dict):
@@ -460,7 +492,9 @@ class OBSBridge:
                     if hasattr(resp, "scene_name"):
                         result["current_scene"] = resp.scene_name
                     elif isinstance(resp, dict):
-                        result["current_scene"] = resp.get("currentProgramSceneName", "")
+                        result["current_scene"] = resp.get(
+                            "currentProgramSceneName", ""
+                        )
                 except Exception:
                     pass
 
@@ -551,13 +585,13 @@ class OBSBridge:
 
     def create_scene(self, scene_name: str) -> dict:
         """Create a new scene in OBS. No-op if it already exists.
-        
+
         CRASH-SAFE: When OBS has no scenes (e.g., after crash dialog
         where "All scene data cleared"), calling get_current_program_scene()
         crashes OBS with "basic_string: construction from null is not valid".
         This method queries the scene LIST first (safe) and only checks
         current scene if scenes exist.
-        
+
         Includes a retry mechanism because Flatpak OBS 32 can return
         success when creating a scene but its internal state may still
         be null. Verifying the scene actually exists after creation
@@ -569,21 +603,28 @@ class OBSBridge:
             if resp_list.get("connected"):
                 scenes_raw = resp_list.get("data", {})
                 if hasattr(scenes_raw, "scenes"):
-                    existing = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                    existing = [
+                        s.scene_name if hasattr(s, "scene_name") else str(s)
+                        for s in scenes_raw.scenes
+                    ]
                 elif isinstance(scenes_raw, dict):
-                    existing = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                    existing = [
+                        s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])
+                    ]
                 else:
                     existing = []
                 if scene_name in existing:
-                    return {"connected": True, "status": "ok", "data": {"scene_name": scene_name, "already_exists": True}}
+                    return {
+                        "connected": True,
+                        "status": "ok",
+                        "data": {"scene_name": scene_name, "already_exists": True},
+                    }
         except Exception:
             pass
 
         # Create the scene
-        result = self._safe_call(
-            lambda c, sn=scene_name: c.create_scene(name=sn)
-        )
-        
+        result = self._safe_call(lambda c, sn=scene_name: c.create_scene(name=sn))
+
         # Wait and verify the scene actually exists in OBS's internal
         # state. After crash dialog, OBS may report successful creation
         # but internal pointer is still null.
@@ -595,27 +636,37 @@ class OBSBridge:
                     if resp_list.get("connected"):
                         scenes_raw = resp_list.get("data", {})
                         if hasattr(scenes_raw, "scenes"):
-                            existing = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                            existing = [
+                                s.scene_name if hasattr(s, "scene_name") else str(s)
+                                for s in scenes_raw.scenes
+                            ]
                         elif isinstance(scenes_raw, dict):
-                            existing = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                            existing = [
+                                s.get("sceneName", str(s))
+                                for s in scenes_raw.get("scenes", [])
+                            ]
                         else:
                             existing = []
                         if scene_name in existing:
                             return result
-                    log.debug(f"OBS Bridge: Scene '{scene_name}' not in list after creation, retrying...")
+                    log.debug(
+                        f"OBS Bridge: Scene '{scene_name}' not in list after creation, retrying..."
+                    )
                     result = self._safe_call(
                         lambda c, sn=scene_name: c.create_scene(name=sn)
                     )
                     time.sleep(2)
                 except Exception:
                     time.sleep(2)
-            log.warning(f"OBS Bridge: Scene '{scene_name}' created but not visible after 3 retries")
-        
+            log.warning(
+                f"OBS Bridge: Scene '{scene_name}' created but not visible after 3 retries"
+            )
+
         return result
 
     def set_current_scene(self, scene_name: str) -> dict:
         """Switch to a different OBS scene.
-        
+
         CRASH-SAFE: If the target scene doesn't exist, this is a no-op
         to prevent OBS from crashing when trying to set a null scene.
         """
@@ -625,24 +676,34 @@ class OBSBridge:
             if resp_list.get("connected"):
                 scenes_raw = resp_list.get("data", {})
                 if hasattr(scenes_raw, "scenes"):
-                    existing = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                    existing = [
+                        s.scene_name if hasattr(s, "scene_name") else str(s)
+                        for s in scenes_raw.scenes
+                    ]
                 elif isinstance(scenes_raw, dict):
-                    existing = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                    existing = [
+                        s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])
+                    ]
                 else:
                     existing = []
                 if scene_name not in existing:
-                    log.warning(f"OBS Bridge: Cannot set scene to '{scene_name}' — not in scene list {existing}")
-                    return {"error": f"Scene '{scene_name}' not found", "connected": True}
+                    log.warning(
+                        f"OBS Bridge: Cannot set scene to '{scene_name}' — not in scene list {existing}"
+                    )
+                    return {
+                        "error": f"Scene '{scene_name}' not found",
+                        "connected": True,
+                    }
         except Exception:
             pass  # Scene list query failed — try switching anyway
-        
+
         return self._safe_call(
             lambda c, sn=scene_name: c.set_current_program_scene(name=sn)
         )
 
     def _get_current_scene_name(self) -> str:
         """Get the name of the current OBS scene. Falls back to '📺 Overlay Only'.
-        
+
         CRASH-SAFE: Uses get_scene_list() which is safe even when OBS
         has no current scene (null pointer). Never calls
         get_current_program_scene() directly because that crashes OBS
@@ -654,9 +715,14 @@ class OBSBridge:
             if resp_list.get("connected"):
                 scenes_raw = resp_list.get("data", {})
                 if hasattr(scenes_raw, "scenes"):
-                    scenes = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                    scenes = [
+                        s.scene_name if hasattr(s, "scene_name") else str(s)
+                        for s in scenes_raw.scenes
+                    ]
                 elif isinstance(scenes_raw, dict):
-                    scenes = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                    scenes = [
+                        s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])
+                    ]
                 else:
                     scenes = []
                 # If our target scene exists, use it
@@ -675,11 +741,16 @@ class OBSBridge:
         """Get all input sources."""
         return self._safe_call(lambda c: c.get_input_list())
 
-    def set_source_visibility(self, scene_name: str, source_name: str, visible: bool) -> dict:
+    def set_source_visibility(
+        self, scene_name: str, source_name: str, visible: bool
+    ) -> dict:
         """Toggle visibility of a source in a scene."""
         item_id = self._get_scene_item_id(scene_name, source_name)
         if item_id < 0:
-            return {"error": f"Source '{source_name}' not found in scene '{scene_name}'", "connected": True}
+            return {
+                "error": f"Source '{source_name}' not found in scene '{scene_name}'",
+                "connected": True,
+            }
 
         return self._safe_call(
             lambda c, sn=scene_name, iid=item_id, v=visible: c.set_scene_item_enabled(
@@ -694,11 +765,23 @@ class OBSBridge:
             return -1
         try:
             resp = client.get_scene_item_list(name=scene_name)
-            items = resp.scene_items if hasattr(resp, "scene_items") else resp.get("sceneItems", [])
+            items = (
+                resp.scene_items
+                if hasattr(resp, "scene_items")
+                else resp.get("sceneItems", [])
+            )
             for item in items:
-                name = item.source_name if hasattr(item, "source_name") else item.get("sourceName", "")
+                name = (
+                    item.source_name
+                    if hasattr(item, "source_name")
+                    else item.get("sourceName", "")
+                )
                 if name == source_name:
-                    return item.scene_item_id if hasattr(item, "scene_item_id") else item.get("sceneItemId", -1)
+                    return (
+                        item.scene_item_id
+                        if hasattr(item, "scene_item_id")
+                        else item.get("sceneItemId", -1)
+                    )
             return -1
         except Exception:
             return -1
@@ -708,7 +791,9 @@ class OBSBridge:
             except Exception:
                 pass
 
-    def _get_scene_item_id_from_client(self, client, scene_name: str, source_name: str) -> int:
+    def _get_scene_item_id_from_client(
+        self, client, scene_name: str, source_name: str
+    ) -> int:
         """Resolve a source name to its scene item ID using an EXISTING connection.
 
         Used inside _batch() contexts where we already have a connected client.
@@ -719,11 +804,23 @@ class OBSBridge:
             return -1
         try:
             resp = client.get_scene_item_list(name=scene_name)
-            items = resp.scene_items if hasattr(resp, "scene_items") else resp.get("sceneItems", [])
+            items = (
+                resp.scene_items
+                if hasattr(resp, "scene_items")
+                else resp.get("sceneItems", [])
+            )
             for item in items:
-                name = item.source_name if hasattr(item, "source_name") else item.get("sourceName", "")
+                name = (
+                    item.source_name
+                    if hasattr(item, "source_name")
+                    else item.get("sourceName", "")
+                )
                 if name == source_name:
-                    return item.scene_item_id if hasattr(item, "scene_item_id") else item.get("sceneItemId", -1)
+                    return (
+                        item.scene_item_id
+                        if hasattr(item, "scene_item_id")
+                        else item.get("sceneItemId", -1)
+                    )
             return -1
         except Exception:
             return -1
@@ -736,16 +833,12 @@ class OBSBridge:
 
     def toggle_source_mute(self, source_name: str) -> dict:
         """Toggle mute on an audio source."""
-        return self._safe_call(
-            lambda c, sn=source_name: c.toggle_input_mute(name=sn)
-        )
+        return self._safe_call(lambda c, sn=source_name: c.toggle_input_mute(name=sn))
 
     def set_source_volume(self, source_name: str, volume_db: float) -> dict:
         """Set volume of a source in dB."""
         return self._safe_call(
-            lambda c, sn=source_name, v=volume_db: c.set_input_volume(
-                name=sn, vol_db=v
-            )
+            lambda c, sn=source_name, v=volume_db: c.set_input_volume(name=sn, vol_db=v)
         )
 
     # ── Transition Control ────────────────────────────────────────────────
@@ -758,23 +851,17 @@ class OBSBridge:
 
     def trigger_transition(self) -> dict:
         """Trigger the current transition to the preview scene."""
-        return self._safe_call(
-            lambda c: c.trigger_studio_mode_transition()
-        )
+        return self._safe_call(lambda c: c.trigger_studio_mode_transition())
 
     # ── Studio Mode ───────────────────────────────────────────────────────
 
     def enable_studio_mode(self) -> dict:
         """Enable OBS studio mode."""
-        return self._safe_call(
-            lambda c: c.set_studio_mode_enabled(enabled=True)
-        )
+        return self._safe_call(lambda c: c.set_studio_mode_enabled(enabled=True))
 
     def disable_studio_mode(self) -> dict:
         """Disable OBS studio mode."""
-        return self._safe_call(
-            lambda c: c.set_studio_mode_enabled(enabled=False)
-        )
+        return self._safe_call(lambda c: c.set_studio_mode_enabled(enabled=False))
 
     # ── Replay Buffer ────────────────────────────────────────────────────
 
@@ -804,7 +891,7 @@ class OBSBridge:
 
     def take_screenshot(self, source_name: str = "") -> dict:
         """Take a screenshot of a source (or the main output).
-        
+
         Note: obsws-python 1.8.0 save_source_screenshot signature is:
             save_source_screenshot(name, img_format, file_path, width, height, quality)
         We save to /tmp/ and return the path. If file_path is empty, OBS returns
@@ -824,7 +911,9 @@ class OBSBridge:
 
     # ── Stream Settings ────────────────────────────────────────────────────
 
-    def set_stream_settings(self, service: str = "", server: str = "", key: str = "") -> dict:
+    def set_stream_settings(
+        self, service: str = "", server: str = "", key: str = ""
+    ) -> dict:
         """Configure OBS stream settings (RTMP server + stream key).
 
         This sets where OBS streams to when start_streaming() is called.
@@ -854,9 +943,7 @@ class OBSBridge:
         # This correctly applies the stream service settings via the
         # SetStreamServiceSettings request in OBS WebSocket 5.x
         return self._safe_call(
-            lambda c: c.set_stream_service_settings(
-                stream_type, stream_settings
-            )
+            lambda c: c.set_stream_service_settings(stream_type, stream_settings)
         )
 
     def get_stream_settings(self) -> dict:
@@ -865,7 +952,14 @@ class OBSBridge:
 
     # ── Source Creation ──────────────────────────────────────────────────
 
-    def create_browser_source(self, source_name: str, url: str, width: int = 1280, height: int = 720, scene_name: str = "") -> dict:
+    def create_browser_source(
+        self,
+        source_name: str,
+        url: str,
+        width: int = 1280,
+        height: int = 720,
+        scene_name: str = "",
+    ) -> dict:
         """Create a browser source in OBS pointing to a URL.
 
         Used to add the Mission Control overlay as a browser source
@@ -894,7 +988,9 @@ class OBSBridge:
             try:
                 existing = c.get_input_settings(name=_sn)
                 if existing:
-                    log.debug(f"OBS Bridge: Source '{_sn}' already exists, skipping creation")
+                    log.debug(
+                        f"OBS Bridge: Source '{_sn}' already exists, skipping creation"
+                    )
                     return existing
             except Exception:
                 pass  # Source doesn't exist — proceed to create it
@@ -962,9 +1058,12 @@ class OBSBridge:
         # a useful warning instead of a mysterious blank stream.
         try:
             import urllib.request
+
             req = urllib.request.Request(overlay_url, method="HEAD")
             resp = urllib.request.urlopen(req, timeout=3)
-            log.info(f"OBS Bridge: Overlay URL reachable: {overlay_url} (HTTP {resp.status})")
+            log.info(
+                f"OBS Bridge: Overlay URL reachable: {overlay_url} (HTTP {resp.status})"
+            )
         except Exception as e:
             log.warning(
                 f"OBS Bridge: Overlay URL NOT reachable: {overlay_url} ({e}). "
@@ -978,13 +1077,20 @@ class OBSBridge:
             "margin: 0px; padding: 0px; overflow: hidden; }"
         )
 
-        def _create(c, _sn="Mission Control Overlay", _url=overlay_url,
-                     _scene=scene_name, _css=overlay_css):
+        def _create(
+            c,
+            _sn="Mission Control Overlay",
+            _url=overlay_url,
+            _scene=scene_name,
+            _css=overlay_css,
+        ):
             # Check if source already exists — idempotent
             try:
                 existing = c.get_input_settings(name=_sn)
                 if existing:
-                    log.debug(f"OBS Bridge: Browser overlay '{_sn}' already exists, skipping creation")
+                    log.debug(
+                        f"OBS Bridge: Browser overlay '{_sn}' already exists, skipping creation"
+                    )
                     return existing
             except Exception:
                 pass  # Source doesn't exist — proceed to create it
@@ -1059,6 +1165,7 @@ class OBSBridge:
 
         try:
             import config as _cfg
+
             gif_path = getattr(_cfg, "YOUTUBE_STREAM_GIF", "") or ""
         except ImportError:
             gif_path = ""
@@ -1113,7 +1220,11 @@ class OBSBridge:
                             sceneName=scene_name,
                             inputKind="color_source_v3",
                             inputName="Overlay Background",
-                            inputSettings={"color": 4278190080, "width": 1280, "height": 720},
+                            inputSettings={
+                                "color": 4278190080,
+                                "width": 1280,
+                                "height": 720,
+                            },
                             sceneItemEnabled=True,
                         )
                 results["background"] = {"connected": True, "status": "ok"}
@@ -1123,34 +1234,72 @@ class OBSBridge:
             # ── 2-6. Text sources (State, Station Name, Now Playing, DJ, Ticker) ──
             text_sources = {
                 "State": _text_settings(
-                    " ", "DejaVu Sans", "Bold", 28,
-                    color=4294967295, align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_state.txt",
+                    " ",
+                    "DejaVu Sans",
+                    "Bold",
+                    28,
+                    color=4294967295,
+                    align=0,
+                    valign=0,
+                    read_from_file=True,
+                    file_path="/tmp/radio_state.txt",
                 ),
                 "Station Name": _text_settings(
-                    " ", "DejaVu Sans", "Bold", 42,
-                    color=4294967295, align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_station.txt",
+                    " ",
+                    "DejaVu Sans",
+                    "Bold",
+                    42,
+                    color=4294967295,
+                    align=0,
+                    valign=0,
+                    read_from_file=True,
+                    file_path="/tmp/radio_station.txt",
                 ),
                 "Now Playing": _text_settings(
-                    "Waiting for playback...", "DejaVu Sans", "Bold", 56,
-                    color=4294967264, align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_title.txt",
+                    "Waiting for playback...",
+                    "DejaVu Sans",
+                    "Bold",
+                    56,
+                    color=4294967264,
+                    align=0,
+                    valign=0,
+                    read_from_file=True,
+                    file_path="/tmp/radio_title.txt",
                 ),
                 "DJ Speaking": _text_settings(
-                    " ", "DejaVu Sans", "Regular", 36,
-                    color=4278255872, align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_dj.txt",
+                    " ",
+                    "DejaVu Sans",
+                    "Regular",
+                    36,
+                    color=4278255872,
+                    align=0,
+                    valign=0,
+                    read_from_file=True,
+                    file_path="/tmp/radio_dj.txt",
                 ),
                 "Ticker": _text_settings(
-                    "Initializing...", "DejaVu Sans", "Regular", 24,
-                    color=4294967295, align=0, valign=0,
-                    read_from_file=True, file_path="/tmp/radio_waiting.txt",
+                    "Initializing...",
+                    "DejaVu Sans",
+                    "Regular",
+                    24,
+                    color=4294967295,
+                    align=0,
+                    valign=0,
+                    read_from_file=True,
+                    file_path="/tmp/radio_waiting.txt",
                 ),
             }
 
-            text_keys = ["state_text", "station_text", "title_text", "dj_text", "ticker_text"]
-            for (source_name, settings), result_key in zip(text_sources.items(), text_keys):
+            text_keys = [
+                "state_text",
+                "station_text",
+                "title_text",
+                "dj_text",
+                "ticker_text",
+            ]
+            for (source_name, settings), result_key in zip(
+                text_sources.items(), text_keys
+            ):
                 try:
                     try:
                         existing = client.get_input_settings(name=source_name)
@@ -1158,7 +1307,9 @@ class OBSBridge:
                             # Push file-reading settings to existing source
                             try:
                                 client.set_input_settings(
-                                    name=source_name, settings=settings, overlay=True,
+                                    name=source_name,
+                                    settings=settings,
+                                    overlay=True,
                                 )
                             except Exception:
                                 pass
@@ -1293,11 +1444,19 @@ class OBSBridge:
             # ── 10. Position ALL scene items in the same connection ─────
             # Background positioning
             try:
-                bg_item_id = self._get_scene_item_id_from_client(client, scene_name, "Overlay Background")
+                bg_item_id = self._get_scene_item_id_from_client(
+                    client, scene_name, "Overlay Background"
+                )
                 if bg_item_id >= 0 and use_logo:
                     client.set_scene_item_transform(
-                        scene_name=scene_name, item_id=bg_item_id,
-                        transform={"positionX": 0, "positionY": 0, "scaleX": 2.0, "scaleY": 2.0},
+                        scene_name=scene_name,
+                        item_id=bg_item_id,
+                        transform={
+                            "positionX": 0,
+                            "positionY": 0,
+                            "scaleX": 2.0,
+                            "scaleY": 2.0,
+                        },
                     )
             except Exception as e:
                 log.debug(f"OBS Bridge: Failed to position background: {e}")
@@ -1312,10 +1471,13 @@ class OBSBridge:
             }
             for source_name, pos in text_positions.items():
                 try:
-                    item_id = self._get_scene_item_id_from_client(client, scene_name, source_name)
+                    item_id = self._get_scene_item_id_from_client(
+                        client, scene_name, source_name
+                    )
                     if item_id >= 0:
                         client.set_scene_item_transform(
-                            scene_name=scene_name, item_id=item_id,
+                            scene_name=scene_name,
+                            item_id=item_id,
                             transform={"positionX": pos["x"], "positionY": pos["y"]},
                         )
                 except Exception as e:
@@ -1323,11 +1485,19 @@ class OBSBridge:
 
             # Thumbnail positioning
             try:
-                thumb_item_id = self._get_scene_item_id_from_client(client, scene_name, "Song Thumbnail")
+                thumb_item_id = self._get_scene_item_id_from_client(
+                    client, scene_name, "Song Thumbnail"
+                )
                 if thumb_item_id >= 0:
                     client.set_scene_item_transform(
-                        scene_name=scene_name, item_id=thumb_item_id,
-                        transform={"positionX": 1060, "positionY": 85, "scaleX": 0.5, "scaleY": 0.5},
+                        scene_name=scene_name,
+                        item_id=thumb_item_id,
+                        transform={
+                            "positionX": 1060,
+                            "positionY": 85,
+                            "scaleX": 0.5,
+                            "scaleY": 0.5,
+                        },
                     )
             except Exception as e:
                 log.debug(f"OBS Bridge: Failed to position thumbnail: {e}")
@@ -1335,12 +1505,15 @@ class OBSBridge:
             # GIF positioning — full width at bottom (sounds.gif: 500x281 or sound.gif: 450x450)
             if gif_path:
                 try:
-                    gif_item_id = self._get_scene_item_id_from_client(client, scene_name, "GIF Overlay")
+                    gif_item_id = self._get_scene_item_id_from_client(
+                        client, scene_name, "GIF Overlay"
+                    )
                     if gif_item_id >= 0:
                         # Pick scale based on which GIF file
                         gif_scale = 2.56 if "sounds.gif" in gif_path else 2.84
                         client.set_scene_item_transform(
-                            scene_name=scene_name, item_id=gif_item_id,
+                            scene_name=scene_name,
+                            item_id=gif_item_id,
                             transform={
                                 # Full width at bottom of canvas
                                 "positionX": 0,
@@ -1355,10 +1528,13 @@ class OBSBridge:
             # SFX GIF positioning (lower-right, ~200px wide)
             if self._sfx_default_path:
                 try:
-                    sfx_item_id = self._get_scene_item_id_from_client(client, scene_name, "SFX GIF")
+                    sfx_item_id = self._get_scene_item_id_from_client(
+                        client, scene_name, "SFX GIF"
+                    )
                     if sfx_item_id >= 0:
                         client.set_scene_item_transform(
-                            scene_name=scene_name, item_id=sfx_item_id,
+                            scene_name=scene_name,
+                            item_id=sfx_item_id,
                             transform={
                                 "positionX": 1040,
                                 "positionY": 400,
@@ -1373,7 +1549,9 @@ class OBSBridge:
         if errors:
             log.warning(f"OBS Bridge: Native overlay had errors: {errors}")
         else:
-            log.info("OBS Bridge: Native overlay created ✅ (batch mode — single WebSocket connection)")
+            log.info(
+                "OBS Bridge: Native overlay created ✅ (batch mode — single WebSocket connection)"
+            )
 
         # ── Post-batch: force-update existing text sources ──
         # Sources created by previous runs may still have static text
@@ -1383,7 +1561,12 @@ class OBSBridge:
         # the main batch just saved ~15 connections.
         self._update_existing_text_sources()
 
-        return {"connected": True, "status": "ok", "sources_created": list(results.keys()), "errors": errors or None}
+        return {
+            "connected": True,
+            "status": "ok",
+            "sources_created": list(results.keys()),
+            "errors": errors or None,
+        }
 
     def _update_existing_text_sources(self):
         """Force-update existing text sources to read from /tmp/radio_*.txt.
@@ -1400,11 +1583,11 @@ class OBSBridge:
 
         # Map source name → (file_path, font_size, color)
         source_configs = {
-            "State": ("/tmp/radio_state.txt", 28, 4294967295),        # White
-            "Station Name": ("/tmp/radio_station.txt", 42, 4294967295), # White
-            "Now Playing": ("/tmp/radio_title.txt", 56, 4294967264),    # Gold
-            "DJ Speaking": ("/tmp/radio_dj.txt", 36, 4278255872),       # Cyan-green
-            "Ticker": ("/tmp/radio_waiting.txt", 24, 4294967295),       # White
+            "State": ("/tmp/radio_state.txt", 28, 4294967295),  # White
+            "Station Name": ("/tmp/radio_station.txt", 42, 4294967295),  # White
+            "Now Playing": ("/tmp/radio_title.txt", 56, 4294967264),  # Gold
+            "DJ Speaking": ("/tmp/radio_dj.txt", 36, 4278255872),  # Cyan-green
+            "Ticker": ("/tmp/radio_waiting.txt", 24, 4294967295),  # White
         }
 
         with self._batch() as client:
@@ -1413,12 +1596,20 @@ class OBSBridge:
             for source_name, (file_path, font_size, color) in source_configs.items():
                 try:
                     settings = _text_settings(
-                        " ", "DejaVu Sans", "Bold" if source_name != "DJ Speaking" else "Regular",
-                        font_size, color=color, align=0, valign=0,
-                        read_from_file=True, file_path=file_path,
+                        " ",
+                        "DejaVu Sans",
+                        "Bold" if source_name != "DJ Speaking" else "Regular",
+                        font_size,
+                        color=color,
+                        align=0,
+                        valign=0,
+                        read_from_file=True,
+                        file_path=file_path,
                     )
                     client.set_input_settings(
-                        name=source_name, settings=settings, overlay=True,
+                        name=source_name,
+                        settings=settings,
+                        overlay=True,
                     )
                 except Exception:
                     pass  # Source may not exist yet — that's OK
@@ -1440,24 +1631,28 @@ class OBSBridge:
             # The height becomes 1280 (cropped to 720 by OBS canvas).
             # If using color_source_v3 fallback, no scaling needed.
             import os as _os
+
             logo_path = _os.path.join(
                 _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))),
-                "assets", "logo.png"
+                "assets",
+                "logo.png",
             )
             if _os.path.isfile(logo_path):
                 scale_x = 1280.0 / 640.0  # = 2.0
                 scale_y = 1280.0 / 640.0  # = 2.0, crops bottom
                 self._safe_call(
-                    lambda c, sn=scene_name, iid=item_id, sx=scale_x, sy=scale_y:
+                    lambda c, sn=scene_name, iid=item_id, sx=scale_x, sy=scale_y: (
                         c.set_scene_item_transform(
-                            scene_name=sn, item_id=iid,
+                            scene_name=sn,
+                            item_id=iid,
                             transform={
                                 "positionX": 0,
                                 "positionY": 0,
                                 "scaleX": sx,
                                 "scaleY": sy,
-                            }
+                            },
                         )
+                    )
                 )
         except Exception as e:
             log.debug(f"OBS Bridge: Failed to position background: {e}")
@@ -1499,15 +1694,20 @@ class OBSBridge:
                 continue  # Source not found — skip
             try:
                 self._safe_call(
-                    lambda c, sn=scene_name, iid=item_id, px=pos["x"], py=pos["y"]:
+                    lambda c, sn=scene_name, iid=item_id, px=pos["x"], py=pos["y"]: (
                         c.set_scene_item_transform(
-                            scene_name=sn, item_id=iid, transform={"positionX": px, "positionY": py}
+                            scene_name=sn,
+                            item_id=iid,
+                            transform={"positionX": px, "positionY": py},
                         )
+                    )
                 )
             except Exception as e:
                 log.debug(f"OBS Bridge: Failed to position '{source_name}': {e}")
 
-    def create_audio_source(self, source_name: str, udp_port: int = 12345, scene_name: str = "") -> dict:
+    def create_audio_source(
+        self, source_name: str, udp_port: int = 12345, scene_name: str = ""
+    ) -> dict:
         """Create a FFmpeg audio source that reads from the PCMBroadcaster UDP pipe.
 
         This allows OBS to capture the bot's audio output (music, TTS, SFX)
@@ -1561,7 +1761,9 @@ class OBSBridge:
             "restart_on_activate": True,
         }
 
-        def _create(c, _sn=source_name, _p=udp_port, _scene=scene_name, _settings=input_settings):
+        def _create(
+            c, _sn=source_name, _p=udp_port, _scene=scene_name, _settings=input_settings
+        ):
             # Check if source already exists — if so, update its settings
             # and ensure it's in the target scene.
             try:
@@ -1577,9 +1779,13 @@ class OBSBridge:
                             settings=_settings,
                             overlay=True,
                         )
-                        log.info(f"OBS Bridge: Updated audio source '{_sn}' settings (overlay=True)")
+                        log.info(
+                            f"OBS Bridge: Updated audio source '{_sn}' settings (overlay=True)"
+                        )
                     except Exception as e:
-                        log.debug(f"OBS Bridge: Could not update audio source settings: {e}")
+                        log.debug(
+                            f"OBS Bridge: Could not update audio source settings: {e}"
+                        )
 
                     # CRITICAL: Ensure audio routing — set monitor type + track
                     # When a source is created via WebSocket, OBS defaults to
@@ -1588,12 +1794,16 @@ class OBSBridge:
                     # the stream gets video but no audio.
                     try:
                         c.set_input_audio_monitor_type(name=_sn, mon_type=2)
-                        log.info(f"OBS Bridge: Set '{_sn}' audio monitor → Monitor and Output (type 2)")
+                        log.info(
+                            f"OBS Bridge: Set '{_sn}' audio monitor → Monitor and Output (type 2)"
+                        )
                     except Exception as e:
                         log.debug(f"OBS Bridge: Could not set audio monitor type: {e}")
                     try:
                         c.set_input_audio_tracks(name=_sn, track=1)
-                        log.info(f"OBS Bridge: Set '{_sn}' audio track → track 1 (streaming)")
+                        log.info(
+                            f"OBS Bridge: Set '{_sn}' audio track → track 1 (streaming)"
+                        )
                     except Exception as e:
                         log.debug(f"OBS Bridge: Could not set audio tracks: {e}")
 
@@ -1601,12 +1811,22 @@ class OBSBridge:
                     try:
                         items = c.get_scene_item_list(name=_scene)
                         source_names = [
-                            item.source_name if hasattr(item, 'source_name') else item.get("sourceName", "")
-                            for item in (items.scene_items if hasattr(items, 'scene_items') else items.get("sceneItems", []))
+                            item.source_name
+                            if hasattr(item, "source_name")
+                            else item.get("sourceName", "")
+                            for item in (
+                                items.scene_items
+                                if hasattr(items, "scene_items")
+                                else items.get("sceneItems", [])
+                            )
                         ]
                         if _sn not in source_names:
-                            log.info(f"OBS Bridge: Adding existing audio source '{_sn}' to scene '{_scene}'")
-                            return c.create_scene_item(scene_name=_scene, source_name=_sn)
+                            log.info(
+                                f"OBS Bridge: Adding existing audio source '{_sn}' to scene '{_scene}'"
+                            )
+                            return c.create_scene_item(
+                                scene_name=_scene, source_name=_sn
+                            )
                     except Exception:
                         pass  # May already be in the scene
                     return existing
@@ -1632,7 +1852,9 @@ class OBSBridge:
                 c.set_input_audio_monitor_type(name=_sn, mon_type=2)
                 log.info(f"OBS Bridge: Set '{_sn}' audio monitor → Monitor and Output")
             except Exception as e:
-                log.warning(f"OBS Bridge: Could not set audio monitor type for '{_sn}': {e}")
+                log.warning(
+                    f"OBS Bridge: Could not set audio monitor type for '{_sn}': {e}"
+                )
             try:
                 c.set_input_audio_tracks(name=_sn, track=1)
                 log.info(f"OBS Bridge: Set '{_sn}' audio track → track 1 (streaming)")
@@ -1645,8 +1867,13 @@ class OBSBridge:
 
     # ── Visual Overlay Sources ──────────────────────────────────────────────
 
-    def set_encoder_settings(self, keyint_sec: int = 2, bitrate: int = 3000,
-                              preset: str = "veryfast", rate_control: str = "CBR") -> dict:
+    def set_encoder_settings(
+        self,
+        keyint_sec: int = 2,
+        bitrate: int = 3000,
+        preset: str = "veryfast",
+        rate_control: str = "CBR",
+    ) -> dict:
         """Set the streaming encoder (x264) keyframe interval and bitrate.
 
         OBS's Advanced mode reads keyint_sec from basic.ini's [AdvOut] section,
@@ -1690,7 +1917,7 @@ class OBSBridge:
             # x264opts is passed directly to libx264 and ALWAYS wins.
             # "keyint=60:min-keyint=60:bframes=0" forces 2-second keyframes
             # at 30fps regardless of what OBS thinks YouTube wants.
-            encoder_settings = {
+            {
                 "keyint_sec": str(keyint_sec),
                 "bitrate": str(bitrate),
                 "rate_control": rate_control,
@@ -1742,8 +1969,10 @@ class OBSBridge:
                         },
                     )
                 except Exception as e:
-                    log.debug(f"OBS Bridge: SetProfileParameter({category}/{name}) failed: {e}")
-            
+                    log.debug(
+                        f"OBS Bridge: SetProfileParameter({category}/{name}) failed: {e}"
+                    )
+
             results["encoder"] = "ok"
             log.info(
                 f"OBS Bridge: Encoder settings pushed via SetProfileParameter — "
@@ -1830,43 +2059,179 @@ class OBSBridge:
         thumb_path = "/tmp/radio_thumbnail.jpg"
         try:
             from PIL import Image, ImageDraw, ImageFont
+
             img = Image.new("RGB", (300, 300), color=(30, 30, 40))
             draw = ImageDraw.Draw(img)
             # Draw a music-note-like circle and simple text
-            draw.ellipse([100, 60, 200, 160], fill=(60, 60, 80), outline=(100, 100, 120))
+            draw.ellipse(
+                [100, 60, 200, 160], fill=(60, 60, 80), outline=(100, 100, 120)
+            )
             draw.text((120, 90), "♪", fill=(140, 140, 160))
             draw.text((85, 200), "No Track", fill=(100, 100, 120))
             img.save(thumb_path, "JPEG")
         except ImportError:
             # PIL not available — write a minimal 1x1 JPEG and let it be replaced
             # when the first song plays
-            import struct
+
             # Minimal JPEG: SOI + APP0 + minimal data + EOI
             # Just write a tiny valid JPEG
             try:
                 with open(thumb_path, "wb") as f:
                     # 1x1 gray pixel JPEG
-                    f.write(bytes([
-                        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
-                        0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
-                        0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
-                        0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
-                        0x07, 0x07, 0x07, 0x09, 0x09, 0x08, 0x0A, 0x0C,
-                        0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
-                        0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D,
-                        0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20,
-                        0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
-                        0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27,
-                        0x39, 0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34,
-                        0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
-                        0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4,
-                        0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01,
-                        0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04,
-                        0x05, 0x06, 0x07, 0x08, 0xFF, 0xDA, 0x00, 0x08,
-                        0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x7B, 0x94,
-                        0x01, 0x00, 0xFF, 0xD9,
-                    ]))
+                    f.write(
+                        bytes(
+                            [
+                                0xFF,
+                                0xD8,
+                                0xFF,
+                                0xE0,
+                                0x00,
+                                0x10,
+                                0x4A,
+                                0x46,
+                                0x49,
+                                0x46,
+                                0x00,
+                                0x01,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0x01,
+                                0x00,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0xFF,
+                                0xDB,
+                                0x00,
+                                0x43,
+                                0x00,
+                                0x08,
+                                0x06,
+                                0x06,
+                                0x07,
+                                0x06,
+                                0x05,
+                                0x08,
+                                0x07,
+                                0x07,
+                                0x07,
+                                0x09,
+                                0x09,
+                                0x08,
+                                0x0A,
+                                0x0C,
+                                0x14,
+                                0x0D,
+                                0x0C,
+                                0x0B,
+                                0x0B,
+                                0x0C,
+                                0x19,
+                                0x12,
+                                0x13,
+                                0x0F,
+                                0x14,
+                                0x1D,
+                                0x1A,
+                                0x1F,
+                                0x1E,
+                                0x1D,
+                                0x1A,
+                                0x1C,
+                                0x1C,
+                                0x20,
+                                0x24,
+                                0x2E,
+                                0x27,
+                                0x20,
+                                0x22,
+                                0x2C,
+                                0x23,
+                                0x1C,
+                                0x1C,
+                                0x28,
+                                0x37,
+                                0x29,
+                                0x2C,
+                                0x30,
+                                0x31,
+                                0x34,
+                                0x34,
+                                0x34,
+                                0x1F,
+                                0x27,
+                                0x39,
+                                0x3D,
+                                0x38,
+                                0x32,
+                                0x3C,
+                                0x2E,
+                                0x33,
+                                0x34,
+                                0x32,
+                                0xFF,
+                                0xC0,
+                                0x00,
+                                0x0B,
+                                0x08,
+                                0x00,
+                                0x01,
+                                0x00,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x11,
+                                0x00,
+                                0xFF,
+                                0xC4,
+                                0x00,
+                                0x1F,
+                                0x00,
+                                0x00,
+                                0x01,
+                                0x05,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x01,
+                                0x02,
+                                0x03,
+                                0x04,
+                                0x05,
+                                0x06,
+                                0x07,
+                                0x08,
+                                0xFF,
+                                0xDA,
+                                0x00,
+                                0x08,
+                                0x01,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0x3F,
+                                0x00,
+                                0x7B,
+                                0x94,
+                                0x01,
+                                0x00,
+                                0xFF,
+                                0xD9,
+                            ]
+                        )
+                    )
             except Exception:
                 pass
 
@@ -1884,24 +2249,18 @@ class OBSBridge:
         try:
             self._safe_call(
                 lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
-                    scene_name=sn, item_id=iid,
+                    scene_name=sn,
+                    item_id=iid,
                     transform={
                         "positionX": 1060,
                         "positionY": 85,
                         "scaleX": 0.5,
                         "scaleY": 0.5,
-                    }
+                    },
                 )
             )
         except Exception as e:
             log.debug(f"OBS Bridge: Failed to position thumbnail: {e}")
-
-
-
-
-
-
-
 
     def create_gif_source(self, gif_path: str = "", scene_name: str = "") -> dict:
         """Create a media source (ffmpeg_source) that loops an animated GIF.
@@ -1995,9 +2354,7 @@ class OBSBridge:
 
         # Detect which GIF we're using to get the right scale
         try:
-            resp = self._safe_call(
-                lambda c: c.get_input_settings(name="GIF Overlay")
-            )
+            resp = self._safe_call(lambda c: c.get_input_settings(name="GIF Overlay"))
             settings = resp.get("data", {})
             if isinstance(settings, dict) and hasattr(settings, "get"):
                 current_file = settings.get("local_file", settings.get("input", ""))
@@ -2016,14 +2373,17 @@ class OBSBridge:
 
         try:
             self._safe_call(
-                lambda c, sn=scene_name, iid=item_id, sx=scale_x: c.set_scene_item_transform(
-                    scene_name=sn, item_id=iid,
-                    transform={
-                        "positionX": 0,
-                        "positionY": 640,
-                        "scaleX": sx,
-                        "scaleY": sx,
-                    }
+                lambda c, sn=scene_name, iid=item_id, sx=scale_x: (
+                    c.set_scene_item_transform(
+                        scene_name=sn,
+                        item_id=iid,
+                        transform={
+                            "positionX": 0,
+                            "positionY": 640,
+                            "scaleX": sx,
+                            "scaleY": sx,
+                        },
+                    )
                 )
             )
         except Exception as e:
@@ -2067,13 +2427,24 @@ class OBSBridge:
         use_logo = os.path.isfile(logo_path)
 
         if use_logo:
-            bg_source = ("image_source", "Overlay Background", {
-                "file": logo_path, "unload": False,
-            })
+            bg_source = (
+                "image_source",
+                "Overlay Background",
+                {
+                    "file": logo_path,
+                    "unload": False,
+                },
+            )
         else:
-            bg_source = ("color_source_v3", "Overlay Background", {
-                "color": 4278190080, "width": 1280, "height": 720,
-            })
+            bg_source = (
+                "color_source_v3",
+                "Overlay Background",
+                {
+                    "color": 4278190080,
+                    "width": 1280,
+                    "height": 720,
+                },
+            )
 
         scenes = {
             "📺 Overlay Only": {
@@ -2097,8 +2468,10 @@ class OBSBridge:
             try:
                 self.set_current_scene(scene_name)
             except Exception:
-                log.debug(f"OBS Bridge: Could not set current scene to '{scene_name}' before source creation")
-            
+                log.debug(
+                    f"OBS Bridge: Could not set current scene to '{scene_name}' before source creation"
+                )
+
             # Verify the scene actually exists before creating sources.
             # create_scene() verifies internally, but let's double-check.
             time.sleep(0.5)
@@ -2107,14 +2480,24 @@ class OBSBridge:
                 if resp_list.get("connected"):
                     scenes_raw = resp_list.get("data", {})
                     if hasattr(scenes_raw, "scenes"):
-                        existing_scenes = [s.scene_name if hasattr(s, "scene_name") else str(s) for s in scenes_raw.scenes]
+                        existing_scenes = [
+                            s.scene_name if hasattr(s, "scene_name") else str(s)
+                            for s in scenes_raw.scenes
+                        ]
                     elif isinstance(scenes_raw, dict):
-                        existing_scenes = [s.get("sceneName", str(s)) for s in scenes_raw.get("scenes", [])]
+                        existing_scenes = [
+                            s.get("sceneName", str(s))
+                            for s in scenes_raw.get("scenes", [])
+                        ]
                     else:
                         existing_scenes = []
                     if scene_name not in existing_scenes:
-                        errors.append(f"scene:{scene_name}: Scene not visible after creation, skipping source creation")
-                        log.warning(f"OBS Bridge: Scene '{scene_name}' not in scene list {existing_scenes}, skipping source creation")
+                        errors.append(
+                            f"scene:{scene_name}: Scene not visible after creation, skipping source creation"
+                        )
+                        log.warning(
+                            f"OBS Bridge: Scene '{scene_name}' not in scene list {existing_scenes}, skipping source creation"
+                        )
                         continue
             except Exception:
                 pass  # Scene list query failed — proceed optimistically
@@ -2131,8 +2514,13 @@ class OBSBridge:
                 except Exception:
                     pass
 
-                def _make_src(c, _scene=scene_name, _kind=input_kind,
-                              _name=source_name, _settings=settings):
+                def _make_src(
+                    c,
+                    _scene=scene_name,
+                    _kind=input_kind,
+                    _name=source_name,
+                    _settings=settings,
+                ):
                     return c.create_input(
                         sceneName=_scene,
                         inputKind=_kind,
@@ -2143,7 +2531,9 @@ class OBSBridge:
 
                 result = self._safe_call(_make_src)
                 if result.get("error"):
-                    errors.append(f"source:{scene_name}/{source_name}: {result['error']}")
+                    errors.append(
+                        f"source:{scene_name}/{source_name}: {result['error']}"
+                    )
                 else:
                     created.append(f"source:{scene_name}/{source_name}")
 
@@ -2172,7 +2562,9 @@ class OBSBridge:
                         self._safe_call(
                             lambda c, sn=stale_scene: c.remove_scene(name=sn)
                         )
-                        log.info(f"OBS Bridge: Removed auto-created '{stale_scene}' scene")
+                        log.info(
+                            f"OBS Bridge: Removed auto-created '{stale_scene}' scene"
+                        )
         except Exception as e:
             log.debug(f"OBS Bridge: Could not clean up default scene: {e}")
 
@@ -2206,6 +2598,7 @@ class OBSBridge:
         # HUD display so "MBot" → "MBot Radio" on the stream overlay.
         try:
             import config
+
             station_name = getattr(config, "STATION_NAME", "MBot") + " Radio"
         except ImportError:
             station_name = "MBot Radio"
@@ -2242,10 +2635,13 @@ class OBSBridge:
         thumb_path = "/tmp/radio_thumbnail.jpg"
         try:
             from PIL import Image, ImageDraw
+
             img = Image.new("RGB", (300, 300), color=(30, 30, 40))
             draw = ImageDraw.Draw(img)
             # Dark card with subtle circle
-            draw.ellipse([100, 60, 200, 160], fill=(60, 60, 80), outline=(100, 100, 120))
+            draw.ellipse(
+                [100, 60, 200, 160], fill=(60, 60, 80), outline=(100, 100, 120)
+            )
             draw.ellipse([130, 90, 170, 130], fill=(80, 80, 100))
             draw.text((85, 200), "No Track", fill=(100, 100, 120))
             img.save(thumb_path, "JPEG")
@@ -2255,27 +2651,160 @@ class OBSBridge:
             try:
                 with open(thumb_path, "wb") as f:
                     # Minimal valid JPEG bytes (1x1 gray pixel)
-                    f.write(bytes([
-                        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
-                        0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01,
-                        0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43,
-                        0x00, 0x08, 0x06, 0x06, 0x07, 0x06, 0x05, 0x08,
-                        0x07, 0x07, 0x07, 0x09, 0x09, 0x08, 0x0A, 0x0C,
-                        0x14, 0x0D, 0x0C, 0x0B, 0x0B, 0x0C, 0x19, 0x12,
-                        0x13, 0x0F, 0x14, 0x1D, 0x1A, 0x1F, 0x1E, 0x1D,
-                        0x1A, 0x1C, 0x1C, 0x20, 0x24, 0x2E, 0x27, 0x20,
-                        0x22, 0x2C, 0x23, 0x1C, 0x1C, 0x28, 0x37, 0x29,
-                        0x2C, 0x30, 0x31, 0x34, 0x34, 0x34, 0x1F, 0x27,
-                        0x39, 0x3D, 0x38, 0x32, 0x3C, 0x2E, 0x33, 0x34,
-                        0x32, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01,
-                        0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4,
-                        0x00, 0x1F, 0x00, 0x00, 0x01, 0x05, 0x01, 0x01,
-                        0x01, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
-                        0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04,
-                        0x05, 0x06, 0x07, 0x08, 0xFF, 0xDA, 0x00, 0x08,
-                        0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x7B, 0x94,
-                        0x01, 0x00, 0xFF, 0xD9,
-                    ]))
+                    f.write(
+                        bytes(
+                            [
+                                0xFF,
+                                0xD8,
+                                0xFF,
+                                0xE0,
+                                0x00,
+                                0x10,
+                                0x4A,
+                                0x46,
+                                0x49,
+                                0x46,
+                                0x00,
+                                0x01,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0x01,
+                                0x00,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0xFF,
+                                0xDB,
+                                0x00,
+                                0x43,
+                                0x00,
+                                0x08,
+                                0x06,
+                                0x06,
+                                0x07,
+                                0x06,
+                                0x05,
+                                0x08,
+                                0x07,
+                                0x07,
+                                0x07,
+                                0x09,
+                                0x09,
+                                0x08,
+                                0x0A,
+                                0x0C,
+                                0x14,
+                                0x0D,
+                                0x0C,
+                                0x0B,
+                                0x0B,
+                                0x0C,
+                                0x19,
+                                0x12,
+                                0x13,
+                                0x0F,
+                                0x14,
+                                0x1D,
+                                0x1A,
+                                0x1F,
+                                0x1E,
+                                0x1D,
+                                0x1A,
+                                0x1C,
+                                0x1C,
+                                0x20,
+                                0x24,
+                                0x2E,
+                                0x27,
+                                0x20,
+                                0x22,
+                                0x2C,
+                                0x23,
+                                0x1C,
+                                0x1C,
+                                0x28,
+                                0x37,
+                                0x29,
+                                0x2C,
+                                0x30,
+                                0x31,
+                                0x34,
+                                0x34,
+                                0x34,
+                                0x1F,
+                                0x27,
+                                0x39,
+                                0x3D,
+                                0x38,
+                                0x32,
+                                0x3C,
+                                0x2E,
+                                0x33,
+                                0x34,
+                                0x32,
+                                0xFF,
+                                0xC0,
+                                0x00,
+                                0x0B,
+                                0x08,
+                                0x00,
+                                0x01,
+                                0x00,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x11,
+                                0x00,
+                                0xFF,
+                                0xC4,
+                                0x00,
+                                0x1F,
+                                0x00,
+                                0x00,
+                                0x01,
+                                0x05,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x00,
+                                0x01,
+                                0x02,
+                                0x03,
+                                0x04,
+                                0x05,
+                                0x06,
+                                0x07,
+                                0x08,
+                                0xFF,
+                                0xDA,
+                                0x00,
+                                0x08,
+                                0x01,
+                                0x01,
+                                0x00,
+                                0x00,
+                                0x3F,
+                                0x00,
+                                0x7B,
+                                0x94,
+                                0x01,
+                                0x00,
+                                0xFF,
+                                0xD9,
+                            ]
+                        )
+                    )
             except Exception:
                 pass
 
@@ -2318,7 +2847,9 @@ class OBSBridge:
                     except Exception:
                         pass
                     elapsed = time.time() - start_time
-                    log.info(f"OBS Bridge: OBS is ready! (connected after {elapsed:.1f}s)")
+                    log.info(
+                        f"OBS Bridge: OBS is ready! (connected after {elapsed:.1f}s)"
+                    )
                     return True
 
                 # Not ready yet — wait and try again
@@ -2356,14 +2887,20 @@ class OBSBridge:
             return False
         try:
             result = self.set_current_scene(scene_name)
-            if result.get("status") == "ok" or (result.get("connected") and not result.get("error")):
+            if result.get("status") == "ok" or (
+                result.get("connected") and not result.get("error")
+            ):
                 return True
             # Scene not found? Fall back to overlay scene
             if result.get("error") and "No source" in str(result.get("error", "")):
                 fallback = "📺 Overlay Only"
-                log.debug(f"OBS Auto Scene: '{scene_name}' not found, falling back to '{fallback}'")
+                log.debug(
+                    f"OBS Auto Scene: '{scene_name}' not found, falling back to '{fallback}'"
+                )
                 result = self.set_current_scene(fallback)
-                return result.get("status") == "ok" or (result.get("connected") and not result.get("error"))
+                return result.get("status") == "ok" or (
+                    result.get("connected") and not result.get("error")
+                )
             return False
         except Exception as e:
             log.debug(f"OBS Auto Scene: Exception switching to '{scene_name}': {e}")
@@ -2492,13 +3029,14 @@ class OBSBridge:
         try:
             self._safe_call(
                 lambda c, sn=scene_name, iid=item_id: c.set_scene_item_transform(
-                    scene_name=sn, item_id=iid,
+                    scene_name=sn,
+                    item_id=iid,
                     transform={
                         "positionX": 1040,
                         "positionY": 400,
                         "scaleX": 0.4,
                         "scaleY": 0.4,
-                    }
+                    },
                 )
             )
         except Exception as e:
@@ -2522,6 +3060,7 @@ class OBSBridge:
 
         # Pick a random alternate GIF (not the default)
         import random
+
         flash_gif = random.choice(self._sfx_gif_paths)
 
         # Cancel any pending revert timer
@@ -2543,13 +3082,14 @@ class OBSBridge:
             )
 
         try:
-            result = self._safe_call(_flash)
+            self._safe_call(_flash)
             log.info(f"OBS Bridge: SFX GIF flashed → {os.path.basename(flash_gif)}")
         except Exception as e:
             log.debug(f"OBS Bridge: Failed to flash SFX GIF: {e}")
 
         # Schedule revert back to default after 3 seconds
         import threading
+
         def _revert():
             try:
                 self._safe_call(
@@ -2565,7 +3105,9 @@ class OBSBridge:
                         overlay=True,
                     )
                 )
-                log.debug(f"OBS Bridge: SFX GIF reverted → {os.path.basename(self._sfx_default_path)}")
+                log.debug(
+                    f"OBS Bridge: SFX GIF reverted → {os.path.basename(self._sfx_default_path)}"
+                )
             except Exception:
                 pass
 

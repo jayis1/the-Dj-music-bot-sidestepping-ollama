@@ -2,6 +2,7 @@ import pytest
 import asyncio
 from cogs.youtube import YTDLSource
 
+
 @pytest.mark.asyncio
 async def test_ytdlsource_extraction():
     url = "ytsearch1:never gonna give you up"

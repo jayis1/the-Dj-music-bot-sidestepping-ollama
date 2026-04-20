@@ -28,6 +28,11 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# ── Shadow Controller ──────────────────────────────────────────────
+# Has its own standalone repo — not part of the bot image
+# https://github.com/jayis1/the-Dj-music-bot-sidestepping-hermes-instructions
+shadow_controller/
 desktop.ini
 
 # Logs

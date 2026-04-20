@@ -14,6 +14,7 @@ extend-exclude = [
     "__pycache__",
     "node_modules",
     "moss-tts-server",
+    "shadow_controller",
 ]
 
 [lint]
@@ -28,7 +29,6 @@ ignore = [
 
 [lint.per-file-ignores]
 "__init__.py" = ["F401", "F403"]
-"shadow_controller/__init__.py" = ["F401", "F403"]
 "bot.py" = ["E402"]       # Module-level imports not at top (conditional setup)
 "web/app.py" = ["E402"]   # Flask app, imports after app creation
 "cogs/music.py" = ["E402", "F841"]

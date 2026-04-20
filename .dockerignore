@@ -61,6 +61,9 @@ Dockerfile
 # ── MOSS TTS server (built separately as its own image) ─────────────────
 moss-tts-server/
 
+# ── Shadow Controller (separate repo, not part of bot image) ────────────────
+shadow_controller/
+
 # ── Browser extension (not needed in container) ──────────────────────────
 extension/
 

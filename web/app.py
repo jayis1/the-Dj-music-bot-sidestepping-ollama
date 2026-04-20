@@ -3927,7 +3927,7 @@ def hermes_state():
     is_playing = getattr(voice, "is_playing", lambda: False)() if voice else False
     is_paused = getattr(voice, "is_paused", lambda: False)() if voice else False
     current = music.current_song.get(gid) if music else None
-    volume = music.volumes.get(gid, 100) if music else 100
+    volume = int(music.current_volume.get(gid, 1.0) * 100) if music else 100
     speed = music._get_current_speed_index(gid) if music else -1
 
     # Queue

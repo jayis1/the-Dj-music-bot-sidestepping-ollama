@@ -208,6 +208,28 @@ WEB_PASSWORD = os.environ.get("WEB_PASSWORD", "")
 # Generate one with: python3 -c "import secrets; print(secrets.token_urlsafe(32))"
 HERMES_API_KEY = os.environ.get("HERMES_API_KEY", "").strip()
 
+# ── SilverBullet Knowledge Base ────────────────────────────────────────
+# The Hermes Agent can document station events, incidents, session logs,
+# and playback history to a SilverBullet PKM instance. This creates a
+# queryable, hyperlinked knowledge base for the radio station.
+#
+# SILVERBULLET_URL: Base URL of the SilverBullet instance (no trailing slash)
+#   e.g. "https://silver.istealyourdomain.org"
+#
+# SILVERBULLET_TOKEN: Bearer token for SB_AUTH_TOKEN (optional if no auth)
+#   Only needed if the SilverBullet instance has SB_AUTH_TOKEN configured.
+#
+# SILVERBULLET_ENABLED: Set to "true" to enable auto-documentation.
+#   When disabled, all SilverBullet write operations are silently skipped.
+#
+# SILVERBULLET_PREFIX: Page path prefix for all station pages.
+#   Default: "station" — so pages land at station/Daily Log/2026-04-20,
+#   station/Incidents/cookie-auth-block, etc.
+SILVERBULLET_URL = os.environ.get("SILVERBULLET_URL", "").strip().rstrip("/")
+SILVERBULLET_TOKEN = os.environ.get("SILVERBULLET_TOKEN", "").strip()
+SILVERBULLET_ENABLED = os.environ.get("SILVERBULLET_ENABLED", "false").lower() == "true"
+SILVERBULLET_PREFIX = os.environ.get("SILVERBULLET_PREFIX", "station")
+
 # Reverse Proxy support (e.g. Nginx Proxy Manager, Caddy, Traefik, Cloudflare Tunnel).
 # When enabled, Flask's ProxyFix middleware is applied so the dashboard
 # correctly respects X-Forwarded-For, X-Forwarded-Proto, and X-Forwarded-Host

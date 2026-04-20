@@ -3776,6 +3776,8 @@ def hermes_state():
             "queue_length": int,
             "dj_enabled": bool,
             "ai_enabled": bool,
+            "autodj_enabled": bool,
+            "autodj_source": str,
             "yt_live_active": bool,
             "cookie_healthy": bool,
             "volume": int,
@@ -3852,6 +3854,8 @@ def hermes_state():
         "queue_length": len(queue_list),
         "dj_enabled": music.dj_enabled.get(gid, False) if music else False,
         "ai_enabled": music.ai_dj_enabled.get(gid, False) if music else False,
+        "autodj_enabled": music.autodj_enabled.get(gid, False) if music else False,
+        "autodj_source": music.autodj_source.get(gid, "") if music else "",
         "yt_live_active": music._yt_stream_active if music else False,
         "cookie_healthy": cookie_healthy,
         "volume": volume,
@@ -3918,7 +3922,7 @@ def hermes_queue_add():
     # We create a fake context-like invocation by directly calling queue internals
     try:
         import asyncio
-        from utils.youtube_utils import YTDLSource
+        from cogs.youtube import YTDLSource
 
         # Extract the source (same as the play command does)
         async def _add_to_queue():
@@ -4125,6 +4129,141 @@ def hermes_skip():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+@app.route("/api/hermes/autodj/toggle", methods=["POST"])
+def hermes_autodj_toggle():
+    """Toggle Auto-DJ mode on or off.
+
+    Body: {"enabled": true|false}  (optional — if omitted, toggles current state)
+    Returns: {"ok": true, "autodj_enabled": bool, "autodj_source": str}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+    data = request.json or {}
+
+    if "enabled" in data:
+        # Explicit on/off (not toggle) — safer for machine-to-machine
+        music.autodj_enabled[gid] = bool(data["enabled"])
+    else:
+        # Toggle current state
+        music.autodj_enabled[gid] = not music.autodj_enabled.get(gid, False)
+
+    source = music.autodj_source.get(gid, "")
+    status = "enabled" if music.autodj_enabled[gid] else "disabled"
+    logging.info(f"Hermes: Auto-DJ {status} for guild {gid} (source={source[:80] if source else 'none'})")
+
+    return jsonify({
+        "ok": True,
+        "autodj_enabled": music.autodj_enabled[gid],
+        "autodj_source": source,
+    })
+
+
+@app.route("/api/hermes/autodj/source", methods=["POST"])
+def hermes_autodj_source():
+    """Set the Auto-DJ source playlist/preset.
+
+    Body: {"source": "https://youtube.com/playlist?list=...|preset:name"}
+    Returns: {"ok": true, "source": str, "autodj_enabled": bool}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    source = data.get("source", "").strip()
+
+    if not source:
+        return jsonify({"ok": False, "error": "No source provided"}), 400
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+    music.autodj_source[gid] = source
+
+    # If Auto-DJ is not enabled, enable it automatically when source is set
+    if not music.autodj_enabled.get(gid, False):
+        music.autodj_enabled[gid] = True
+        logging.info(f"Hermes: Auto-DJ auto-enabled when source set for guild {gid}")
+
+    logging.info(f"Hermes: Auto-DJ source set to '{source[:80]}' for guild {gid}")
+
+    return jsonify({
+        "ok": True,
+        "source": source,
+        "autodj_enabled": music.autodj_enabled[gid],
+    })
+
+
+@app.route("/api/hermes/autodj/fill", methods=["POST"])
+def hermes_autodj_fill():
+    """Trigger an immediate Auto-DJ fill of the queue.
+
+    This is useful when the Shadow Controller detects the queue is empty
+    and wants to force a refill without waiting for the next play_next cycle.
+
+    Body: {} (no params required)
+    Returns: {"ok": true, "filled": bool, "source_used": str}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    if not music:
+        return jsonify({"ok": False, "error": "Music cog not available"}), 503
+
+    gid = _hermes_guild_id()
+
+    # Ensure Auto-DJ is enabled
+    if not music.autodj_enabled.get(gid, False):
+        music.autodj_enabled[gid] = True
+        logging.info(f"Hermes: Auto-DJ enabled for fill request (guild {gid})")
+
+    # Find a voice client to build a fake context for _autodj_fill
+    if not bot:
+        return jsonify({"ok": False, "error": "Bot not available"}), 503
+
+    guild_obj = bot.get_guild(gid)
+    if not guild_obj:
+        return jsonify({"ok": False, "error": "Guild not found"}), 404
+
+    voice = guild_obj.voice_client
+    if not voice:
+        return jsonify({"ok": False, "error": "Bot not in a voice channel"}), 400
+
+    source_used = music.autodj_source.get(gid, "") or getattr(config, "AUTODJ_DEFAULT_SOURCE", "")
+
+    try:
+        # Build a minimal fake context for _autodj_fill
+        # _autodj_fill expects ctx.guild.id and ctx.voice_client
+        class _FakeCtx:
+            def __init__(self, guild, voice_client):
+                self.guild = guild
+                self.voice_client = voice_client
+
+        fake_ctx = _FakeCtx(guild_obj, voice)
+        future = asyncio.run_coroutine_threadsafe(music._autodj_fill(fake_ctx), bot.loop)
+        filled = future.result(timeout=60)
+
+        return jsonify({
+            "ok": True,
+            "filled": bool(filled),
+            "source_used": source_used,
+        })
+    except Exception as e:
+        logging.error(f"Hermes: Auto-DJ fill failed: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/api/hermes/cookies/health")
 def hermes_cookies_health():
     """Check cookie authentication health for YouTube playback.
@@ -4328,3 +4467,384 @@ def hermes_cookies_upload():
         "was_blocked": was_blocked,
         "retrying": retrying,
     })
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ── HERMES AGENT API: SILVERBULLET KNOWLEDGE BASE ────────────────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# Endpoints for documenting station events, incidents, tracks, and
+# sessions to an external SilverBullet PKM instance.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@app.route("/api/hermes/silverbullet/status")
+def hermes_silverbullet_status():
+    """Check SilverBullet connectivity and configuration.
+
+    Returns:
+        {
+            "enabled": bool,
+            "url": str,
+            "connected": bool,
+            "writable": bool,
+            "prefix": str,
+            "error": str | null
+        }
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    from utils.silverbullet import test_connection
+
+    enabled = getattr(config, "SILVERBULLET_ENABLED", False)
+    url = getattr(config, "SILVERBULLET_URL", "")
+    prefix = getattr(config, "SILVERBULLET_PREFIX", "station")
+
+    if not enabled:
+        return jsonify({
+            "enabled": False,
+            "url": url,
+            "connected": False,
+            "writable": False,
+            "prefix": prefix,
+            "error": "SilverBullet not enabled (set SILVERBULLET_ENABLED=true)",
+        })
+
+    result = test_connection()
+    return jsonify({
+        "enabled": True,
+        "url": result.get("url", url),
+        "connected": result.get("connected", False),
+        "writable": result.get("writable", False),
+        "prefix": prefix,
+        "error": result.get("error"),
+    })
+
+
+@app.route("/api/hermes/silverbullet/incident", methods=["POST"])
+def hermes_silverbullet_incident():
+    """Write an incident page to SilverBullet.
+
+    Body: {
+        "title": "Cookie Auth Block",
+        "severity": "critical"|"warning"|"info",     (default: "warning")
+        "category": "cookie"|"queue"|"obs"|"youtube"|"tts"|"general",  (default: "general")
+        "body": "Markdown description of the incident",
+        "resolved": false                              (default: false)
+    }
+    Returns: {"ok": true, "page_path": "station/Incidents/..."}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "title is required"}), 400
+
+    from utils.silverbullet import document_incident
+
+    gid = _hermes_guild_id()
+    page_path = document_incident(
+        title=title,
+        severity=data.get("severity", "warning"),
+        category=data.get("category", "general"),
+        body=data.get("body", ""),
+        guild_id=gid,
+        resolved=data.get("resolved", False),
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/track", methods=["POST"])
+def hermes_silverbullet_track():
+    """Write a track play entry to SilverBullet.
+
+    Body: {
+        "title": "Song Title",
+        "url": "https://youtube.com/watch?v=...",   (optional)
+        "duration": 245,                              (optional, seconds)
+        "source": "autodj"|"manual"|"hermes",         (default: "hermes")
+        "thumbnail": "https://..."                    (optional)
+    }
+    Returns: {"ok": true, "page_path": "station/Tracks/..."}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    title = data.get("title", "").strip()
+    if not title:
+        return jsonify({"ok": False, "error": "title is required"}), 400
+
+    from utils.silverbullet import document_track
+
+    gid = _hermes_guild_id()
+    page_path = document_track(
+        title=title,
+        url=data.get("url", ""),
+        duration=data.get("duration"),
+        source=data.get("source", "hermes"),
+        guild_id=gid,
+        thumbnail=data.get("thumbnail", ""),
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/dashboard", methods=["POST"])
+def hermes_silverbullet_dashboard():
+    """Generate or update the station dashboard page in SilverBullet.
+
+    Pulls live state from the bot to populate the dashboard.
+    No body required — reads current bot state automatically.
+    Returns: {"ok": true, "page_path": "station/Dashboard.md"}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    music = _get_music_cog()
+    gid = _hermes_guild_id()
+
+    # Gather current state
+    current = music.current_song.get(gid) if music else None
+    current_title = getattr(current, "title", "") if current else ""
+    autodj_enabled = music.autodj_enabled.get(gid, False) if music else False
+    autodj_source = music.autodj_source.get(gid, "") if music else ""
+    queue_items = music.peek_queue(gid) if music else []
+    yt_stream_active = music._yt_stream_active if music else False
+
+    # Cookie health
+    cookie_healthy = False
+    try:
+        cookiefile = getattr(config, "YTDDL_COOKIEFILE", "youtube_cookie.txt").strip()
+        cookie_healthy = os.path.exists(cookiefile) and os.path.getsize(cookiefile) > 0
+    except Exception:
+        pass
+
+    from utils.silverbullet import update_dashboard
+
+    page_path = update_dashboard(
+        station_name=getattr(config, "STATION_NAME", "MBot"),
+        is_streaming=yt_stream_active,
+        current_song=current_title,
+        autodj_enabled=autodj_enabled,
+        autodj_source=autodj_source,
+        queue_length=len(queue_items),
+        cookie_healthy=cookie_healthy,
+        yt_stream_active=yt_stream_active,
+        guild_id=gid,
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/session/start", methods=["POST"])
+def hermes_silverbullet_session_start():
+    """Document the start of a broadcast session in SilverBullet.
+
+    Body: {"source": "YouTube playlist URL", "autodj_enabled": true}  (optional fields)
+    Returns: {"ok": true, "page_path": "station/Sessions/..."}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    gid = _hermes_guild_id()
+
+    from utils.silverbullet import document_session_start
+
+    page_path = document_session_start(
+        guild_id=gid,
+        source=data.get("source", ""),
+        autodj_enabled=data.get("autodj_enabled", False),
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/session/end", methods=["POST"])
+def hermes_silverbullet_session_end():
+    """Document the end of a broadcast session.
+
+    Body: {"session_path": "station/Sessions/2026-04-20-1530.md", "tracks_played": 42}
+    Returns: {"ok": true}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    session_path = data.get("session_path", "").strip()
+    if not session_path:
+        return jsonify({"ok": False, "error": "session_path is required"}), 400
+
+    from utils.silverbullet import document_session_end
+
+    ok = document_session_end(
+        session_path=session_path,
+        tracks_played=data.get("tracks_played", 0),
+    )
+
+    if ok:
+        return jsonify({"ok": True})
+    else:
+        return jsonify({"ok": False, "error": "Failed to update session (page not found or write failed)"}), 503
+
+
+@app.route("/api/hermes/silverbullet/commercial", methods=["POST"])
+def hermes_silverbullet_commercial():
+    """Document a commercial break in SilverBullet.
+
+    Body: {
+        "category": "absurdist_tech",
+        "voice": "af_bella",
+        "num_ads": 3,
+        "ad_titles": ["DankNug AI", "VoidVPN", "CosmicBurger"],
+        "body": "Markdown details"
+    }
+    Returns: {"ok": true, "page_path": "station/Commercials & Hijacks/..."}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+
+    from utils.silverbullet import document_commercial
+
+    page_path = document_commercial(
+        category=data.get("category", "unknown"),
+        voice=data.get("voice", ""),
+        num_ads=data.get("num_ads", 1),
+        ad_titles=data.get("ad_titles"),
+        body=data.get("body", ""),
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/hijack", methods=["POST"])
+def hermes_silverbullet_hijack():
+    """Document a Station Wars hijack event in SilverBullet.
+
+    Body: {
+        "station_name": "Kosmos-7 FM",
+        "voice": "af_bella",
+        "recovery_line": "We're back, you dimensional freaks.",
+        "body": "Transmission text from the other kosmos"
+    }
+    Returns: {"ok": true, "page_path": "station/Commercials & Hijacks/..."}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+
+    from utils.silverbullet import document_hijack
+
+    page_path = document_hijack(
+        station_name=data.get("station_name", "Unknown Kosmos"),
+        voice=data.get("voice", ""),
+        recovery_line=data.get("recovery_line", ""),
+        body=data.get("body", ""),
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/stream-health", methods=["POST"])
+def hermes_silverbullet_stream_health():
+    """Document a stream health snapshot in SilverBullet.
+
+    Body: {
+        "healthy": true,
+        "keyframes_ok": true,
+        "bitrate": 3000,
+        "audio_ok": true,
+        "details": "Optional markdown notes"
+    }
+    Returns: {"ok": true, "page_path": "station/Stream Health/..."}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+
+    from utils.silverbullet import document_stream_health
+
+    page_path = document_stream_health(
+        healthy=data.get("healthy", True),
+        keyframes_ok=data.get("keyframes_ok", True),
+        bitrate=data.get("bitrate", 0),
+        audio_ok=data.get("audio_ok", True),
+        details=data.get("details", ""),
+    )
+
+    if page_path:
+        return jsonify({"ok": True, "page_path": page_path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503
+
+
+@app.route("/api/hermes/silverbullet/write", methods=["POST"])
+def hermes_silverbullet_write():
+    """Write an arbitrary page to SilverBullet.
+
+    This is the escape hatch — write any page with any content.
+    Body: {
+        "path": "station/Custom Page",
+        "content": "# My Page\n\nMarkdown content here...",
+        "append": false    (default: false — set true to append instead of overwrite)
+    }
+    Returns: {"ok": true, "page_path": "station/Custom Page.md"}
+    """
+    auth_error = _hermes_require_auth()
+    if auth_error:
+        return auth_error
+
+    data = request.json or {}
+    path = data.get("path", "").strip()
+    content = data.get("content", "")
+
+    if not path:
+        return jsonify({"ok": False, "error": "path is required"}), 400
+
+    from utils.silverbullet import write_page
+
+    # Auto-add .md extension if missing
+    if not path.endswith(".md"):
+        path += ".md"
+
+    ok = write_page(path, content, append=data.get("append", False))
+
+    if ok:
+        return jsonify({"ok": True, "page_path": path})
+    else:
+        return jsonify({"ok": False, "error": "SilverBullet not configured or write failed"}), 503

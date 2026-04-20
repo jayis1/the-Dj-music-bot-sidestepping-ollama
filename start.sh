@@ -857,18 +857,23 @@ USERINIEOF
         # --socket=session-bus flag lets the Flatpak sandbox inherit it.
         if [ "$_USE_XVFB_EXPLICIT" = true ]; then
           # We have a dedicated Xvfb on :420 — use it directly
-          flatpak run --socket=x11 --nosocket=wayland \
-            --socket=session-bus --share=network \
-            --env=DISPLAY="$_OBS_DISPLAY" --env=LC_ALL=C.UTF-8 \
-            com.obsproject.Studio \
-            --minimize-to-tray --disable-missing-files-check \
-            --collection "Radio DJ" --profile "RadioDJ" &
+        flatpak run --socket=x11 --nosocket=wayland \
+          --socket=session-bus --share=network \
+          --env=DISPLAY="$_OBS_DISPLAY" \
+          --env=LC_ALL=C.UTF-8 \
+          --env=OBS_BROWSER_DISABLE_GPU=1 \
+          --env=QT_QPA_PLATFORM=xcb \
+          com.obsproject.Studio \
+          --minimize-to-tray --disable-missing-files-check \
+          --collection "Radio DJ" --profile "RadioDJ" &
         else
           # Fallback: use xvfb-run (no xdotool dialog dismissal available)
           warn "Using xvfb-run fallback — crash dialogs cannot be auto-dismissed"
           xvfb-run -a flatpak run --socket=x11 --nosocket=wayland \
             --socket=session-bus --share=network \
             --env=LC_ALL=C.UTF-8 \
+          --env=OBS_BROWSER_DISABLE_GPU=1 \
+          --env=CEF_DISABLE_GPU=1 \
             com.obsproject.Studio \
             --minimize-to-tray --disable-missing-files-check \
             --collection "Radio DJ" --profile "RadioDJ" &
@@ -879,10 +884,11 @@ USERINIEOF
         # NOTE: --disable-shutdown-check does NOT exist in OBS 32.
         # Crash dialog prevention relies on xdotool + .sentinel file deletion.
         if [ "$_USE_XVFB_EXPLICIT" = true ]; then
-          DISPLAY="$_OBS_DISPLAY" obs --minimize-to-tray --disable-missing-files-check \
+          DISPLAY="$_OBS_DISPLAY" OBS_BROWSER_DISABLE_GPU=1 QT_QPA_PLATFORM=xcb \
+            obs --minimize-to-tray --disable-missing-files-check \
             --collection "Radio DJ" --profile "RadioDJ" &
         else
-          xvfb-run -a obs --minimize-to-tray --disable-missing-files-check \
+          OBS_BROWSER_DISABLE_GPU=1 xvfb-run -a obs --minimize-to-tray --disable-missing-files-check \
             --collection "Radio DJ" --profile "RadioDJ" &
         fi
         OBS_PID=$!
@@ -985,7 +991,7 @@ except:
       else
         # Check if process is even alive
         if kill -0 $OBS_PID 2>/dev/null; then
-          warn "OBS process alive (PID: $OBS_PID) but WebSocket NOT responding after 18s"
+          warn "OBS process alive (PID: $OBS_PID) but WebSocket NOT responding after 30s"
           # Check if crash sentinel exists (OBS is stuck in crash dialog)
           _sentinel_found=false
           for _sd in "$APT_OBS_BASE" "$OBS_CONFIG_BASE"; do

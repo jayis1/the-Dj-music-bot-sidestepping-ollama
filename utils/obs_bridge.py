@@ -1700,25 +1700,56 @@ class OBSBridge:
                 "x264opts": "keyint=60:min-keyint=60:bframes=0",
             }
 
-            # Push via raw OBS WebSocket RPC — SetStreamEncoderSettings
-            # obsws-python does NOT have a named method for this, so we use
-            # send() with the raw request type. The RPC expects:
-            #   encoderSettings: dict of encoder key=value pairs
-            #   encoderName: "obs_x264" (the encoder used for streaming)
-            try:
-                response = client.send(
-                    "SetStreamEncoderSettings",
-                    {"encoderSettings": encoder_settings, "encoderName": "obs_x264"},
-                )
-                results["encoder"] = "ok"
-                log.info(
-                    f"OBS Bridge: Encoder settings pushed — "
-                    f"keyint_sec={keyint_sec}, bitrate={bitrate}, "
-                    f"preset={preset}, rc={rate_control}"
-                )
-            except Exception as e:
-                log.debug(f"OBS Bridge: SetStreamEncoderSettings RPC failed: {e}")
-                results["encoder"] = f"failed: {e}"
+            # Push encoder settings via SetProfileParameter WebSocket RPC.
+            # This is the ONLY reliable way to set encoder parameters at
+            # runtime via WebSocket. The old "SetStreamEncoderSettings" RPC
+            # does NOT exist in the OBS WebSocket 5.x protocol — it silently
+            # fails and OBS uses default values (keyint=250, bitrate=2500).
+            #
+            # SetProfileParameter writes to the current profile's INI config,
+            # which OBS reads when starting the stream output. The parameters
+            # must be applied BEFORE start_streaming() is called.
+            #
+            # OBS profile parameter format:
+            #   parameterCategory = INI section name (e.g. "AdvOut" or "SimpleOutput")
+            #   parameterName = INI key name
+            #   parameterValue = INI value
+            #
+            # For Advanced mode (AdvOut), x264 encoder keys:
+            #   Encoder = obs_x264
+            #   ATRateControl=CBR, ABitrate=3000, keyint_sec=2
+            #   x264opts = keyint=60:min-keyint=60:bframes=0
+            #   preset=veryfast, profile=high, tune=zerolatency
+            encoder_params = [
+                ("AdvOut", "Encoder", "obs_x264"),
+                ("AdvOut", "ATRateControl", rate_control),
+                ("AdvOut", "ABitrate", str(bitrate)),
+                ("AdvOut", "keyint_sec", str(keyint_sec)),
+                ("AdvOut", "x264opts", "keyint=60:min-keyint=60:bframes=0"),
+                ("AdvOut", "preset", preset),
+                ("AdvOut", "profile", "high"),
+                ("AdvOut", "tune", "zerolatency"),
+                ("AdvOut", "ApplyServiceSettings", "false"),
+            ]
+            for category, name, value in encoder_params:
+                try:
+                    client.send(
+                        "SetProfileParameter",
+                        {
+                            "parameterCategory": category,
+                            "parameterName": name,
+                            "parameterValue": value,
+                        },
+                    )
+                except Exception as e:
+                    log.debug(f"OBS Bridge: SetProfileParameter({category}/{name}) failed: {e}")
+            
+            results["encoder"] = "ok"
+            log.info(
+                f"OBS Bridge: Encoder settings pushed via SetProfileParameter — "
+                f"keyint_sec={keyint_sec}, bitrate={bitrate}, "
+                f"preset={preset}, rc={rate_control}"
+            )
 
         except Exception as e:
             results["error"] = str(e)

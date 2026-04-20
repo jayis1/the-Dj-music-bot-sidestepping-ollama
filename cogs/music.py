@@ -142,6 +142,47 @@ class Music(commands.Cog):
         )
         self._load_voice_settings()
 
+    # ── SilverBullet Auto-Documentation ──────────────────────────────
+    def _doc(self, func_name: str, **kwargs):
+        """Fire-and-forget SilverBullet documentation. Non-blocking, silently skipped if not configured.
+
+        Args:
+            func_name: Name of the utils.silverbullet function to call
+                       (e.g. "document_incident", "document_track", etc.)
+            **kwargs: Arguments to pass to the documentation function
+        """
+        if not getattr(config, "SILVERBULLET_ENABLED", False):
+            return  # Not configured — skip silently
+        try:
+            from utils.silverbullet import (
+                document_incident,
+                document_track,
+                document_commercial,
+                document_hijack,
+                document_stream_health,
+                document_session_start,
+                document_session_end,
+                update_dashboard,
+            )
+            func_map = {
+                "incident": document_incident,
+                "track": document_track,
+                "commercial": document_commercial,
+                "hijack": document_hijack,
+                "stream_health": document_stream_health,
+                "session_start": document_session_start,
+                "session_end": document_session_end,
+                "dashboard": update_dashboard,
+            }
+            fn = func_map.get(func_name)
+            if fn:
+                # Run in a background thread to avoid blocking the event loop
+                import threading
+                t = threading.Thread(target=fn, kwargs=kwargs, daemon=True)
+                t.start()
+        except Exception as e:
+            logging.debug(f"SilverBullet _doc({func_name}) failed: {e}")
+
     def _get_audio_client(self, guild_id: int):
         """Returns the real VoiceClient, OR the Headless PCMBroadcasterWrapper if not in a real voice channel."""
         guild = self.bot.get_guild(guild_id)
@@ -513,6 +554,12 @@ class Music(commands.Cog):
 
             # OBS auto scene: Switch to "Overlay Only" when YouTube Live stream starts
             await self._obs_scene_overlay()
+
+            # Document session start to SilverBullet
+            self._doc("session_start",
+                source=self.autodj_source.get(guild_id, ""),
+                autodj_enabled=self.autodj_enabled.get(guild_id, False),
+            )
         except Exception as e:
             logging.error(f"YouTube Live: Auto-start failed: {e}")
 
@@ -1229,6 +1276,15 @@ class Music(commands.Cog):
                     # This triggers the self-healing cookie banner in Mission Control
                     self._yt_auth_blocked = True
                     self._yt_auth_blocked_at = time.time()
+                    # Document the auth block to SilverBullet
+                    self._doc("incident",
+                        title="YouTube Auth Block",
+                        severity="critical",
+                        category="cookie",
+                        body=f"{_skip_count} consecutive resolution failures in guild {ctx.guild.name}. "
+                             f"Possible cookie expiration or yt-dlp version issue.",
+                        guild_id=guild_id,
+                    )
                     channel = self.bot.get_channel(ctx.channel.id)
                     # Build a more helpful error message
                     error_hint = (
@@ -1457,6 +1513,12 @@ class Music(commands.Cog):
                                 logging.info(
                                     f"Station Wars: Frequency hijack played for guild {guild_id}"
                                 )
+                                # Document the hijack to SilverBullet
+                                self._doc("hijack",
+                                    station_name=getattr(config, "STATION_NAME", "Unknown Kosmos"),
+                                    voice=hijack_voice if pregen_hijack else get_hijack_voice(guild_id),
+                                    body=hijack_text,
+                                )
                                 # TTS started — _on_tts_done will fire,
                                 # which calls _play_song_after_dj.
                                 # That method checks _hijack_pending_recovery
@@ -1575,6 +1637,13 @@ class Music(commands.Cog):
                                 commercial_played = True
                                 logging.info(
                                     f"Commercial: Break played for guild {guild_id}"
+                                )
+                                # Document the commercial to SilverBullet
+                                self._doc("commercial",
+                                    category="radio_commercial",
+                                    voice=commercial_voice,
+                                    body=commercial_text,
+                                    num_ads=1,
                                 )
                                 # TTS started — _on_tts_done will fire,
                                 # which calls _play_song_after_dj.
@@ -4898,6 +4967,9 @@ class BattleView(discord.ui.View):
         self._yt_stream_active = False
         self._yt_streamer = None
         self._yt_stream_guild = None
+
+        # Document session end to SilverBullet
+        self._doc("dashboard")  # Update dashboard with offline status
 
         await ctx.send(
             embed=self.create_embed(

@@ -556,35 +556,40 @@ class YouTubeLiveStreamer:
                     # The x264opts "keyint=60:min-keyint=60:bframes=0" is the
                     # most reliable because it's passed verbatim to libx264 and
                     # can NOT be overridden by OBS's ApplyServiceSettings logic.
-                    # Push encoder settings via raw OBS WebSocket RPC.
-                    # obsws-python does NOT have a named method for
-                    # SetStreamEncoderSettings, so we use send() with
-                    # the raw request type. The RPC expects:
-                    #   encoderSettings: dict of encoder key=value pairs
-                    #   encoderName: "obs_x264"
-                    try:
-                        batch_client.send(
-                            "SetStreamEncoderSettings",
-                            {
-                                "encoderSettings": {
-                                    "keyint_sec": "2",
-                                    "bitrate": "3000",
-                                    "rate_control": "CBR",
-                                    "preset": "veryfast",
-                                    "profile": "high",
-                                    "tune": "zerolatency",
-                                    "x264opts": "keyint=60:min-keyint=60:bframes=0",
+                    # Push encoder settings via SetProfileParameter RPC.
+                    # SetStreamEncoderSettings does NOT exist in OBS WebSocket
+                    # 5.x — it silently fails and OBS uses defaults (keyint=250).
+                    # SetProfileParameter writes to the profile INI, which OBS
+                    # reads when the stream output starts. Must be called BEFORE
+                    # start_streaming().
+                    encoder_params = [
+                        ("AdvOut", "Encoder", "obs_x264"),
+                        ("AdvOut", "ATRateControl", "CBR"),
+                        ("AdvOut", "ABitrate", "3000"),
+                        ("AdvOut", "keyint_sec", "2"),
+                        ("AdvOut", "x264opts", "keyint=60:min-keyint=60:bframes=0"),
+                        ("AdvOut", "preset", "veryfast"),
+                        ("AdvOut", "profile", "high"),
+                        ("AdvOut", "tune", "zerolatency"),
+                        ("AdvOut", "ApplyServiceSettings", "false"),
+                    ]
+                    for category, name, value in encoder_params:
+                        try:
+                            batch_client.send(
+                                "SetProfileParameter",
+                                {
+                                    "parameterCategory": category,
+                                    "parameterName": name,
+                                    "parameterValue": value,
                                 },
-                                "encoderName": "obs_x264",
-                            },
-                        )
-                        log.info(
-                            "YouTube Live/OBS: Encoder settings pushed — "
-                            "keyint_sec=2, keyint=60, bitrate=3000, CBR, veryfast, "
-                            "tune=zerolatency, x264opts=keyint=60:min-keyint=60:bframes=0"
-                        )
-                    except Exception as e:
-                        log.debug(f"YouTube Live/OBS: Encoder push failed: {e}")
+                            )
+                        except Exception as e:
+                            log.debug(f"YouTube Live/OBS: SetProfileParameter({category}/{name}) failed: {e}")
+                    log.info(
+                        "YouTube Live/OBS: Encoder settings pushed via SetProfileParameter — "
+                        "keyint_sec=2, keyint=60, bitrate=3000, CBR, veryfast, "
+                        "tune=zerolatency, x264opts=keyint=60:min-keyint=60:bframes=0"
+                    )
 
             # ── Step 8: Start OBS streaming ─────────────────────────────
             result = self._obs_bridge.start_streaming()

@@ -8,6 +8,7 @@ aiohttp
 edge-tts
 flask
 psutil
+requests
 syncedlyrics
 obsws-python
 pytest

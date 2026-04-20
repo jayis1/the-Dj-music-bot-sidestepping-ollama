@@ -23,8 +23,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone MOSS-TTS-Nano
-RUN git clone https://github.com/OpenMOSS/MOSS-TTS-Nano.git /build/moss
+# Clone MOSS-TTS-Nano (with retry — git clone can flake in CI)
+RUN for i in 1 2 3; do git clone https://github.com/OpenMOSS/MOSS-TTS-Nano.git /build/moss && break || (echo "Clone attempt $i failed, retrying..." && sleep 5); done
 
 # Install Python dependencies + the package itself into a separate prefix.
 # IMPORTANT: Do NOT use -e (editable) install! It creates .egg-link files

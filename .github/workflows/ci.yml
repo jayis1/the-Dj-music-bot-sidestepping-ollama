@@ -52,6 +52,7 @@ jobs:
           # Verify all core modules can be imported without crash
           import config
           from utils import dj, cookie_parser, presets, soundboard, broadcaster
+          from utils.silverbullet import write_page, read_page, document_incident
           from cogs.youtube import YTDLSource, PlaceholderTrack
           print('✅ All core modules imported successfully')
           "

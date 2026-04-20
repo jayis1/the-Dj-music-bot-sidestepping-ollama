@@ -210,52 +210,10 @@ services:
       - OLLAMA_HOST=http://ollama:11434
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455
-    ports:
-      - "8080:8080"       # Mission Control web dashboard
-    volumes:
-      - ./sounds:/app/sounds                        # Soundboard files (persisted)
-      - ./presets:/app/presets                       # Auto-DJ presets (persisted)
-      - ./assets/moss_voices:/app/assets/moss_voices # MOSS voice prompt files
-      - ./yt_dlp_cache:/app/yt_dlp_cache             # yt-dlp download cache
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-
-  # ── Bot with VA-API (for AMD/Intel APUs and iGPUs) ─────────────────────
-  # Same as the base bot but with /dev/dri passthrough for hardware encoding.
-  # Use this if you have an AMD APU (Ryzen 5700U, 5800H, etc.) or any system
-  # with an integrated GPU that supports VA-API but NOT full ROCm.
-  #
-  # This gives you hardware-accelerated YouTube Live streaming while keeping
-  # Ollama and MOSS-TTS on CPU (which is fine — they're fast on CPU).
-  #
-  # Enable: docker compose --profile vaapi up -d
-  bot-vaapi:
-    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
-    container_name: radio-dj-bot
-    profiles: ["vaapi"]
-    restart: unless-stopped
-    # Bot starts even if MOSS/Ollama/OBS are still booting — graceful fallback.
-    depends_on:
-      moss-tts:
-        condition: service_started
-      ollama:
-        condition: service_started
-      obs:
-        condition: service_started
-    env_file:
-      - .env
-    environment:
-      - MOSS_TTS_URL=http://moss-tts:18083
-      - KOKORO_TTS_URL=http://kokoro-tts:8880
-      - TTS_MODE=kokoro
-      - OLLAMA_HOST=http://ollama:11434
-      - OBS_WS_HOST=obs
-      - OBS_WS_PORT=4455
-      - AMD_GPU_VAAPI=1
+      - SILVERBULLET_URL=${SILVERBULLET_URL:-}
+      - SILVERBULLET_ENABLED=${SILVERBULLET_ENABLED:-false}
+      - SILVERBULLET_TOKEN=${SILVERBULLET_TOKEN:-}
+      - SILVERBULLET_PREFIX=${SILVERBULLET_PREFIX:-station}
     ports:
       - "8080:8080"
     volumes:
@@ -370,6 +328,10 @@ services:
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455
       - AMD_GPU_VAAPI=1
+      - SILVERBULLET_URL=${SILVERBULLET_URL:-}
+      - SILVERBULLET_ENABLED=${SILVERBULLET_ENABLED:-false}
+      - SILVERBULLET_TOKEN=${SILVERBULLET_TOKEN:-}
+      - SILVERBULLET_PREFIX=${SILVERBULLET_PREFIX:-station}
     ports:
       - "8080:8080"
     volumes:
@@ -478,6 +440,10 @@ services:
       - OLLAMA_HOST=http://ollama:11434
       - OBS_WS_HOST=obs
       - OBS_WS_PORT=4455
+      - SILVERBULLET_URL=${SILVERBULLET_URL:-}
+      - SILVERBULLET_ENABLED=${SILVERBULLET_ENABLED:-false}
+      - SILVERBULLET_TOKEN=${SILVERBULLET_TOKEN:-}
+      - SILVERBULLET_PREFIX=${SILVERBULLET_PREFIX:-station}
     ports:
       - "8080:8080"
     volumes:

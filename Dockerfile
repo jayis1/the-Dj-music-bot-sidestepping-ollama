@@ -52,9 +52,10 @@ LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
-# ── Platform-specific system dependencies ────────────────────────────────
-# Core packages that exist on all architectures (amd64 + arm64).
-# These are guaranteed to be in Debian bookworm repos.
+# ── System dependencies ───────────────────────────────────────────────────
+# Core packages that exist on both amd64 and arm64 in Debian trixie (13).
+# python:3.11-slim is now based on Debian trixie (13) — these packages
+# are all available in trixie main repos for both architectures.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     xvfb \
@@ -64,24 +65,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Architecture-specific packages ─────────────────────────────────────────
-# Some packages only exist on x86_64 or have different names on arm64:
+# chromium: x86_64 only in trixie main. Not available on arm64.
+# VA-API drivers: available on both architectures.
+# Intel GPU drivers: x86_64 only.
 #
-#   chromium:           x86_64 only (Debian bookworm main), not in arm64 repos
-#   mesa-va-drivers:    x86_64 + arm64 (VA-API hardware encoding)
-#   mesa-vulkan-drivers: x86_64 only
-#   i965-va-driver:     x86_64 only (Intel Haswell/Broadwell)
-#   intel-media-va-driver: x86_64 only (Intel Skylake+)
-#
-# On arm64, chromium is NOT available in bookworm main repos.
+# On arm64, chromium is NOT in trixie main repos.
 # YouTube Live overlay mode requires chromium — on arm64 the overlay
-# feature will simply be unavailable (the bot still works for everything else).
-# If you need YouTube Live streaming on arm64, install chromium manually
-# from bookworm-backports or use a Pi-compatible chromium build.
+# feature will be unavailable (the bot works for everything else).
 RUN if [ "$(uname -m)" = "x86_64" ]; then \
       apt-get update && apt-get install -y --no-install-recommends \
         chromium \
         mesa-va-drivers \
-        mesa-vulkan-drivers \
         i965-va-driver \
         intel-media-va-driver \
       && rm -rf /var/lib/apt/lists/*; \
@@ -103,11 +97,8 @@ COPY --from=builder /install /usr/local
 # Copy source code
 COPY . .
 
-# Ensure MOSS voice prompt files exist (Docker COPY may miss empty dirs)
+# Ensure MOSS voice prompt files exist (shipped in assets/moss_voices/)
 RUN mkdir -p /app/assets/moss_voices && \
-    if [ -d /app/default_assets/moss_voices ]; then \
-      cp -n /app/default_assets/moss_voices/*.wav /app/assets/moss_voices/ 2>/dev/null || true; \
-    fi && \
     echo "MOSS voices: $(ls /app/assets/moss_voices/ 2>/dev/null | wc -l) files" && \
     if [ -f /app/assets/moss_voices/en_warm_female.wav ]; then \
       echo "MOSS default voice: OK"; \
@@ -116,9 +107,7 @@ RUN mkdir -p /app/assets/moss_voices && \
     fi
 
 # Create persistent data directories and set ownership
-RUN mkdir -p sounds presets yt_dlp_cache && \
-    cp -r sounds default_sounds 2>/dev/null || true && \
-    cp -r presets default_presets 2>/dev/null || true && \
+RUN mkdir -p /app/sounds /app/presets /app/yt_dlp_cache && \
     chown -R radiodj:radiodj /app
 
 # Switch to non-root user

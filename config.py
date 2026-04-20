@@ -113,8 +113,21 @@ DJ_EMOJI = "🎙️"
 CROSSFADE_DURATION = 3
 
 # Auto-DJ — default source when the queue empties (optional)
-# Can be a YouTube playlist URL, "preset:Name", or "" (uses recently-played history)
+# Can be a YouTube playlist URL, Suno playlist URL, "preset:Name",
+# or "" (uses recently-played history)
 AUTODJ_DEFAULT_SOURCE = os.environ.get("AUTODJ_SOURCE", "")
+
+# ── Suno.com Integration ──────────────────────────────────────────────────
+# Suno playlist extraction: max songs to load from a single playlist URL.
+# Playlists larger than this will be truncated.
+SUNO_MAX_PLAYLIST_SIZE = int(os.environ.get("SUNO_MAX_PLAYLIST_SIZE", "50"))
+
+# Suno playlist extraction: HTTP timeout in seconds for HTML scraping.
+SUNO_EXTRACTION_TIMEOUT = int(os.environ.get("SUNO_EXTRACTION_TIMEOUT", "30"))
+
+# Suno playlist extraction: Playwright headless browser timeout in seconds.
+# Only used when HTML scraping fails (SPA-only pages).
+SUNO_PLAYWRIGHT_TIMEOUT = int(os.environ.get("SUNO_PLAYWRIGHT_TIMEOUT", "20"))
 
 # DJ Bed Music — ambient loop played under the DJ's voice between songs
 # The bot looks for sounds/bed_music.wav or sounds/bed_music.mp3

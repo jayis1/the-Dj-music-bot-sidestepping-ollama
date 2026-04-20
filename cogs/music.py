@@ -28,7 +28,12 @@ except ImportError:
         return _copy.deepcopy(YTDL_FORMAT_OPTIONS)
 
 
-from utils.suno import is_suno_url, get_suno_track
+from utils.suno import (
+    is_suno_url,
+    is_suno_playlist_url,
+    get_suno_track,
+    get_suno_playlist,
+)
 from utils.dj import (
     TTS_MODE,
     TTS_AVAILABLE,
@@ -954,8 +959,32 @@ class Music(commands.Cog):
         try:
             try:
                 async with ctx.typing():
-                    # --- Suno.com URL ---
-                    if is_suno_url(query):
+                    # --- Suno.com playlist ---
+                    if is_suno_playlist_url(query):
+                        logging.info(f"Detected Suno playlist URL: {query}")
+                        tracks = await get_suno_playlist(query)
+                        if not tracks:
+                            return await ctx.send(
+                                embed=self.create_embed(
+                                    "Suno Playlist Error",
+                                    f"{config.ERROR_EMOJI} Could not extract songs from that Suno playlist. It may be private, empty, or the URL is invalid.",
+                                    discord.Color.red(),
+                                )
+                            )
+                        for track in tracks:
+                            await queue.put(track)
+                        logging.info(
+                            f"Added {len(tracks)} Suno tracks from playlist to queue."
+                        )
+                        await ctx.send(
+                            embed=self.create_embed(
+                                "Suno Playlist Added",
+                                f"{config.QUEUE_EMOJI} Added {len(tracks)} songs from Suno playlist to the queue.",
+                            )
+                        )
+
+                    # --- Suno.com single song ---
+                    elif is_suno_url(query):
                         logging.info(f"Detected Suno URL: {query}")
                         track = await get_suno_track(query)
                         if not track:
@@ -1085,15 +1114,26 @@ class Music(commands.Cog):
         try:
             try:
                 async with ctx.typing():
-                    logging.info(f"Fast-extracting playlist from URL: {url}")
-
-                    # Fast two-pass extraction:
-                    # Pass 1: extract_flat=True — instant metadata only (title, ID)
-                    # Pass 2: happens in play_next — resolve stream URL per-song
-                    # No playlist_items limit — load the entire playlist
-                    result = await PlaceholderTrack.from_playlist_url(
-                        url, loop=self.bot.loop
-                    )
+                    # --- Suno playlist ---
+                    if is_suno_playlist_url(url):
+                        logging.info(f"Extracting Suno playlist from URL: {url}")
+                        result = await get_suno_playlist(url)
+                        if not result:
+                            return await ctx.send(
+                                embed=self.create_embed(
+                                    "Suno Playlist Error",
+                                    f"{config.ERROR_EMOJI} Could not extract songs from that Suno playlist. It may be private, empty, or the URL is invalid.",
+                                    discord.Color.red(),
+                                )
+                            )
+                    else:
+                        # Fast two-pass extraction:
+                        # Pass 1: extract_flat=True — instant metadata only (title, ID)
+                        # Pass 2: happens in play_next — resolve stream URL per-song
+                        # No playlist_items limit — load the entire playlist
+                        result = await PlaceholderTrack.from_playlist_url(
+                            url, loop=self.bot.loop
+                        )
                     logging.info(f"Playlist extraction returned {len(result)} entries")
 
                     if not result:
@@ -1175,11 +1215,18 @@ class Music(commands.Cog):
                 async with ctx.typing():
                     logging.info(f"Fast-extracting radio playlist from URL: {url}")
 
-                    # Fast two-pass extraction (same as ?playlist — entire playlist)
-                    # No playlist_items limit — load the entire playlist
-                    result = await PlaceholderTrack.from_playlist_url(
-                        url, loop=self.bot.loop
-                    )
+                    # --- Suno playlist ---
+                    if is_suno_playlist_url(url):
+                        result = await get_suno_playlist(url)
+                        logging.info(
+                            f"Radio: Suno extraction returned {len(result)} songs"
+                        )
+                    else:
+                        # Fast two-pass extraction (same as ?playlist — entire playlist)
+                        # No playlist_items limit — load the entire playlist
+                        result = await PlaceholderTrack.from_playlist_url(
+                            url, loop=self.bot.loop
+                        )
                     logging.info(f"Radio extraction returned {len(result)} entries")
 
                     if not result:
@@ -1268,6 +1315,30 @@ class Music(commands.Cog):
                 f"play_next: Dequeued {type(data).__name__} — "
                 f"title={data.title}, url={str(data.url)[:60] if data.url else 'None'}"
             )
+
+            # ── Enrich SunoPlaylistTrack metadata (optional, best-effort) ──
+            # SunoPlaylistTrack has a deterministic CDN URL that works
+            # immediately, but title/thumbnail may be placeholders.
+            # Try to enrich them in the background — don't block playback.
+            from utils.suno import SunoPlaylistTrack as _SPT
+
+            if isinstance(data, _SPT):
+                # The .url is already a working CDN MP3 — no resolution needed.
+                # Try to enrich title/thumbnail for the now-playing embed.
+                # This is best-effort; if it fails, the placeholder title is fine.
+                try:
+                    enriched = await data.resolve()
+                    if enriched:
+                        # Update the track in-place with richer metadata
+                        data.title = enriched.title or data.title
+                        data.thumbnail = enriched.thumbnail or data.thumbnail
+                        logging.info(
+                            f"play_next: Enriched SunoPlaylistTrack '{data.title}'"
+                        )
+                except Exception as e:
+                    logging.debug(
+                        f"play_next: SunoPlaylistTrack enrichment failed (non-fatal): {e}"
+                    )
 
             # ── Resolve PlaceholderTracks lazily ────────────────────
             # Playlist/radio entries are fetched as PlaceholderTracks
@@ -4160,7 +4231,8 @@ class Music(commands.Cog):
     async def _autodj_fill(self, ctx):
         """Auto-DJ: when the queue empties, refill it from the configured source.
 
-        Source can be a YouTube playlist URL, a preset name, or the recently-played history.
+        Source can be a YouTube playlist URL, Suno playlist URL, a preset name,
+        or the recently-played history.
         """
         guild_id = ctx.guild.id
         source = self.autodj_source.get(guild_id, "")
@@ -4215,6 +4287,18 @@ class Music(commands.Cog):
                     f"Auto-DJ: Loaded preset '{preset_name}' ({len(tracks)} tracks)"
                 )
                 return True
+            elif is_suno_playlist_url(source):
+                # Suno playlist
+                tracks = await get_suno_playlist(source)
+                if not tracks:
+                    logging.warning(
+                        f"Auto-DJ: Suno playlist returned no tracks: {source}"
+                    )
+                    return False
+                for t in tracks:
+                    await queue.put(t)
+                logging.info(f"Auto-DJ: Loaded Suno playlist ({len(tracks)} tracks)")
+                return True
             elif "playlist" in source.lower() or "list=" in source:
                 # YouTube playlist
                 tracks = await PlaceholderTrack.from_playlist_url(
@@ -4225,18 +4309,29 @@ class Music(commands.Cog):
                 logging.info(f"Auto-DJ: Loaded playlist ({len(tracks)} tracks)")
                 return True
             else:
-                # Single URL (maybe from history replay)
-                entry = {
-                    "id": source.split("v=")[-1].split("&")[0]
-                    if "v=" in source
-                    else "",
-                    "title": "Auto-DJ",
-                    "url": source,
-                    "ie_key": "Youtube",
-                }
-                await queue.put(PlaceholderTrack(entry))
-                logging.info("Auto-DJ: Queued single track from source")
-                return True
+                # Single URL — could be YouTube, Suno, or a history replay
+                if is_suno_url(source):
+                    # Single Suno song URL (e.g. from history)
+                    track = await get_suno_track(source)
+                    if track:
+                        await queue.put(track)
+                        logging.info("Auto-DJ: Queued single Suno track from source")
+                        return True
+                    logging.warning(f"Auto-DJ: Could not resolve Suno URL: {source}")
+                    return False
+                else:
+                    # YouTube or other URL
+                    entry = {
+                        "id": source.split("v=")[-1].split("&")[0]
+                        if "v=" in source
+                        else "",
+                        "title": "Auto-DJ",
+                        "url": source,
+                        "ie_key": "Youtube",
+                    }
+                    await queue.put(PlaceholderTrack(entry))
+                    logging.info("Auto-DJ: Queued single track from source")
+                    return True
         except Exception as e:
             logging.error(f"Auto-DJ: Failed to fill queue: {e}")
             return False
@@ -4246,10 +4341,11 @@ class Music(commands.Cog):
         """Toggle Auto-DJ mode. Optionally set a source playlist/preset.
 
         Usage:
-            ?autodj              — Toggle on/off (uses default or recently-played)
-            ?autodj <YouTube URL>— Set source to a YouTube playlist
-            ?autodj preset:Name  — Set source to a saved preset
-            ?autodj off          — Disable Auto-DJ
+            ?autodj                      — Toggle on/off (uses default or recently-played)
+            ?autodj <YouTube URL>        — Set source to a YouTube playlist
+            ?autodj <Suno playlist URL>  — Set source to a Suno playlist
+            ?autodj preset:Name          — Set source to a saved preset
+            ?autodj off                  — Disable Auto-DJ
         """
         guild_id = ctx.guild.id
 

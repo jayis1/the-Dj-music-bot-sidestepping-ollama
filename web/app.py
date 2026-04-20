@@ -1269,11 +1269,23 @@ def api_play(guild_id):
 
         queue = await music.get_queue(guild_id)
 
-        from utils.suno import is_suno_url, get_suno_track
+        from utils.suno import (
+            is_suno_url,
+            is_suno_playlist_url,
+            get_suno_track,
+            get_suno_playlist,
+        )
         from cogs.youtube import YTDLSource, PlaceholderTrack
 
         # Determine URL type and extract
-        if is_suno_url(query):
+        if is_suno_playlist_url(query):
+            tracks = await get_suno_playlist(query)
+            if not tracks:
+                return "Could not extract songs from Suno playlist"
+            for t in tracks:
+                await queue.put(t)
+            count = len(tracks)
+        elif is_suno_url(query):
             track = await get_suno_track(query)
             if not track:
                 return "Could not resolve Suno URL"
@@ -4020,8 +4032,15 @@ def hermes_queue():
 def hermes_queue_add():
     """Add a song to the queue by URL or search query.
 
+    Supports:
+      - Suno single song URL (suno.com/song/<uuid>)
+      - Suno playlist URL (suno.com/playlist/<uuid>)
+      - YouTube video URL
+      - YouTube playlist URL
+      - Search query (ytsearch: prefix)
+
     Body: {"query": "url or search term", "position": "end"|"next" (default "end")}
-    Returns: {"ok": true, "title": "song title", "position": int}
+    Returns: {"ok": true, "title": "song title", "count": int, "queued_as": position}
     """
     auth_error = _hermes_require_auth()
     if auth_error:
@@ -4040,41 +4059,85 @@ def hermes_queue_add():
 
     gid = _hermes_guild_id()
 
-    # Use the bot's event loop to run the async play command
-    # We create a fake context-like invocation by directly calling queue internals
     try:
         import asyncio
-        from cogs.youtube import YTDLSource
+        from utils.suno import (
+            is_suno_url,
+            is_suno_playlist_url,
+            get_suno_track,
+            get_suno_playlist,
+        )
+        from cogs.youtube import YTDLSource, PlaceholderTrack
 
-        # Extract the source (same as the play command does)
         async def _add_to_queue():
-            source = await YTDLSource.create_source(
-                music.bot, query, loop=music.bot.loop, download=False, timestamp=None
-            )
-            if position == "next":
-                music.queue_push_front(gid, source)
+            queue = await music.get_queue(gid)
+            count = 0
+
+            # Suno playlist — extract all songs and queue them
+            if is_suno_playlist_url(query):
+                tracks = await get_suno_playlist(query)
+                if not tracks:
+                    raise ValueError(
+                        f"Could not extract songs from Suno playlist: {query}"
+                    )
+                for track in tracks:
+                    if position == "next" and count == 0:
+                        music.queue_push_front(gid, track)
+                    else:
+                        await queue.put(track)
+                    count += 1
+                return tracks[0] if tracks else None, count
+
+            # Suno single song — extract and queue
+            if is_suno_url(query):
+                track = await get_suno_track(query)
+                if not track:
+                    raise ValueError(f"Could not resolve Suno URL: {query}")
+                if position == "next":
+                    music.queue_push_front(gid, track)
+                else:
+                    await queue.put(track)
+                return track, 1
+
+            # YouTube playlist — fast flat extraction
+            if "playlist" in query or "list=" in query:
+                tracks = await PlaceholderTrack.from_playlist_url(
+                    query, loop=music.bot.loop
+                )
+                for t in tracks:
+                    if position == "next" and count == 0:
+                        music.queue_push_front(gid, t)
+                    else:
+                        await queue.put(t)
+                    count += 1
+                return tracks[0] if tracks else None, count
+
+            # YouTube single video or search query
+            source = await YTDLSource.from_url(query, loop=music.bot.loop)
+            if isinstance(source, list):
+                for s in source:
+                    if position == "next" and count == 0:
+                        music.queue_push_front(gid, s)
+                    else:
+                        await queue.put(s)
+                    count += 1
+                return source[0] if source else None, count
             else:
-                queue = await music.get_queue(gid)
-                await queue.put(source)
-            return source
+                if position == "next":
+                    music.queue_push_front(gid, source)
+                else:
+                    await queue.put(source)
+                return source, 1
 
         # Run the async extraction
         future = asyncio.run_coroutine_threadsafe(_add_to_queue(), bot.loop)
-        source = future.result(timeout=30)
-
-        # Get the position in queue
-        items = music.peek_queue(gid)
-        pos = -1
-        for i, item in enumerate(items):
-            if item is source:
-                pos = i
-                break
+        source, count = future.result(timeout=60)
 
         return jsonify(
             {
                 "ok": True,
-                "title": getattr(source, "title", "Unknown"),
-                "position": pos,
+                "title": getattr(source, "title", "Unknown") if source else "Unknown",
+                "count": count,
                 "queued_as": position,
             }
         )

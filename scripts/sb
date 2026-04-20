@@ -1,0 +1,265 @@
+#!/usr/bin/env bash
+# ── SilverBullet CLI ──────────────────────────────────────────────────────
+# Lightweight command-line tool for reading/writing/querying a SilverBullet PKM.
+# Designed for AI agent use — simple arguments, structured output.
+#
+# Usage:
+#   sb read <page_path>           — Read a page (returns raw markdown)
+#   sb write <page_path> [content] — Write a page (content from arg or stdin)
+#   sb append <page_path> [content] — Append to a page
+#   sb delete <page_path>        — Delete a page
+#   sb ls [prefix]               — List pages (optional prefix filter)
+#   sb search <query>             — Full-text search
+#   sb dashboard                  — Read the station dashboard
+#   sb incidents [limit]          — Read recent incident pages
+#   sb help                       — Show this help
+#
+# Examples:
+#   sb read station/Dashboard
+#   sb read "station/Daily Log/2026-04-20"
+#   sb write "station/Notes/My Note" "# My Note\nHello world"
+#   sb ls station/Incidents/
+#   echo "# Hello" | sb write station/Notes/Test
+#
+# Environment:
+#   SILVERBULLET_URL  — Base URL (default: https://silver.istealyourdomain.org)
+#   SILVERBULLET_TOKEN — Auth token (optional, empty = no auth)
+# ─────────────────────────────────────────────────────────────────────────────
+
+set -euo pipefail
+
+SB_URL="${SILVERBULLET_URL:-https://silver.istealyourdomain.org}"
+SB_URL="${SB_URL%/}"  # Remove trailing slash
+SB_TOKEN="${SILVERBULLET_TOKEN:-}"
+
+# Build curl auth args
+if [ -n "$SB_TOKEN" ]; then
+    CURL_AUTH=(-H "Authorization: Bearer ${SB_TOKEN}")
+else
+    CURL_AUTH=()
+fi
+
+# URL-encode a page path (keeps / and - but encodes spaces and special chars)
+_url_encode() {
+    python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe='/-._~'))" "$1" 2>/dev/null || echo "$1" | sed 's/ /%20/g'
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+    read|r)
+        # Read a page — returns raw markdown
+        page="${1:?Usage: sb read <page_path>}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        page_enc=$(_url_encode "$page")
+        curl -s -f "${CURL_AUTH[@]}" "${SB_URL}/.fs/${page_enc}"
+        ;;
+
+    write|w)
+        # Write a page — content from arg or stdin
+        page="${1:?Usage: sb write <page_path> [content]}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        page_enc=$(_url_encode "$page")
+        shift || true
+        if [ $# -gt 0 ]; then
+            content="$*"
+        else
+            content="$(cat)"
+        fi
+        curl -s -f -X PUT \
+            -H "Content-Type: text/markdown" \
+            "${CURL_AUTH[@]}" \
+            --data-binary "${content}" \
+            "${SB_URL}/.fs/${page_enc}"
+        ;;
+
+    append|a)
+        # Append to a page — reads existing, appends content
+        page="${1:?Usage: sb append <page_path> [content]}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        page_enc=$(_url_encode "$page")
+        shift || true
+        if [ $# -gt 0 ]; then
+            append_content="$*"
+        else
+            append_content="$(cat)"
+        fi
+        # Read existing content first
+        existing=$(curl -s -f "${CURL_AUTH[@]}" "${SB_URL}/.fs/${page_enc}" 2>/dev/null || echo "")
+        if [ -n "$existing" ]; then
+            content="${existing}
+
+${append_content}"
+        else
+            content="${append_content}"
+        fi
+        curl -s -f -X PUT \
+            -H "Content-Type: text/markdown" \
+            "${CURL_AUTH[@]}" \
+            --data-binary "${content}" \
+            "${SB_URL}/.fs/${page_enc}"
+        ;;
+
+    delete|d|rm)
+        # Delete a page
+        page="${1:?Usage: sb delete <page_path>}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        page_enc=$(_url_encode "$page")
+        curl -s -f -X DELETE "${CURL_AUTH[@]}" "${SB_URL}/.fs/${page_enc}"
+        ;;
+
+    ls|list)
+        # List pages — probes known prefixes for existence
+        prefix="${1:-}"
+        prefixes=("station" "Inbox" "Library")
+        if [ -n "$prefix" ]; then
+            prefixes=("$prefix")
+        fi
+        for p in "${prefixes[@]}"; do
+            for sub in "" "Dashboard" "Daily Log" "Incidents" "Sessions" "Tracks" "Stream Health" "Commercials & Hijacks"; do
+                if [ -z "$sub" ]; then
+                    path="${p}"
+                else
+                    path="${p}/${sub}"
+                fi
+                path_enc=$(_url_encode "${path}.md")
+                code=$(curl -s -o /dev/null -w "%{http_code}" "${CURL_AUTH[@]}" "${SB_URL}/.fs/${path_enc}" 2>/dev/null || echo "000")
+                if [ "$code" = "200" ]; then
+                    echo "${path}"
+                fi
+            done
+        done
+        ;;
+
+    write|w)
+        # Write a page — content from arg or stdin
+        page="${1:?Usage: sb write <page_path> [content]}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        shift || true
+        if [ $# -gt 0 ]; then
+            content="$*"
+        else
+            content="$(cat)"
+        fi
+        curl -s -f -X PUT \
+            -H "Content-Type: text/markdown" \
+            "${CURL_AUTH[@]}" \
+            --data-binary "${content}" \
+            "${SB_URL}/.fs/${page}"
+        ;;
+
+    append|a)
+        # Append to a page — reads existing, appends content
+        page="${1:?Usage: sb append <page_path> [content]}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        shift || true
+        if [ $# -gt 0 ]; then
+            append_content="$*"
+        else
+            append_content="$(cat)"
+        fi
+        # Read existing content first
+        existing=$(curl -s -f "${CURL_AUTH[@]}" "${SB_URL}/.fs/${page}" 2>/dev/null || echo "")
+        if [ -n "$existing" ]; then
+            content="${existing}
+
+${append_content}"
+        else
+            content="${append_content}"
+        fi
+        curl -s -f -X PUT \
+            -H "Content-Type: text/markdown" \
+            "${CURL_AUTH[@]}" \
+            --data-binary "${content}" \
+            "${SB_URL}/.fs/${page}"
+        ;;
+
+    delete|d|rm)
+        # Delete a page
+        page="${1:?Usage: sb delete <page_path>}"
+        [[ "$page" != *.md ]] && page="${page}.md"
+        page="${page#/}"
+        curl -s -f -X DELETE "${CURL_AUTH[@]}" "${SB_URL}/.fs/${page}"
+        ;;
+
+    ls|list)
+        # List pages — probes known prefixes for existence
+        prefix="${1:-}"
+        prefixes=("station" "Inbox" "Library")
+        if [ -n "$prefix" ]; then
+            prefixes=("$prefix")
+        fi
+        for p in "${prefixes[@]}"; do
+            for sub in "" "Dashboard" "Daily Log" "Incidents" "Sessions" "Tracks" "Stream Health" "Commercials & Hijacks"; do
+                if [ -z "$sub" ]; then
+                    path="${p}"
+                else
+                    path="${p}/${sub}"
+                fi
+                code=$(curl -s -o /dev/null -w "%{http_code}" "${CURL_AUTH[@]}" "${SB_URL}/.fs/${path}.md" 2>/dev/null || echo "000")
+                if [ "$code" = "200" ]; then
+                    echo "${path}"
+                fi
+            done
+        done
+        ;;
+
+    search|s)
+        # Search — uses SilverBullet's full-text search API
+        query="${1:?Usage: sb search <query>}"
+        shift || true
+        limit="${1:-20}"
+        curl -s -f -X POST \
+            -H "Content-Type: application/json" \
+            "${CURL_AUTH[@]}" \
+            -d "{\"query\":\"${query}\",\"limit\":${limit}}" \
+            "${SB_URL}/.api/space.search"
+        ;;
+
+    dashboard)
+        # Read the station dashboard
+        exec "$0" read "station/Dashboard"
+        ;;
+
+    incidents)
+        # Read recent incident pages
+        limit="${1:-10}"
+        echo "=== Station Incidents ==="
+        "$0" read "station/Incidents" 2>/dev/null || echo "(No incidents index page)"
+        today=$(date +%Y-%m-%d)
+        "$0" read "station/Daily Log/${today}" 2>/dev/null || true
+        ;;
+
+    status)
+        # Quick check of SilverBullet connectivity
+        code=$(curl -s -o /dev/null -w "%{http_code}" "${SB_URL}/.fs/index.md" 2>/dev/null)
+        if [ "$code" = "200" ]; then
+            echo "✅ SilverBullet at ${SB_URL} is reachable"
+            echo "   Index page exists"
+        elif [ "$code" = "404" ]; then
+            echo "⚠️  SilverBullet at ${SB_URL} is reachable, but no index.md"
+        else
+            echo "❌ SilverBullet at ${SB_URL} returned HTTP ${code}"
+        fi
+        ;;
+
+    help|h|--help|-h|"")
+        sed -n '2,/^# ─/p' "$0" | sed 's/^# //' | head -30
+        echo ""
+        echo "Commands: read, write, append, delete, ls, search, dashboard, incidents, status"
+        echo "URL: ${SB_URL}"
+        ;;
+
+    *)
+        echo "Unknown command: $cmd"
+        echo "Run 'sb help' for usage"
+        exit 1
+        ;;
+esac

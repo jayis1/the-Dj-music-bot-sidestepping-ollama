@@ -79,7 +79,7 @@ services:
   # Fallback TTS engine — CPU-friendly, voice cloning via prompt audio files.
   # Used as fallback when Kokoro is unavailable or TTS_MODE=kokoro.
   moss-tts:
-    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.1.0
     # Uncomment to build locally instead:
     # build:
     #   context: ./moss-tts-server
@@ -183,7 +183,7 @@ services:
 
   # ── Radio DJ Bot ───────────────────────────────────────────────────────────
   bot:
-    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.1.0
     # Uncomment to build locally instead:
     # build: .
     container_name: radio-dj-bot
@@ -285,7 +285,7 @@ services:
       start_period: 30s
 
   moss-tts-amd:
-    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.1.0
     container_name: moss-tts
     profiles: ["amd-gpu"]
     restart: unless-stopped
@@ -307,7 +307,7 @@ services:
       start_period: 60s
 
   bot-amd:
-    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.1.0
     container_name: radio-dj-bot
     profiles: ["amd-gpu"]
     restart: unless-stopped
@@ -395,7 +395,7 @@ services:
       start_period: 30s
 
   moss-tts-nvidia:
-    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.0.3
+    image: ghcr.io/jayis1/the-dj-music-bot/moss-tts-server:v420.1.0
     container_name: moss-tts
     profiles: ["nvidia-gpu"]
     restart: unless-stopped
@@ -420,7 +420,7 @@ services:
       start_period: 60s
 
   bot-nvidia:
-    image: ghcr.io/jayis1/the-dj-music-bot:v420.0.3
+    image: ghcr.io/jayis1/the-dj-music-bot:v420.1.0
     container_name: radio-dj-bot
     profiles: ["nvidia-gpu"]
     restart: unless-stopped

@@ -41,7 +41,7 @@ LABEL org.opencontainers.image.title="MOSS-TTS-Nano Server"
 LABEL org.opencontainers.image.description="Lightweight TTS server with voice cloning — CPU-only, 48kHz stereo, 0.1B params"
 LABEL org.opencontainers.image.source="https://github.com/OpenMOSS/MOSS-TTS-Nano"
 LABEL org.opencontainers.image.licenses="Apache-2.0"
-LABEL org.opencontainers.image.version="v420.0.3"
+LABEL org.opencontainers.image.version="v420.1.0"
 
 # Runtime dependencies only (no build tools)
 RUN apt-get update && apt-get install -y --no-install-recommends \

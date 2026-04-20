@@ -275,6 +275,297 @@ def delete_page(page_path: str) -> bool:
         return False
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# ── READ / QUERY / SEARCH — for AI agent knowledge retrieval ────────────
+# ═══════════════════════════════════════════════════════════════════════════
+# The Hermes Agent (and the AI Side Host) can use these to look up
+# docs, project notes, configs, and station history from SilverBullet.
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _headers() -> dict:
+    """Build request headers with optional auth token."""
+    headers = {}
+    token = getattr(config, "SILVERBULLET_TOKEN", "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _base() -> str:
+    """Get the SilverBullet base URL (empty if not configured)."""
+    return getattr(config, "SILVERBULLET_URL", "").rstrip("/")
+
+
+def _enabled() -> bool:
+    """Check if SilverBullet is configured and enabled."""
+    return getattr(config, "SILVERBULLET_ENABLED", False) and bool(_base())
+
+
+def list_pages(prefix: str = "") -> list[dict]:
+    """List pages in the SilverBullet space.
+
+    Uses the Space API page index endpoint.
+
+    Args:
+        prefix: Optional path prefix to filter pages (e.g. "station/Incidents")
+
+    Returns:
+        List of dicts: [{"name": "station/Dashboard", "created": ..., "lastModified": ...}, ...]
+        Empty list on error or if disabled
+    """
+    if not _enabled():
+        return []
+
+    url = f"{_base()}/.api/space.list"
+    try:
+        resp = requests.post(url, json={}, headers=_headers(), timeout=15)
+        if resp.status_code != 200:
+            logger.error("SilverBullet: list_pages failed — HTTP %d", resp.status_code)
+            return []
+
+        data = resp.json()
+        pages = []
+
+        for page in data:
+            name = page.get("name", "")
+            if prefix and not name.startswith(prefix):
+                continue
+            pages.append(
+                {
+                    "name": name,
+                    "created": page.get("created", ""),
+                    "lastModified": page.get("lastModified", ""),
+                }
+            )
+
+        # Sort by last modified (newest first)
+        pages.sort(key=lambda p: p.get("lastModified", ""), reverse=True)
+        return pages
+
+    except requests.RequestException as e:
+        logger.error("SilverBullet: list_pages connection error: %s", e)
+        return []
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("SilverBullet: list_pages parse error: %s", e)
+        return []
+
+
+def search_pages(query: str, limit: int = 20) -> list[dict]:
+    """Full-text search across all SilverBullet pages.
+
+    Uses SilverBullet's built-in full-text search.
+
+    Args:
+        query: Search query string
+        limit: Maximum results to return
+
+    Returns:
+        List of dicts: [{"name": "page/path", "snippet": "matching text..."}, ...]
+    """
+    if not _enabled():
+        return []
+
+    url = f"{_base()}/.api/space.search"
+    try:
+        resp = requests.post(
+            url, json={"query": query, "limit": limit}, headers=_headers(), timeout=15
+        )
+        if resp.status_code != 200:
+            logger.error("SilverBullet: search failed — HTTP %d", resp.status_code)
+            return []
+
+        data = resp.json()
+        results = []
+        for hit in data:
+            results.append(
+                {
+                    "name": hit.get("name", ""),
+                    "snippet": hit.get("snippet", hit.get("text", ""))[:500],
+                }
+            )
+        return results
+
+    except requests.RequestException as e:
+        logger.error("SilverBullet: search connection error: %s", e)
+        return []
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("SilverBullet: search parse error: %s", e)
+        return []
+
+
+def query_frontmatter(
+    query_filter: str, order_by: str = "", limit: int = 20, select: str = ""
+) -> list[dict]:
+    """Run a SilverBullet #query-style frontmatter query via the API.
+
+    This is the most powerful read operation — it queries structured
+    frontmatter data across all pages, like SilverBullet's #query directive
+    but accessible programmatically.
+
+    Args:
+        query_filter: Filter expression (e.g. 'tags = "station/incident"')
+        order_by: Order clause (e.g. 'timestamp desc')
+        limit: Max results
+        select: Select clause (e.g. 'name, title, severity')
+
+    Returns:
+        List of dicts with matching page frontmatter fields
+    """
+    if not _enabled():
+        return []
+
+    # Build the query payload for SilverBullet's query API
+    payload: dict[str, Any] = {"limit": limit}
+    if query_filter:
+        payload["filter"] = query_filter
+    if order_by:
+        payload["orderBy"] = order_by
+    if select:
+        payload["select"] = select
+
+    url = f"{_base()}/.api/space.query"
+    try:
+        resp = requests.post(url, json=payload, headers=_headers(), timeout=15)
+        if resp.status_code != 200:
+            logger.error("SilverBullet: query failed — HTTP %d", resp.status_code)
+            return []
+
+        data = resp.json()
+        if isinstance(data, list):
+            return data
+        if isinstance(data, dict):
+            return data.get("results", data.get("data", []))
+        return []
+
+    except requests.RequestException as e:
+        logger.error("SilverBullet: query connection error: %s", e)
+        return []
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.error("SilverBullet: query parse error: %s", e)
+        return []
+
+
+def get_page(page_path: str) -> Optional[dict]:
+    """Read a SilverBullet page and parse its frontmatter + body.
+
+    Returns:
+        {
+            "name": "station/Dashboard",
+            "frontmatter": {key: value, ...},  // parsed YAML
+            "body": "Markdown content...",       // body after frontmatter
+            "raw": "Full raw content..."
+        }
+        or None if not found / error
+    """
+    raw = read_page(page_path)
+    if raw is None:
+        return None
+
+    frontmatter = {}
+    body = raw
+
+    # Parse YAML frontmatter (between --- delimiters)
+    if raw.startswith("---"):
+        parts = raw.split("---", 2)
+        if len(parts) >= 3:
+            yaml_str = parts[1].strip()
+            body = parts[2].strip()
+            # Simple YAML parser (no pyyaml dependency needed for flat data)
+            for line in yaml_str.split("\n"):
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if ":" in line:
+                    key, _, value = line.partition(":")
+                    key = key.strip()
+                    value = value.strip()
+                    # Remove surrounding quotes
+                    if value.startswith('"') and value.endswith('"'):
+                        value = value[1:-1]
+                    elif value.startswith("'") and value.endswith("'"):
+                        value = value[1:-1]
+                    # Parse booleans
+                    if value.lower() == "true":
+                        value = True
+                    elif value.lower() == "false":
+                        value = False
+                    elif value == "null":
+                        value = None
+                    # Parse numbers
+                    elif value and value.replace("-", "").replace(".", "").isdigit():
+                        try:
+                            value = float(value) if "." in value else int(value)
+                        except ValueError:
+                            pass
+                    frontmatter[key] = value
+
+    return {
+        "name": page_path,
+        "frontmatter": frontmatter,
+        "body": body,
+        "raw": raw,
+    }
+
+
+def get_recent_incidents(
+    limit: int = 10, resolved: Optional[bool] = None
+) -> list[dict]:
+    """Get recent incident pages from SilverBullet.
+
+    Args:
+        limit: Max incidents to return
+        resolved: Filter by resolved status (None = all, True = resolved, False = unresolved)
+
+    Returns:
+        List of incident dicts sorted by timestamp desc
+    """
+    prefix = getattr(config, "SILVERBULLET_PREFIX", "station")
+    all_pages = list_pages(prefix=f"{prefix}/Incidents/")
+    if not all_pages:
+        return []
+
+    incidents = []
+    for p in all_pages[: limit * 2]:  # Overfetch then filter
+        page = get_page(p["name"])
+        if not page:
+            continue
+        fm = page.get("frontmatter", {})
+        if fm.get("type") != "incident":
+            continue
+        if resolved is not None and fm.get("resolved") != resolved:
+            continue
+        incidents.append(
+            {
+                "name": p["name"],
+                "title": fm.get("title", p["name"]),
+                "severity": fm.get("severity", "unknown"),
+                "category": fm.get("category", ""),
+                "resolved": fm.get("resolved", False),
+                "timestamp": fm.get("timestamp", ""),
+                "body": page.get("body", "")[:500],
+            }
+        )
+        if len(incidents) >= limit:
+            break
+
+    # Sort by timestamp desc
+    incidents.sort(key=lambda i: i.get("timestamp", ""), reverse=True)
+    return incidents[:limit]
+
+
+def get_station_summary() -> Optional[dict]:
+    """Read the station dashboard page from SilverBullet.
+
+    Returns the parsed dashboard page with frontmatter metrics,
+    or None if not found.
+    """
+    prefix = getattr(config, "SILVERBULLET_PREFIX", "station")
+    dashboard_path = _page_path("Dashboard")
+    page = get_page(dashboard_path)
+    return page
+
+
 # ── High-level documenters ────────────────────────────────────────
 
 

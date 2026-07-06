@@ -1,0 +1,24 @@
+{
+  "dj_text": "Late night transition. Sia - Chandelier (Medieval Style) \u2192 Count On Me (Medieval Style).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_9ce689327205.wav",
+  "dj_sound_ids": [
+    "rizz_sound_effect.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Reminder: That Pirate Bot DJ Radio is not responsible for any songs that get stuck in your head for the next 72 hours.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_9ce689327205.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "EXTREME VOLUME RADIO FROM THE SCREAMING DIMENSION!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_9ce689327205.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "We're back. That was NOT a crossover event. That was a dimensional bleed.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_9ce689327205.wav",
+  "title": "Count On Me (Medieval Style)",
+  "prev_title": "Sia - Chandelier (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782695963.1711867,
+  "guild_id": 1402051030828449823
+}

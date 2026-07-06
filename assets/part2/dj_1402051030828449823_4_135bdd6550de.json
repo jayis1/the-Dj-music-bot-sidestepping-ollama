@@ -1,0 +1,24 @@
+{
+  "dj_text": "Rolling Stones - Paint It Black (Medieval Style Vocal Cover) [With Lyrics] done. Pumped up kicks 1066 A.D Cover in Old English (Anglo Saxon tongue) Bardcore/Medieval style calling!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_135bdd6550de.wav",
+  "dj_sound_ids": [
+    "discord_call_sound.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey listeners, welcome back to That Pirate Bot DJ Radio where we never sleep and our taste in music is as bizarre as it",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_135bdd6550de.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Bingo Blitz FM from B-12, Eternal Cosmic Void \u2014 wherein chao",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_135bdd6550de.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_135bdd6550de.wav",
+  "title": "Pumped up kicks 1066 A.D Cover in Old English (Anglo Saxon tongue) Bardcore/Medieval style",
+  "prev_title": "Rolling Stones - Paint It Black (Medieval Style Vocal Cover) [With Lyrics]",
+  "queue_index": 4,
+  "created_at": 1782723348.955264,
+  "guild_id": 1402051030828449823
+}

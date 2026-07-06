@@ -1,0 +1,24 @@
+{
+  "dj_text": "I Just Wanna Get Higher out. Buffering1 in. No questions. Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_97e23b2ef57b.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break is sponsored by Error 404 Energy \u2014 the energy drink that makes you feel like you've lost something but can't",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_97e23b2ef57b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Alright, alien buddies!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_97e23b2ef57b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_97e23b2ef57b.wav",
+  "title": "Buffering1",
+  "prev_title": "I Just Wanna Get Higher",
+  "queue_index": 4,
+  "created_at": 1779616838.5717697,
+  "guild_id": 1402051030828449823
+}

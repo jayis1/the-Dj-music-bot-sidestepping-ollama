@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was D\u00e9j\u00e0 View High Again. And up next, Loopback.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_baa65532c5a1.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break was supposed to be an ad but we forgot to sell one. So here's 10 seconds of me making mouth noises. mmm.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_baa65532c5a1.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Hold on, hold 'em here!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_baa65532c5a1.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_baa65532c5a1.wav",
+  "title": "Loopback",
+  "prev_title": "D\u00e9j\u00e0 View High Again",
+  "queue_index": 4,
+  "created_at": 1779618057.6091342,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Dimension shift: i just wanna get high was alpha. Let\u2019s coast is omega. The cycle continues. Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_e01942997225.wav",
+  "dj_sound_ids": [
+    "mega_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Looking for love? Try That Pirate Bot DJ Mingle \u2014 the dating app where everyone is either a bot or emotionally unavailab",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_e01942997225.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\"Apologies, folks!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_e01942997225.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_e01942997225.wav",
+  "title": "Let\u2019s coast",
+  "prev_title": "i just wanna get high",
+  "queue_index": 4,
+  "created_at": 1779614864.1849735,
+  "guild_id": 1402051030828449823
+}

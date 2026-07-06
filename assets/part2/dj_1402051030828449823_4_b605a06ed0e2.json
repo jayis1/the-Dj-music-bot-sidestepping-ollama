@@ -1,0 +1,14 @@
+{
+  "dj_text": "From Sphaeren \"Storm RMX\" to Kenneth K - E-K-Trip! Ding! Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_b605a06ed0e2.wav",
+  "dj_sound_ids": [
+    "ding_sound_effect_2.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Kenneth K - E-K-Trip",
+  "prev_title": "Sphaeren \"Storm RMX\"",
+  "queue_index": 4,
+  "created_at": 1776601149.5313497,
+  "guild_id": 1402051030828449823
+}

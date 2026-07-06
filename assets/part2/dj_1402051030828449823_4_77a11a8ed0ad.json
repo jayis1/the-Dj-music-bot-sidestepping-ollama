@@ -1,0 +1,24 @@
+{
+  "dj_text": "Blackbird - medieval style is history. Take On Me (Medieval Style) is NOW. Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_77a11a8ed0ad.wav",
+  "dj_sound_ids": [
+    "mega_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey there, seafaring souls!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_77a11a8ed0ad.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} And hooray for jamming with tunes from The Gr",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_77a11a8ed0ad.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_77a11a8ed0ad.wav",
+  "title": "Take On Me (Medieval Style)",
+  "prev_title": "Blackbird - medieval style",
+  "queue_index": 4,
+  "created_at": 1782707383.5722992,
+  "guild_id": 1402051030828449823
+}

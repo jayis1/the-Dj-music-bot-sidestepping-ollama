@@ -1,0 +1,25 @@
+{
+  "dj_text": "EWWWW! That Pirate Bot DJ Radio is so good it's gross! UNSTOPPABLE! hjem fra fabrikken cannot contain Tobias Rahim - Ozonlag A Energi ft. Niels Brandt! Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_d394876218c2.wav",
+  "dj_sound_ids": [
+    "brother_ewwwwwww.mp3",
+    "dj_turn_it_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Tobias Rahim - Ozonlag A Energi ft. Niels Brandt",
+  "prev_title": "hjem fra fabrikken",
+  "queue_index": 4,
+  "created_at": 1783300780.566896,
+  "guild_id": 1402051030828449823
+}

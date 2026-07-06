@@ -1,0 +1,22 @@
+{
+  "dj_text": "Buffering1. Fine. interlude1. Whatever. Moving on. Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_52644c2e6cf2.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Are you still listening? Good. Don't touch that dial. Or do. We literally can't stop you. You're in control.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_52644c2e6cf2.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Attention, listeners from every corner of existence!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_52644c2e6cf2.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_52644c2e6cf2.wav",
+  "title": "interlude1",
+  "prev_title": "Buffering1",
+  "queue_index": 4,
+  "created_at": 1779617094.2649534,
+  "guild_id": 1402051030828449823
+}

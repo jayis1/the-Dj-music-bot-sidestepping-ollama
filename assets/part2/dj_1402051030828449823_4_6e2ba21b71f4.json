@@ -1,0 +1,24 @@
+{
+  "dj_text": "SNIPED! Lukas Graham - Mama Said [OFFICIAL LYRIC VIDEO] out, Hovedrollen in!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6e2ba21b71f4.wav",
+  "dj_sound_ids": [
+    "heavy_sniper_sound.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break brought to you by Dave's Questionable Auto Repair. We fix your car 60 percent of the time, every time.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_6e2ba21b71f4.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "This is DJ Bootycall Cosmo's hotline from across dimensions!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_6e2ba21b71f4.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_6e2ba21b71f4.wav",
+  "title": "Hovedrollen",
+  "prev_title": "Lukas Graham - Mama Said [OFFICIAL LYRIC VIDEO]",
+  "queue_index": 4,
+  "created_at": 1776654645.3423176,
+  "guild_id": 1402051030828449823
+}

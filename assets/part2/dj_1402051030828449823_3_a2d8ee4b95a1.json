@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Linkin Park - Numb (Medieval Style | Bardcore). And now? Daft Punk - Get Lucky (Bardcore, Medieval Style Cover)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_3_a2d8ee4b95a1.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "\ud83c\udfb6 [ ] And hoist your flag high, folks!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_3_a2d8ee4b95a1.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} Welcome aboard Jazz Jive from Cosmic Crescend",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_3_a2d8ee4b95a1.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_3_a2d8ee4b95a1.wav",
+  "title": "Daft Punk - Get Lucky (Bardcore, Medieval Style Cover)",
+  "prev_title": "Linkin Park - Numb (Medieval Style | Bardcore)",
+  "queue_index": 3,
+  "created_at": 1782714703.2452462,
+  "guild_id": 1402051030828449823
+}

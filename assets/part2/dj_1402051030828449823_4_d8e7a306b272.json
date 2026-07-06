@@ -1,0 +1,25 @@
+{
+  "dj_text": "You're tuned in to That Pirate Bot DJ Radio. I Want It That Way (Medieval Style) was FIRE! Part Of Your World - The Little Mermaid [Bardcore | Medieval version] is the EXTINGUISHER! Just kidding, also fire! Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_d8e7a306b272.wav",
+  "dj_sound_ids": [
+    "dj_turn_it_up.mp3",
+    "loud_explosion.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention all sea shippers and land-lovers!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_d8e7a306b272.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Pirate DJ SOS from {station name:Echoes of Reality Radio, ID",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_d8e7a306b272.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "And STAY off our frequency! Go back to your own dimension!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_d8e7a306b272.wav",
+  "title": "Part Of Your World - The Little Mermaid [Bardcore | Medieval version]",
+  "prev_title": "I Want It That Way (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782799943.6998866,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Magic! FEX - Subways of Your Mind (The Most Mysterious Song on the Internet) [Bardcore] becomes Come On Feel The Noize [Bardcore | Medieval version]! One more left in the queue.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_e9ce33cf40bf.wav",
+  "dj_sound_ids": [
+    "magic_fairy.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome, listeners! It's your pirate DJ here with an important message that might just catch yer dragons of course-corru",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_e9ce33cf40bf.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Get ready, all ya'll for another cosmic ride on Space Baller",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_e9ce33cf40bf.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_e9ce33cf40bf.wav",
+  "title": "Come On Feel The Noize [Bardcore | Medieval version]",
+  "prev_title": "FEX - Subways of Your Mind (The Most Mysterious Song on the Internet) [Bardcore]",
+  "queue_index": 4,
+  "created_at": 1782780816.7071936,
+  "guild_id": 1402051030828449823
+}

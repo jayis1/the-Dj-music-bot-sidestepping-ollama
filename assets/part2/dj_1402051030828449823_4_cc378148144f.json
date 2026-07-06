@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Take on me (Medieval kind of version). But Castle of glass (Medieval kind of version) is something special.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_cc378148144f.wav",
+  "dj_sound_ids": [
+    "uyuuui.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Begin Commercial] Boom...Boom!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_cc378148144f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome aboard {cool_dj_drop} The Void Wave from Dimension O",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_cc378148144f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_cc378148144f.wav",
+  "title": "Castle of glass (Medieval kind of version)",
+  "prev_title": "Take on me (Medieval kind of version)",
+  "queue_index": 4,
+  "created_at": 1782710971.0485137,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Dramatic transition! Blueberry Yum Yum into Bossy!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_98b1bf395f81.wav",
+  "dj_sound_ids": [
+    "cinematic_suspense_riser.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Need a loan? First National Bank of Your Cousin's Garage offers competitive rates and absolutely no questions about wher",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_98b1bf395f81.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Hey Dimension Defenders!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_98b1bf395f81.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_98b1bf395f81.wav",
+  "title": "Bossy",
+  "prev_title": "Blueberry Yum Yum",
+  "queue_index": 4,
+  "created_at": 1776660207.44651,
+  "guild_id": 1402051030828449823
+}

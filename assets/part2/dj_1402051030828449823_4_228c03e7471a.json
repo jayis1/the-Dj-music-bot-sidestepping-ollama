@@ -1,0 +1,22 @@
+{
+  "dj_text": "Eliten - P\u00e5staden. Nice. Alright, here's Jonny Hefty BONGHO'E.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_228c03e7471a.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hungry? Try Big Ron's Midnight Waffle Emporium \u2014 half waffles, half emporium, all heart attack.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_228c03e7471a.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hey, folks! Just dropped into This Pirate Bot Radio from way",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_228c03e7471a.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "And STAY off our frequency! Go back to your own dimension!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_228c03e7471a.wav",
+  "title": "Jonny Hefty BONGHO'E",
+  "prev_title": "Eliten - P\u00e5staden",
+  "queue_index": 4,
+  "created_at": 1776979116.8327491,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was Suno (d6d3b205\u2026). Next up, Suno (a809cf0c\u2026).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_3_fe7a973bd864.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "You're listening to Smooth Jazz FM from Dimension K-7. Mmm. Yeah. That's... that's the smooth.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_3_fe7a973bd864.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Shiver me timbers, folks!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_3_fe7a973bd864.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_3_fe7a973bd864.wav",
+  "title": "Suno (a809cf0c\u2026)",
+  "prev_title": "Suno (d6d3b205\u2026)",
+  "queue_index": 3,
+  "created_at": 1776664708.374221,
+  "guild_id": 1402051030828449823
+}

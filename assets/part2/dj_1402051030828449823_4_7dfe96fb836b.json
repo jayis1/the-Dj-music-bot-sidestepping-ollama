@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Funky Town (Medieval Style). Now HERE'S Uptown Funk (Medieval Style)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7dfe96fb836b.wav",
+  "dj_sound_ids": [
+    "discord_notification.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Listeners, we've been blasting medieval-style funk all week and now for a truly outlandish update!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_7dfe96fb836b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} \"Hey hey, this is The Interdimensional Groove",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_7dfe96fb836b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_7dfe96fb836b.wav",
+  "title": "Uptown Funk (Medieval Style)",
+  "prev_title": "Funky Town (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782755494.196895,
+  "guild_id": 1402051030828449823
+}

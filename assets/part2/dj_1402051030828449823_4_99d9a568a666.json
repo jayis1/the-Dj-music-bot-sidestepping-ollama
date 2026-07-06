@@ -1,0 +1,22 @@
+{
+  "dj_text": "**SYSTEM LOG**: Raske Penge: Intelligent completed. Loading Orgi-E - Singlepik.exe. Memory leak in sector 7. Ignore that. Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_99d9a568a666.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This is a test of the That Pirate Bot DJ Emergency Broadcast System.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_99d9a568a666.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Hey listeners, this is YOU on Mirror Dimension Radio where n",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_99d9a568a666.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_99d9a568a666.wav",
+  "title": "Orgi-E - Singlepik",
+  "prev_title": "Raske Penge: Intelligent",
+  "queue_index": 4,
+  "created_at": 1776983619.5568552,
+  "guild_id": 1402051030828449823
+}

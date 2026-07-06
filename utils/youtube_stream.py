@@ -349,6 +349,16 @@ class YouTubeLiveStreamer:
         if self._stream_starting:
             log.debug("YouTube Live/OBS: Start already in progress, skipping")
             return True  # Assume the in-progress start will succeed
+
+        # Reset the OBS bridge connection backoff before attempting a deliberate
+        # reconnect. The _watchdog_obs() loop calls get_status() → _connect() which
+        # can fail and set the 30-second backoff timer. When _start_obs_stream()
+        # is then called as a reconnect attempt, _batch() → _connect() sees the
+        # backoff is still active and returns None — "Cannot connect for batch
+        # setup" — even though OBS is now reachable. Resetting here ensures the
+        # deliberate reconnect attempt actually tries to connect.
+        self._obs_bridge._last_connect_fail = 0
+
         self._stream_starting = True
 
         try:
@@ -399,23 +409,48 @@ class YouTubeLiveStreamer:
                     log.warning("YouTube Live/OBS: Cannot connect for batch setup")
                     return False
 
-                # ── Step 2: Configure stream settings ──
+                # ── Step 2: Push encoder settings BEFORE stream service ──
+                # CRITICAL: set_stream_service_settings() triggers OBS to apply
+                # YouTube's recommended encoder settings (keyint=250, bitrate=2500),
+                # which override our config. We push encoder settings FIRST and
+                # set ApplyServiceSettings=false to prevent the override.
+                # service.json was already written to disk in step 1, so OBS
+                # already knows the RTMP server + key — no need to push via WS.
                 rtmp_endpoint = f"{self.rtmp_url.rstrip('/')}"
                 log.info(
-                    f"YouTube Live/OBS: Configuring stream → {rtmp_endpoint} "
-                    f"(key: ...{self.stream_key[-4:]})"
+                    f"YouTube Live/OBS: Configuring encoder (pre-stream) → "
+                    f"keyint_sec=2, bitrate=6000"
                 )
-                try:
-                    batch_client.set_stream_service_settings(
-                        "rtmp_custom",
-                        {"server": rtmp_endpoint, "key": self.stream_key},
-                    )
-                    log.info("YouTube Live/OBS: Stream settings configured ✅")
-                except Exception as e:
-                    log.warning(
-                        f"YouTube Live/OBS: Failed to configure stream settings: {e}"
-                    )
-                    return False
+                encoder_params = [
+                    ("AdvOut", "ApplyServiceSettings", "false"),
+                    ("AdvOut", "Encoder", "obs_x264"),
+                    ("AdvOut", "keyint_sec", "2"),
+                    ("AdvOut", "x264opts", "keyint=60:min-keyint=60:bframes=0"),
+                    ("AdvOut", "Preset", "fast"),
+                    ("AdvOut", "Profile", "high"),
+                    ("AdvOut", "RateControl", "CBR"),
+                    ("AdvOut", "Bitrate", "6000"),
+                    ("AdvOut", "BufferSize", "6000"),
+                    ("AdvOut", "MaxBitrate", "6000"),
+                ]
+                for category, name, value in encoder_params:
+                    try:
+                        batch_client.send(
+                            "SetProfileParameter",
+                            {
+                                "parameterCategory": category,
+                                "parameterName": name,
+                                "parameterValue": value,
+                            },
+                        )
+                    except Exception as e:
+                        log.debug(
+                            f"YouTube Live/OBS: SetProfileParameter({category}/{name}) failed: {e}"
+                        )
+                log.info(
+                    "YouTube Live/OBS: Encoder settings pushed (pre-stream) — "
+                    "keyint_sec=2, keyint=60, bitrate=6000, ApplyServiceSettings=false"
+                )
 
                 # ── Step 3: Ensure the overlay scene exists ──
                 try:
@@ -499,7 +534,7 @@ class YouTubeLiveStreamer:
                         "input": "udp://127.0.0.1:12345?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
                         "is_local_file": False,
                         "input_format": "s16le",
-                        "ffmpeg_options": "sample_rate=48000 channels=2",
+                        "ffmpeg_options": "sample_rate=42500 channels=2",
                         "close_when_inactive": False,
                         "restart_on_activate": True,
                     }
@@ -616,9 +651,12 @@ class YouTubeLiveStreamer:
                         ("AdvOut", "ABitrate", "3000"),
                         ("AdvOut", "keyint_sec", "2"),
                         ("AdvOut", "x264opts", "keyint=60:min-keyint=60:bframes=0"),
-                        ("AdvOut", "preset", "veryfast"),
-                        ("AdvOut", "profile", "high"),
-                        ("AdvOut", "tune", "zerolatency"),
+                        ("AdvOut", "Preset", "fast"),
+                        ("AdvOut", "Profile", "high"),
+                        ("AdvOut", "RateControl", "CBR"),
+                        ("AdvOut", "Bitrate", "6000"),
+                        ("AdvOut", "BufferSize", "6000"),
+                        ("AdvOut", "MaxBitrate", "6000"),
                         ("AdvOut", "ApplyServiceSettings", "false"),
                     ]
                     for category, name, value in encoder_params:
@@ -637,8 +675,8 @@ class YouTubeLiveStreamer:
                             )
                     log.info(
                         "YouTube Live/OBS: Encoder settings pushed via SetProfileParameter — "
-                        "keyint_sec=2, keyint=60, bitrate=3000, CBR, veryfast, "
-                        "tune=zerolatency, x264opts=keyint=60:min-keyint=60:bframes=0"
+                        "keyint_sec=2, keyint=60, bitrate=6000, CBR, fast, "
+                        "x264opts=keyint=60:min-keyint=60:bframes=0"
                     )
 
             # ── Step 8: Start OBS streaming ─────────────────────────────
@@ -776,12 +814,11 @@ class YouTubeLiveStreamer:
         encoder_data = {
             "obs_x264": {
                 "rate_control": "CBR",
-                "bitrate": 3000,
-                "buffer_size": 3000,
+                "bitrate": 6000,
+                "buffer_size": 6000,
                 "keyint_sec": 2,
-                "preset": "veryfast",
+                "preset": "fast",
                 "profile": "high",
-                "tune": "zerolatency",
                 "x264opts": "keyint=60:min-keyint=60:bframes=0",
             }
         }
@@ -802,7 +839,7 @@ class YouTubeLiveStreamer:
                     json.dump(encoder_data, f, indent=4)
                 log.info(
                     f"YouTube Live/OBS: Wrote streamEncoder.json → {profile_dir} "
-                    f"(keyint_sec=2, bitrate=3000, CBR, veryfast, keyint=60)"
+                    f"(keyint_sec=2, bitrate=6000, CBR, fast, keyint=60)"
                 )
             except Exception as e:
                 log.warning(
@@ -852,6 +889,18 @@ class YouTubeLiveStreamer:
                         )
                         content = content[: content.index("[AdvOut]")] + advout_section
 
+                    # Fix IgnoreRecommended in [Stream1] section
+                    # When false, OBS overrides encoder settings with YouTube's
+                    # recommended values (bitrate=6000, keyint=250, preset=veryfast)
+                    if "IgnoreRecommended=false" in content:
+                        content = content.replace(
+                            "IgnoreRecommended=false", "IgnoreRecommended=true"
+                        )
+
+                    # Fix SimpleOutput Preset (OBS reads this even in Advanced mode)
+                    if "Preset=veryfast" in content:
+                        content = content.replace("Preset=veryfast", "Preset=fast")
+
                     if content != original:
                         with open(basic_ini_path, "w") as f:
                             f.write(content)
@@ -891,6 +940,12 @@ class YouTubeLiveStreamer:
                 await asyncio.sleep(10)
                 if not self._obs_bridge:
                     break
+                # Reset backoff timer before each status check so the poll
+                # can actually reach OBS even if a previous attempt failed.
+                # Without this, the 30s CONNECTION_RETRY_INTERVAL in the
+                # bridge suppresses every status check after the first
+                # failure, making OBS appear permanently unreachable.
+                self._obs_bridge._last_connect_fail = 0
                 status = self._obs_bridge.get_status()
                 if not status.get("connected"):
                     backoff += 1
@@ -1119,9 +1174,7 @@ class YouTubeLiveStreamer:
                 "-c:v",
                 "libx264",
                 "-preset",
-                "ultrafast",
-                "-tune",
-                "zerolatency",
+                "fast",
                 "-b:v",
                 f"{self.bitrate_video}k",
                 "-maxrate",
@@ -1158,12 +1211,17 @@ class YouTubeLiveStreamer:
             "-i",
             ":99.0+0,0",
             # Audio source from the PCMBroadcaster master node
+            # The sender now throttles the byte rate to 42500 Hz (3400 B/tick)
+            # instead of 48kHz (3840 B/tick). The samples are still 48kHz
+            # content — they're just delivered slower. The receiver reads
+            # at 42500 Hz, so 48kHz-content played at 42500 Hz = slowdown.
+            # This eliminates the circular buffer overrun.
             "-thread_queue_size",
             "4096",
             "-f",
             "s16le",
             "-ar",
-            "48000",
+            "42500",
             "-ac",
             "2",
             "-i",
@@ -1175,6 +1233,9 @@ class YouTubeLiveStreamer:
             "1:a",
             *video_encode,
             # Audio codec (always AAC — no GPU acceleration needed for audio)
+            # Note: The 0.885× slowdown is now applied at the PCMBroadcaster
+            # sender via byte-rate throttling (48kHz content delivered at
+            # 42500 Hz). Adding atempo here would double-slow the audio.
             "-af",
             "asetpts=PTS-STARTPTS",
             "-c:a",
@@ -1182,7 +1243,7 @@ class YouTubeLiveStreamer:
             "-b:a",
             f"{self.bitrate_audio}k",
             "-ar",
-            "48000",
+            "42500",
             "-max_muxing_queue_size",
             "9999",
             "-f",

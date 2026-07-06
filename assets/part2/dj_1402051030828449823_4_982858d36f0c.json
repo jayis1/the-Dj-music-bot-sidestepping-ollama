@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Joey Moe - Smukkest P\u00e5 En S\u00f8ndag. Now L.O.C. - Momentet (feat. U$O) (Officiel HD Musik Video). I don't do smooth transitions.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_982858d36f0c.wav",
+  "dj_sound_ids": [
+    "bone_crack.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "AutoRadio 5000 from the Machine Kosmos. Your listening experience is scheduled for: vibes. Error. Rebooting vibes.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_982858d36f0c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\"Blasting beats of bluesy grooves, a symphony for souls seek",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_982858d36f0c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_982858d36f0c.wav",
+  "title": "L.O.C. - Momentet (feat. U$O) (Officiel HD Musik Video)",
+  "prev_title": "Joey Moe - Smukkest P\u00e5 En S\u00f8ndag",
+  "queue_index": 4,
+  "created_at": 1776643389.807395,
+  "guild_id": 1402051030828449823
+}

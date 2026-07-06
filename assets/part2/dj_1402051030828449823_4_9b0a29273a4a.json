@@ -1,0 +1,24 @@
+{
+  "dj_text": "PLUH! Another One Bites The Dust - Queen [Bardcore | Medieval version] to Killer Queen - Queen (Medieval kind of version)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_9b0a29273a4a.wav",
+  "dj_sound_ids": [
+    "pluh.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "That Pirate Bot DJ Radio brings you not just music, but a journey through time with your headphones on!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_9b0a29273a4a.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Machine Kosmos Stereotronics, hail!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_9b0a29273a4a.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_9b0a29273a4a.wav",
+  "title": "Killer Queen - Queen (Medieval kind of version)",
+  "prev_title": "Another One Bites The Dust - Queen [Bardcore | Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782773091.6534052,
+  "guild_id": 1402051030828449823
+}

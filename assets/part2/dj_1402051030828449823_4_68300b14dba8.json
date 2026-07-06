@@ -1,0 +1,24 @@
+{
+  "dj_text": "Switching gears! interlude1 \u2192 D\u00e9j\u00e0 View!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_68300b14dba8.wav",
+  "dj_sound_ids": [
+    "dj_scratch.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Introducing CryptoBlanket \u2014 the world's first blockchain-powered blanket.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_68300b14dba8.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome, denizens of Mirror Dimension!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_68300b14dba8.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_68300b14dba8.wav",
+  "title": "D\u00e9j\u00e0 View",
+  "prev_title": "interlude1",
+  "queue_index": 4,
+  "created_at": 1779617368.2818441,
+  "guild_id": 1402051030828449823
+}

@@ -58,10 +58,21 @@ async def on_ready():
             "LOG_CHANNEL_ID is not set in config.py. Discord logging will be disabled."
         )
 
+    # ── Crash Notifications ──────────────────────────────────────────────
+    # Register webhook-based crash handlers so we get alerted even if the
+    # bot process is dying. Best-effort — failures here never block startup.
+    try:
+        from utils.crash_notifier import setup_crash_handlers
+
+        setup_crash_handlers(bot, getattr(config, "CRASH_NOTIFY_WEBHOOK_URL", ""))
+    except Exception as e:
+        logging.debug(f"Crash notifier setup skipped ({e})")
+
     # Auto-create the custom Ollama model for the AI Side Host.
     # This bakes the DJ personality into a custom model (e.g. "mbot-sidehost")
     # so the system prompt doesn't need to be sent on every API call.
-    if getattr(config, "OLLAMA_DJ_ENABLED", False):
+    # Skip this when using Hermes Agent backend (no Ollama needed).
+    if getattr(config, "OLLAMA_DJ_ENABLED", False) and not getattr(config, "HERMES_DJ_ENABLED", False):
         try:
             from utils.llm_dj import ensure_custom_model
 
@@ -371,10 +382,13 @@ async def main():
 
     # AI Side Host
     if ollama_enabled:
-        logging.info(f"  AI Side Host: ✅ Enabled → {ollama_host}")
-        logging.info(
-            f"  AI model: {getattr(config, 'OLLAMA_CUSTOM_MODEL', 'N/A')} (base: {getattr(config, 'OLLAMA_MODEL', 'N/A')})"
-        )
+        if getattr(config, "HERMES_DJ_ENABLED", False):
+            logging.info("  AI Side Host: ✅ Enabled → Hermes Agent (local CLI)")
+        else:
+            logging.info(f"  AI Side Host: ✅ Enabled → {ollama_host}")
+            logging.info(
+                f"  AI model: {getattr(config, 'OLLAMA_CUSTOM_MODEL', 'N/A')} (base: {getattr(config, 'OLLAMA_MODEL', 'N/A')})"
+            )
     else:
         logging.info("  AI Side Host: ⚪ Disabled")
 
@@ -730,12 +744,11 @@ def run_web_server():
                     encoder_data = {
                         "obs_x264": {
                             "rate_control": "CBR",
-                            "bitrate": 3000,
-                            "buffer_size": 3000,
+                            "bitrate": 6000,
+                            "buffer_size": 6000,
                             "keyint_sec": 2,
-                            "preset": "veryfast",
+                            "preset": "fast",
                             "profile": "high",
-                            "tune": "zerolatency",
                             "x264opts": "keyint=60:min-keyint=60:bframes=0",
                         }
                     }
@@ -748,7 +761,7 @@ def run_web_server():
                                 json.dump(encoder_data, f, indent=4)
                             logging.info(
                                 f"OBS: Wrote streamEncoder.json → {p_dir} "
-                                f"(keyint_sec=2, bitrate=3000)"
+                                f"(keyint_sec=2, bitrate=6000)"
                             )
                         except Exception as e:
                             logging.warning(
@@ -843,7 +856,7 @@ def run_web_server():
                 try:
                     bridge.create_audio_source(scene_name="📺 Overlay Only")
                     logging.info(
-                        "OBS: Audio source settings force-updated (sample_rate=48000 channels=2)"
+                        "OBS: Audio source settings force-updated (sample_rate=42500 channels=2)"
                     )
                 except Exception as e:
                     logging.debug(

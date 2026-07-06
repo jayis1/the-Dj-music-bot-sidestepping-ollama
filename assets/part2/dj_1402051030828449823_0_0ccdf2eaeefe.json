@@ -1,0 +1,24 @@
+{
+  "dj_text": "THE BELL TOLLS! Har Du Glemt Dine Nosser \u2192 The Valley! Just 5 more. Quality over quantity, right?",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_0ccdf2eaeefe.wav",
+  "dj_sound_ids": [
+    "undertakers_bell_2UwFCIe.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Sponsored by That Pirate Bot DJ Premium \u2014 for just 9.99 a month you get literally everything the free tier has but with",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_0ccdf2eaeefe.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You've stumbled onto Nostalgia Overload Radio from the Timel",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_0ccdf2eaeefe.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_0ccdf2eaeefe.wav",
+  "title": "The Valley",
+  "prev_title": "Har Du Glemt Dine Nosser",
+  "queue_index": 0,
+  "created_at": 1776975143.3788633,
+  "guild_id": 1402051030828449823
+}

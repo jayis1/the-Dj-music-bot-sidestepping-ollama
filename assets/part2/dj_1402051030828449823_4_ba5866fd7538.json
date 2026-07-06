@@ -1,0 +1,22 @@
+{
+  "dj_text": "\"Perfect Day\" - Medieval Style Cover | Lou Reed Bardcore is dead. Long live Enter Sandman - Metallica [MEDIEVAL][HARDCORE BARDCORE]. Or whatever.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_ba5866fd7538.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Listen up, me hearties!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_ba5866fd7538.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome, listeners from all corners of reality!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_ba5866fd7538.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_ba5866fd7538.wav",
+  "title": "Enter Sandman - Metallica [MEDIEVAL][HARDCORE BARDCORE]",
+  "prev_title": "\"Perfect Day\" - Medieval Style Cover | Lou Reed Bardcore",
+  "queue_index": 4,
+  "created_at": 1782784471.523025,
+  "guild_id": 1402051030828449823
+}

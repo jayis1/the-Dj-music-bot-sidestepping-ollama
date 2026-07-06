@@ -1,0 +1,25 @@
+{
+  "dj_text": "Meowrgh! That Pirate Bot DJ Radio is ALIVE! That was melancholy 1. Now Time flies. I don't do smooth transitions. Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_bc5c7af62e4f.wav",
+  "dj_sound_ids": [
+    "meowrgh.mp3",
+    "bone_crack.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This is not a drill. I repeat, this is not a drill. It's a commercial.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_bc5c7af62e4f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Greetings from across dimensions!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_bc5c7af62e4f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back. That was NOT a crossover event. That was a dimensional bleed.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_bc5c7af62e4f.wav",
+  "title": "Time flies",
+  "prev_title": "melancholy 1",
+  "queue_index": 4,
+  "created_at": 1779604552.1224012,
+  "guild_id": 1402051030828449823
+}

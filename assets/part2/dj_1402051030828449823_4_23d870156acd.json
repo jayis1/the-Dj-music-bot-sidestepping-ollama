@@ -1,0 +1,22 @@
+{
+  "dj_text": "Don't U Worry (feat. Barbara Moleko) was great. But have you considered Ride? You should. You're about to.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_23d870156acd.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Tired of coffee that actually tastes good?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_23d870156acd.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Listen up, Dimension K-7 is where time dances in reverse!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_23d870156acd.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_23d870156acd.wav",
+  "title": "Ride",
+  "prev_title": "Don't U Worry (feat. Barbara Moleko)",
+  "queue_index": 4,
+  "created_at": 1776649625.1407828,
+  "guild_id": 1402051030828449823
+}

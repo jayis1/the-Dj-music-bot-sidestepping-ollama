@@ -1,0 +1,22 @@
+{
+  "dj_text": "From Tequila! [Bardcore | Medieval version] to Rammstein - Benzin [Bardcore]. The vibe shift is violent. Good. One more left in the queue.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_2dbe5d7cffc9.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey listeners, you're tuned into That Pirate Bot DJ Radio for your daily dose of chaos and cringe-worthy entertainment!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_2dbe5d7cffc9.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} Welcome, fellow explorers of Kosmos Sigma-9!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_2dbe5d7cffc9.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_2dbe5d7cffc9.wav",
+  "title": "Rammstein - Benzin [Bardcore]",
+  "prev_title": "Tequila! [Bardcore | Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782799070.3181179,
+  "guild_id": 1402051030828449823
+}

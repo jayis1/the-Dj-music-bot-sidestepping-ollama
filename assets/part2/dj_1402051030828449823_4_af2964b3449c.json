@@ -1,0 +1,24 @@
+{
+  "dj_text": "From I'm Into Something Good - Herman's Hermits [Bardcore | Medieval version] straight into Unknown! No pause button!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_af2964b3449c.wav",
+  "dj_sound_ids": [
+    "airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Sound of medieval bells ringing and a dramatic DJ tag with ] Hey, ye olde folks tuned into That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_af2964b3449c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} This is {Django} from Cosmic Corporate Wavefo",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_af2964b3449c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_af2964b3449c.wav",
+  "title": "Unknown",
+  "prev_title": "I'm Into Something Good - Herman's Hermits [Bardcore | Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782777955.3176622,
+  "guild_id": 1402051030828449823
+}

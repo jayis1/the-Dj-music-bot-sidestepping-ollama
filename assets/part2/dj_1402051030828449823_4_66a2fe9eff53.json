@@ -1,0 +1,24 @@
+{
+  "dj_text": "Next up after FADE TO BLACK | Medieval Bardcore Version | Metallica vs Beedle the Bardcore: Shake it Off -[Bardcore / Medieval Style Instrumental Cover]. Don't like it? Too bad. Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_66a2fe9eff53.wav",
+  "dj_sound_ids": [
+    "censor_beep_1.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome back to That Pirate Bot DJ Radio, where we turn your music into medieval madness!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_66a2fe9eff53.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{station_name}: \"Hey there, listen up!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_66a2fe9eff53.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_66a2fe9eff53.wav",
+  "title": "Shake it Off -[Bardcore / Medieval Style Instrumental Cover]",
+  "prev_title": "FADE TO BLACK | Medieval Bardcore Version | Metallica vs Beedle the Bardcore",
+  "queue_index": 4,
+  "created_at": 1782798378.060721,
+  "guild_id": 1402051030828449823
+}

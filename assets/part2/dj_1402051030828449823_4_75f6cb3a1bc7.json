@@ -1,0 +1,24 @@
+{
+  "dj_text": "Moving right along! Maroon 5 - She Will Be Loved ( Medieval Style ) \u2192 Seven Nation Army - The White Stripes [MEDIEVAL STYLE][BARDCORE] BAGPIPE SOLO!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_75f6cb3a1bc7.wav",
+  "dj_sound_ids": [
+    "dj_scratch.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Introducing Dimensional DJ, where your pirate vibes are amplified to otherworldly levels!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_75f6cb3a1bc7.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Listen up, weary spacefarers of reality !",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_75f6cb3a1bc7.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_75f6cb3a1bc7.wav",
+  "title": "Seven Nation Army - The White Stripes [MEDIEVAL STYLE][BARDCORE] BAGPIPE SOLO",
+  "prev_title": "Maroon 5 - She Will Be Loved ( Medieval Style )",
+  "queue_index": 4,
+  "created_at": 1782727694.015262,
+  "guild_id": 1402051030828449823
+}

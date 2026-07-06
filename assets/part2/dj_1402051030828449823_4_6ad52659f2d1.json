@@ -1,0 +1,14 @@
+{
+  "dj_text": "The DJ selects Troo.l.s & Orgi-e - Ulven Kommer after that Pede B - Flyv Fugl!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6ad52659f2d1.wav",
+  "dj_sound_ids": [
+    "im_your_dj.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Troo.l.s & Orgi-e - Ulven Kommer",
+  "prev_title": "Pede B - Flyv Fugl",
+  "queue_index": 4,
+  "created_at": 1776593655.8863933,
+  "guild_id": 1402051030828449823
+}

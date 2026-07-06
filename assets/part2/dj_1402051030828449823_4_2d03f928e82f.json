@@ -1,0 +1,22 @@
+{
+  "dj_text": "De Danske Hyrder - 15 \u00c5r (Officiel musikvideo). Hmm. Now let's ease into Amagerpige i L\u00e5rkort.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_2d03f928e82f.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Are you still listening? Good. Don't touch that dial. Or do. We literally can't stop you. You're in control.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_2d03f928e82f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "*Glitching* - Kosmos Sigma-9, The Future's Term of Service A",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_2d03f928e82f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_2d03f928e82f.wav",
+  "title": "Amagerpige i L\u00e5rkort",
+  "prev_title": "De Danske Hyrder - 15 \u00c5r (Officiel musikvideo)",
+  "queue_index": 4,
+  "created_at": 1776645229.0781393,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "LET'S GOOO! The Final Countdown (Medieval Cover) WAS FIRE AND Thunderstruck (Medieval Cover) IS EVEN HOTTER!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_714d2331d710.wav",
+  "dj_sound_ids": [
+    "mega_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Calling all night owls \u2014 Lucky's 24-Hour Laundromat is open!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_714d2331d710.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_714d2331d710.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_714d2331d710.wav",
+  "title": "Thunderstruck (Medieval Cover)",
+  "prev_title": "The Final Countdown (Medieval Cover)",
+  "queue_index": 4,
+  "created_at": 1782687572.707625,
+  "guild_id": 1402051030828449823
+}

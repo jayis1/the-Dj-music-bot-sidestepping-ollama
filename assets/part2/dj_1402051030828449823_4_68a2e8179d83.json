@@ -1,0 +1,24 @@
+{
+  "dj_text": "Vibing. Gonzo \u2192 Lykken Kommer.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_68a2e8179d83.wav",
+  "dj_sound_ids": [
+    "dj_scratch.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "You've been listening for a while now. Your family misses you. Just kidding, they're also listening.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_68a2e8179d83.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Underground Frequency from Below.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_68a2e8179d83.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_68a2e8179d83.wav",
+  "title": "Lykken Kommer",
+  "prev_title": "Gonzo",
+  "queue_index": 4,
+  "created_at": 1782857347.939739,
+  "guild_id": 1402051030828449823
+}

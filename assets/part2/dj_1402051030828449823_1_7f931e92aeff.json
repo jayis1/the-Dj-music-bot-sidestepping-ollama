@@ -1,0 +1,25 @@
+{
+  "dj_text": "Vine boom! That Pirate Bot DJ Radio! Another one! From EaggerStunn - Kugledans feat. Geolo G to Jonny Hefty & J\u00f8den - Vi g\u00e5r aldrig hjem (Officiel Video)! Just 4 more. Quality over quantity, right?",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_7f931e92aeff.wav",
+  "dj_sound_ids": [
+    "vine_boom.mp3",
+    "another_one.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Introducing the iBrick Pro Max Ultra \u2014 it's just a brick. But it's OUR brick.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_7f931e92aeff.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Hey, listeners! This is Null Kosmos Radio from dimension #Zi",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_7f931e92aeff.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_7f931e92aeff.wav",
+  "title": "Jonny Hefty & J\u00f8den - Vi g\u00e5r aldrig hjem (Officiel Video)",
+  "prev_title": "EaggerStunn - Kugledans feat. Geolo G",
+  "queue_index": 1,
+  "created_at": 1776983514.1451926,
+  "guild_id": 1402051030828449823
+}

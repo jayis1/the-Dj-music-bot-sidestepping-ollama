@@ -1,0 +1,24 @@
+{
+  "dj_text": "Signal locked. That Pirate Bot DJ Radio is online. Resistance is optional. Moving on from Blue ( Da Ba Dee ) - Medieval Style. Here comes Ballroom Blitz (Bardcore Cover)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_fa68e03d60eb.wav",
+  "dj_sound_ids": [
+    "dj_turn_it_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention, listeners! Get ready for a sensory overload with Piracy Bot's latest release \u2013 the 'SeaSerenade Mixer', becau",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_fa68e03d60eb.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Blast off, boi! This is Void Frequencies from Krypton Prime,",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_fa68e03d60eb.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_fa68e03d60eb.wav",
+  "title": "Ballroom Blitz (Bardcore Cover)",
+  "prev_title": "Blue ( Da Ba Dee ) - Medieval Style",
+  "queue_index": 4,
+  "created_at": 1782746137.3653402,
+  "guild_id": 1402051030828449823
+}

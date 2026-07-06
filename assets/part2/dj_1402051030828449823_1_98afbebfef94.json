@@ -1,0 +1,22 @@
+{
+  "dj_text": "**SYSTEM LOG**: Rolig - Rolig completed. Loading SUSPEKT - S.U.S.P.E.K.T..exe. Memory leak in sector 7. Ignore that.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_98afbebfef94.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Need a haircut? Slashes Hair Salon \u2014 where every cut is a gamble and every style is a surprise.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_98afbebfef94.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_98afbebfef94.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back. That was NOT a crossover event. That was a dimensional bleed.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_98afbebfef94.wav",
+  "title": "SUSPEKT - S.U.S.P.E.K.T.",
+  "prev_title": "Rolig - Rolig",
+  "queue_index": 1,
+  "created_at": 1782846367.819704,
+  "guild_id": 1402051030828449823
+}

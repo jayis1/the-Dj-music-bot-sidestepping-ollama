@@ -1,0 +1,22 @@
+{
+  "dj_text": "Come On Feel The Noize [Bardcore | Medieval version] fades. Phineas and Ferb opening theme (Medieval style) emerges. Let it wash over you.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_a1c237e88fdf.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Sound of lute playing medieval music underneath] \n\nImagine summoning a ghost to haunt your mirror \u2014 no, wait!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_a1c237e88fdf.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} \"Welcome, listeners of Dimension X-7's Mellow",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_a1c237e88fdf.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_a1c237e88fdf.wav",
+  "title": "Phineas and Ferb opening theme (Medieval style)",
+  "prev_title": "Come On Feel The Noize [Bardcore | Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782781115.7610612,
+  "guild_id": 1402051030828449823
+}

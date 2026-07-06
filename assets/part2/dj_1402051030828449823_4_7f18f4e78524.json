@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Let\u2019s coast 2. And now? hologram heart2! Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7f18f4e78524.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "If you're enjoying That Pirate Bot DJ Radio, tell a friend. If you're not enjoying it, tell an enemy.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_7f18f4e78524.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Hey, I'm Machine Kosmos - where metal meets cosmic beats!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_7f18f4e78524.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_7f18f4e78524.wav",
+  "title": "hologram heart2",
+  "prev_title": "Let\u2019s coast 2",
+  "queue_index": 4,
+  "created_at": 1779615730.427934,
+  "guild_id": 1402051030828449823
+}

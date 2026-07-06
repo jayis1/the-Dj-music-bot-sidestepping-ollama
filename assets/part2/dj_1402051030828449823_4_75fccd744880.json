@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was Suno (1ea55856\u2026). And up next, Suno (b1bb0fd7\u2026). Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_75fccd744880.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Reminder: That Pirate Bot DJ Radio is not responsible for any songs that get stuck in your head for the next 72 hours.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_75fccd744880.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "**Beep... Boop? Bloop!** Welcome, cosmic wanderers of spacew",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_75fccd744880.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_75fccd744880.wav",
+  "title": "Suno (b1bb0fd7\u2026)",
+  "prev_title": "Suno (1ea55856\u2026)",
+  "queue_index": 4,
+  "created_at": 1776789598.1090963,
+  "guild_id": 1402051030828449823
+}

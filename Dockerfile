@@ -60,6 +60,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     xvfb \
     curl \
+    nodejs \
     libopus-dev \
     libsodium23 \
     && rm -rf /var/lib/apt/lists/*

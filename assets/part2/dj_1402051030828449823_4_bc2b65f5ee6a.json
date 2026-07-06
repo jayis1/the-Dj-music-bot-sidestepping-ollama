@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Kahoot Theme (Medieval Cover). And coming up next, HEY THERE DELILAH | Medieval Bardcore Version | Plain White T's vs Beedle the Bardcore! And then there was one. Last track after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_bc2b65f5ee6a.wav",
+  "dj_sound_ids": [
+    "combo_hit.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Jazzy medieval tune playing] Breaking News on That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_bc2b65f5ee6a.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Broadcasting... This is Galactic Grooves FM, powered by a mi",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_bc2b65f5ee6a.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_bc2b65f5ee6a.wav",
+  "title": "HEY THERE DELILAH | Medieval Bardcore Version | Plain White T's vs Beedle the Bardcore",
+  "prev_title": "Kahoot Theme (Medieval Cover)",
+  "queue_index": 4,
+  "created_at": 1782805462.1996617,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "DRAW! Wanted Dead or Alive - Bon Jovi [Bardcore | Vocal cover] done. Mambo No.5  [Bardcore | Medieval version] incoming!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_37607aa66f6e.wav",
+  "dj_sound_ids": [
+    "pistol_shot.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey pirates, ready to turn back time?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_37607aa66f6e.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "This is Flatline Field from Dimension X-7, where \"the game o",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_37607aa66f6e.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_37607aa66f6e.wav",
+  "title": "Mambo No.5  [Bardcore | Medieval version]",
+  "prev_title": "Wanted Dead or Alive - Bon Jovi [Bardcore | Vocal cover]",
+  "queue_index": 4,
+  "created_at": 1782777205.700086,
+  "guild_id": 1402051030828449823
+}

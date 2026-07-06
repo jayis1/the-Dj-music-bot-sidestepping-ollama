@@ -1,0 +1,14 @@
+{
+  "dj_text": "TACO BELL! Dee Pee feat. Petter - H\u00e5bet [Prod. Af Liljay] \u2192 Rockers by Choice - Amar'er #1!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_79e38ec0fdd1.wav",
+  "dj_sound_ids": [
+    "taco_bell_bong_sfx.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Rockers by Choice - Amar'er #1",
+  "prev_title": "Dee Pee feat. Petter - H\u00e5bet [Prod. Af Liljay]",
+  "queue_index": 4,
+  "created_at": 1776596955.3291605,
+  "guild_id": 1402051030828449823
+}

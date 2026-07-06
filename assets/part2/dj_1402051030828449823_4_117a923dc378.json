@@ -1,0 +1,24 @@
+{
+  "dj_text": "Survivor - Eye of the Tiger [Medieval Style Cover]. Now breathe. Mortal Kombat Theme Song - Medieval Style (sort of) Cover.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_117a923dc378.wav",
+  "dj_sound_ids": [
+    "cool_dj_drop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "You're listening to Smooth Jazz FM from Dimension K-7. Mmm. Yeah. That's... that's the smooth.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_117a923dc378.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "THIS IS PIRATE RADIO 404 FROM THE VOID!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_117a923dc378.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_117a923dc378.wav",
+  "title": "Mortal Kombat Theme Song - Medieval Style (sort of) Cover",
+  "prev_title": "Survivor - Eye of the Tiger [Medieval Style Cover]",
+  "queue_index": 4,
+  "created_at": 1782694284.570518,
+  "guild_id": 1402051030828449823
+}

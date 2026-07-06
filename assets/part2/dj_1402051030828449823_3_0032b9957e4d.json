@@ -1,0 +1,24 @@
+{
+  "dj_text": "VINE BOOM! [Private video] was THEN. kush konto blitz is NOW! Two more waiting in the wings.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_3_0032b9957e4d.wav",
+  "dj_sound_ids": [
+    "vine_boom.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Truth Frequency Radio from the Mirror Dimension. Your moon isn't real. OUR moon has teeth.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_3_0032b9957e4d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "\"Yeah, that's me from Lonely Kosmos!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_3_0032b9957e4d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_3_0032b9957e4d.wav",
+  "title": "kush konto blitz",
+  "prev_title": "[Private video]",
+  "queue_index": 3,
+  "created_at": 1776963628.5821977,
+  "guild_id": 1402051030828449823
+}

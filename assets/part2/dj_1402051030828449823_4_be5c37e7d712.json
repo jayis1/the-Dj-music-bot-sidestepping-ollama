@@ -1,0 +1,14 @@
+{
+  "dj_text": "TACO BELL! Suspekt - Hun er p\u00e5 mig done, SUSPEKT - S.U.S.P.E.K.T. served! And then there was one. Last track after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_be5c37e7d712.wav",
+  "dj_sound_ids": [
+    "taco_bell_bong_sfx.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "SUSPEKT - S.U.S.P.E.K.T.",
+  "prev_title": "Suspekt - Hun er p\u00e5 mig",
+  "queue_index": 4,
+  "created_at": 1776633033.2248344,
+  "guild_id": 1402051030828449823
+}

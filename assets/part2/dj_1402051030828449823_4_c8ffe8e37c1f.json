@@ -1,0 +1,24 @@
+{
+  "dj_text": "L\u00e6nge Siden was beautiful. And Don't U Worry (feat. Barbara Moleko) keeps the vibe alive.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c8ffe8e37c1f.wav",
+  "dj_sound_ids": [
+    "dj_stop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Coming soon: That Pirate DJ Radio Bot University \u2014 where you can earn a PhD in vibes.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_c8ffe8e37c1f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Attention all screamers!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_c8ffe8e37c1f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_c8ffe8e37c1f.wav",
+  "title": "Don't U Worry (feat. Barbara Moleko)",
+  "prev_title": "L\u00e6nge Siden",
+  "queue_index": 4,
+  "created_at": 1776649503.6229496,
+  "guild_id": 1402051030828449823
+}

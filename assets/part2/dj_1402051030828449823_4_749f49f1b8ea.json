@@ -1,0 +1,24 @@
+{
+  "dj_text": "Signal locked. That Pirate Bot DJ Radio. Resistance is futile. That was BECAUSE I GOT HIGH | Medieval Bardcore Version | Afroman. Taking it easy with WET HANDS | Medieval Bardcore Version | Minecraft. And then there was one. Last track after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_749f49f1b8ea.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention listeners, we're conducting an emergency test of our WET HANDS 'Medieval Bardcore Version' with a sick beat-up",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_749f49f1b8ea.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} \"Hey folks, turn it up on Timeline Trance FM",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_749f49f1b8ea.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_749f49f1b8ea.wav",
+  "title": "WET HANDS | Medieval Bardcore Version | Minecraft",
+  "prev_title": "BECAUSE I GOT HIGH | Medieval Bardcore Version | Afroman",
+  "queue_index": 4,
+  "created_at": 1782787727.2329679,
+  "guild_id": 1402051030828449823
+}

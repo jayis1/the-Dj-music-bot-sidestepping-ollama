@@ -1,0 +1,25 @@
+{
+  "dj_text": "Jump into That Pirate Bot DJ Radio! That was I'm a Believer (Medieval Style). Now Bring Me To Life (Medieval Style). I don't do smooth transitions.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_511792ecdd14.wav",
+  "dj_sound_ids": [
+    "maro_jump_sound_effect_1.mp3",
+    "bone_crack.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "We present to you, with an airhorn blast and that unforgettable 'another one', {product_name:'Dimensional DJ Disruptor'}",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_511792ecdd14.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Lonely Hearts Intergalactic Relations Hub, channeling from K",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_511792ecdd14.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_511792ecdd14.wav",
+  "title": "Bring Me To Life (Medieval Style)",
+  "prev_title": "I'm a Believer (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782757039.7272706,
+  "guild_id": 1402051030828449823
+}

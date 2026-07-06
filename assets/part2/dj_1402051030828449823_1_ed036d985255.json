@@ -1,0 +1,24 @@
+{
+  "dj_text": "BOOM! Server Rack FM \u2192 Suno (5c463743\u2026)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_ed036d985255.wav",
+  "dj_sound_ids": [
+    "loud_explosion.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome to Corporate Radio MAX from Kosmos Sigma-9.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_ed036d985255.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Haha! Listen up, folks, this ain't just a pirate radio comin",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_ed036d985255.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_ed036d985255.wav",
+  "title": "Suno (5c463743\u2026)",
+  "prev_title": "Server Rack FM",
+  "queue_index": 1,
+  "created_at": 1776665673.9665592,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,15 @@
+{
+  "dj_text": "THIS is That Pirate DJ Bot Radio! The Rock says... listen! That was Rasmus Seebach - Livstegn (Lyric Video). Now, You Are My Sun!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c936b9bc6754.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3",
+    "dj_scratch.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "You Are My Sun",
+  "prev_title": "Rasmus Seebach - Livstegn (Lyric Video)",
+  "queue_index": 4,
+  "created_at": 1776589873.5951517,
+  "guild_id": 1402051030828449823
+}

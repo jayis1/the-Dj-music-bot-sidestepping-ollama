@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was Suspekt - Proletar (Hvor Jeg St\u00e5r). Changing the channel. Just kidding, there's only one channel. L.O.C. - Frk. Escobar.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_16b9eb72d8d2.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh. This is the quiet dimension. No talking. No music. Just...",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_16b9eb72d8d2.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You're listening to Smooth Jazz FM from Dimension K-7. Mmm.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_16b9eb72d8d2.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_16b9eb72d8d2.wav",
+  "title": "L.O.C. - Frk. Escobar",
+  "prev_title": "Suspekt - Proletar (Hvor Jeg St\u00e5r)",
+  "queue_index": 1,
+  "created_at": 1782848451.8636174,
+  "guild_id": 1402051030828449823
+}

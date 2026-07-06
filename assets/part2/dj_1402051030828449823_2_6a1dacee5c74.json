@@ -1,0 +1,22 @@
+{
+  "dj_text": "The Smiths - Heaven Knows I'm Miserable Now (Medieval Version) was the exhale. Metallica - Seek & Destroy (Medieval Version) is the space between breaths. Exist with it. 3 more tracks lined up and ready to roll.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_6a1dacee5c74.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome to {name}, where time stands still and your bones might just crackle along with us!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_2_6a1dacee5c74.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} Welcome, Earthlings!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_2_6a1dacee5c74.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_2_6a1dacee5c74.wav",
+  "title": "Metallica - Seek & Destroy (Medieval Version)",
+  "prev_title": "The Smiths - Heaven Knows I'm Miserable Now (Medieval Version)",
+  "queue_index": 2,
+  "created_at": 1782706658.460477,
+  "guild_id": 1402051030828449823
+}

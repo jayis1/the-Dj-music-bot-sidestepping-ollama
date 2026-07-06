@@ -1,0 +1,22 @@
+{
+  "dj_text": "Hit Me With Your Best Shot (Medieval version) [Bardcore]? Over. Good Vibrations - The Beach Boys [Bardcore]? In progress. Status: vibes. Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_830907337120.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention, sea-faring surfers!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_830907337120.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Vagabond Vibes FM - Channeling chaos from Dimension Sigma-9!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_830907337120.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_830907337120.wav",
+  "title": "Good Vibrations - The Beach Boys [Bardcore]",
+  "prev_title": "Hit Me With Your Best Shot (Medieval version) [Bardcore]",
+  "queue_index": 4,
+  "created_at": 1782762326.0409572,
+  "guild_id": 1402051030828449823
+}

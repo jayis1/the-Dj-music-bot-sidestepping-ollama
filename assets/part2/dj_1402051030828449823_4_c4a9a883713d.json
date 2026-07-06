@@ -1,0 +1,24 @@
+{
+  "dj_text": "Alt Er Godt. Now breathe. Stromae - Formidable (ceci n'est pas une le\u00e7on).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c4a9a883713d.wav",
+  "dj_sound_ids": [
+    "cool_dj_drop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Breaking news from That Pirate DJ Radio Bot \u2014 the playlist is in control now. The DJ has been demoted to button-pusher.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_c4a9a883713d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Hey there! It's The Machine Kosmos, blipping through bypass",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_c4a9a883713d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_c4a9a883713d.wav",
+  "title": "Stromae - Formidable (ceci n'est pas une le\u00e7on)",
+  "prev_title": "Alt Er Godt",
+  "queue_index": 4,
+  "created_at": 1776650514.482083,
+  "guild_id": 1402051030828449823
+}

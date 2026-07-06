@@ -1,0 +1,15 @@
+{
+  "dj_text": "That Pirate DJ Bot Radio \u2014 KA-BOOM! THE ENERGY IS UNSTOPPABLE! Eliten - P\u00e5staden then bikstok r\u00f8gsystem n\u00f8gne m\u00e6nd! Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_37ce9910f7ba.wav",
+  "dj_sound_ids": [
+    "loud_explosion.mp3",
+    "combo_hit.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "bikstok r\u00f8gsystem n\u00f8gne m\u00e6nd",
+  "prev_title": "Eliten - P\u00e5staden",
+  "queue_index": 4,
+  "created_at": 1776595215.1742837,
+  "guild_id": 1402051030828449823
+}

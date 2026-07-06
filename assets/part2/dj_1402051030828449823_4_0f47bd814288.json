@@ -1,0 +1,24 @@
+{
+  "dj_text": "John Legend - All Of Me (Medieval Version) is over. But Franz Liszt - Hungarian Rhapsody No.2 (Medieval Version) is just getting started!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_0f47bd814288.wav",
+  "dj_sound_ids": [
+    "dj_turn_it_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention, listeners of That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_0f47bd814288.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} \"Hey there, this is DJ Cosmic Rewind from Spa",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_0f47bd814288.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_0f47bd814288.wav",
+  "title": "Franz Liszt - Hungarian Rhapsody No.2 (Medieval Version)",
+  "prev_title": "John Legend - All Of Me (Medieval Version)",
+  "queue_index": 4,
+  "created_at": 1782719071.1892703,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,14 @@
+{
+  "dj_text": "From Kenneth K - E-K-Trip RIGHT into Sund Fornuft - Det hele er til h\u00f8jre (It's all right). No time for feelings. Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_eaa117740f24.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Sund Fornuft - Det hele er til h\u00f8jre (It's all right)",
+  "prev_title": "Kenneth K - E-K-Trip",
+  "queue_index": 4,
+  "created_at": 1776601346.5204759,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was Jeg Har Det Fedt. Next is Hundetimen. Try to keep up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_23f2e3234fc7.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "The new Galaxy Brain 3000 is here \u2014 8 cores, 16 threads, and one very aggressive cooling fan that sounds like a jet engi",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_23f2e3234fc7.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "EXTREME VOLUME RADIO FROM THE SCREAMING DIMENSION!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_23f2e3234fc7.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_23f2e3234fc7.wav",
+  "title": "Hundetimen",
+  "prev_title": "Jeg Har Det Fedt",
+  "queue_index": 4,
+  "created_at": 1782852951.3575788,
+  "guild_id": 1402051030828449823
+}

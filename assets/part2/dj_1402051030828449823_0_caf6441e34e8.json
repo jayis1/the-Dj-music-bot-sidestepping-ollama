@@ -1,0 +1,24 @@
+{
+  "dj_text": "NO BRAKES! Swing Time Machine into Suno (6eb7d372\u2026)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_caf6441e34e8.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Brought to you by Sudo Sweat \u2014 the deodorant for when you need root access to your armpits.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_caf6441e34e8.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "\"Ahoy mateys, we're from Dimension Xenon - The Real World Wh",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_caf6441e34e8.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_caf6441e34e8.wav",
+  "title": "Suno (6eb7d372\u2026)",
+  "prev_title": "Swing Time Machine",
+  "queue_index": 0,
+  "created_at": 1776777958.4905849,
+  "guild_id": 1402051030828449823
+}

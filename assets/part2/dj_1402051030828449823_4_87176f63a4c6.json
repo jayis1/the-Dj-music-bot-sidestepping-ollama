@@ -1,0 +1,24 @@
+{
+  "dj_text": "PIPE CLANG! City2musik (Hva Glor Du P\u00e5) out, Suspekt - F\u00f8rst Var De Bange in! Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_87176f63a4c6.wav",
+  "dj_sound_ids": [
+    "metal_pipe_clang.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Suspekt - F\u00f8rst Var De Bange",
+  "prev_title": "City2musik (Hva Glor Du P\u00e5)",
+  "queue_index": 4,
+  "created_at": 1783303107.0210156,
+  "guild_id": 1402051030828449823
+}

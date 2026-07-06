@@ -1,0 +1,22 @@
+{
+  "dj_text": "Forget The Big Bang Theory Intro [Medieval Style Cover]. Here's Backstreet Boys - I Want It That Way [Medieval Style Cover]. I already did.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_979dfef65dab.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Tired of making decisions? Let That Pirate Bot DJ Choose decide for you.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_979dfef65dab.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "You've stumbled onto Nostalgia Overload Radio from the Timel",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_979dfef65dab.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_979dfef65dab.wav",
+  "title": "Backstreet Boys - I Want It That Way [Medieval Style Cover]",
+  "prev_title": "The Big Bang Theory Intro [Medieval Style Cover]",
+  "queue_index": 4,
+  "created_at": 1782693939.145193,
+  "guild_id": 1402051030828449823
+}

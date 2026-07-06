@@ -1,0 +1,22 @@
+{
+  "dj_text": "Next. Suno (a8b1ca79\u2026). After Suno (d6d3b205\u2026). Small but mighty. 4 more in the tank.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_48b2b00eff51.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh. This is the quiet dimension. No talking. No music. Just...",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_48b2b00eff51.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\"Strike up those funky tunes from Dimension K-7, where time'",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_48b2b00eff51.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_48b2b00eff51.wav",
+  "title": "Suno (a8b1ca79\u2026)",
+  "prev_title": "Suno (d6d3b205\u2026)",
+  "queue_index": 1,
+  "created_at": 1776663382.4122565,
+  "guild_id": 1402051030828449823
+}

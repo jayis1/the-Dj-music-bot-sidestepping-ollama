@@ -1,0 +1,24 @@
+{
+  "dj_text": "100% Jesus was beautiful. And Gonzo keeps the vibe alive.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_bd2ce92b102c.wav",
+  "dj_sound_ids": [
+    "dj_stop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This is not a drill. I repeat, this is not a drill. It's a commercial.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_bd2ce92b102c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You've stumbled onto Nostalgia Overload Radio from the Timel",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_bd2ce92b102c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_bd2ce92b102c.wav",
+  "title": "Gonzo",
+  "prev_title": "100% Jesus",
+  "queue_index": 1,
+  "created_at": 1783302865.6238992,
+  "guild_id": 1402051030828449823
+}

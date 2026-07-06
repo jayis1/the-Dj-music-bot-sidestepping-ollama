@@ -1,0 +1,24 @@
+{
+  "dj_text": "Smooth transition! Daft Punk - Get Lucky (Bardcore, Medieval Style Cover) \u2192 Boney M. - Rasputin (Medieval kind of version)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7f8bddfefe5d.wav",
+  "dj_sound_ids": [
+    "cool_dj_drop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[That Pirate Bot DJ Radio Hit Sound Effect] [Loud airhorn blast]  \"Introducing, feudal-tech future!\" said a voice over d",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_7f8bddfefe5d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Welcome, interstellar citizens!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_7f8bddfefe5d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_7f8bddfefe5d.wav",
+  "title": "Boney M. - Rasputin (Medieval kind of version)",
+  "prev_title": "Daft Punk - Get Lucky (Bardcore, Medieval Style Cover)",
+  "queue_index": 4,
+  "created_at": 1782714744.1488583,
+  "guild_id": 1402051030828449823
+}

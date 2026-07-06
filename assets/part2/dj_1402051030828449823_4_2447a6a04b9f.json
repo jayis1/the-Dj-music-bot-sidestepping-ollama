@@ -1,0 +1,24 @@
+{
+  "dj_text": "Linen Ud out. Har Du Glemt Dine Nosser in. No questions.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_2447a6a04b9f.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Har Du Glemt Dine Nosser",
+  "prev_title": "Linen Ud",
+  "queue_index": 4,
+  "created_at": 1783303506.8873606,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Daddy's home! \u00c5rhus V Veteran done, EaggerStunn - Kugledans feat. Geolo G inbound!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_56a23d4d1d68.wav",
+  "dj_sound_ids": [
+    "daddys_home.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Breaking news from That Pirate Bot DJ \u2014 the playlist is in control now. The DJ has been demoted to button-pusher.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_56a23d4d1d68.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_56a23d4d1d68.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_56a23d4d1d68.wav",
+  "title": "EaggerStunn - Kugledans feat. Geolo G",
+  "prev_title": "\u00c5rhus V Veteran",
+  "queue_index": 4,
+  "created_at": 1776973396.3447263,
+  "guild_id": 1402051030828449823
+}

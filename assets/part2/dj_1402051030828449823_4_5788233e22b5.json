@@ -1,0 +1,24 @@
+{
+  "dj_text": "THE ROCK SAYS... Man Kan Ikke Stole P\u00e5 En Pige Med En Lille R\u00f8v! After Jason Derulo - Wiggle feat. Snoop Dogg [Official Music Video]!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_5788233e22b5.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "THIS IS PIRATE RADIO 404 FROM THE VOID! We don't need licenses! We don't need BODIES! We NEED VIBES!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_5788233e22b5.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Attention all dimensional travelers, this is DJ Kite on Freq",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_5788233e22b5.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_5788233e22b5.wav",
+  "title": "Man Kan Ikke Stole P\u00e5 En Pige Med En Lille R\u00f8v",
+  "prev_title": "Jason Derulo - Wiggle feat. Snoop Dogg [Official Music Video]",
+  "queue_index": 4,
+  "created_at": 1776655744.8197224,
+  "guild_id": 1402051030828449823
+}

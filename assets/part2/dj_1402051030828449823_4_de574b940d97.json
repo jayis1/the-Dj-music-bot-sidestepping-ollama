@@ -1,0 +1,14 @@
+{
+  "dj_text": "4Fod- Ja Mojn Doo? Great stuff. But wait \u2014 Jyder m\u00e6' attityder Historien Bag is next!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_de574b940d97.wav",
+  "dj_sound_ids": [
+    "airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Jyder m\u00e6' attityder Historien Bag",
+  "prev_title": "4Fod- Ja Mojn Doo",
+  "queue_index": 4,
+  "created_at": 1776602250.8867395,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,22 @@
+{
+  "dj_text": "Daft Punk - Around The World (Bardcore, Medieval style). Hmm. Now let's ease into Game of Thrones - Main Theme (Medieval | Bardcore Style).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_d2c4349ad838.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention all bards and noble hearts tuned to That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_d2c4349ad838.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "*beeps* Calling all cosmic voyagers!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_d2c4349ad838.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_d2c4349ad838.wav",
+  "title": "Game of Thrones - Main Theme (Medieval | Bardcore Style)",
+  "prev_title": "Daft Punk - Around The World (Bardcore, Medieval style)",
+  "queue_index": 4,
+  "created_at": 1782776494.2928164,
+  "guild_id": 1402051030828449823
+}

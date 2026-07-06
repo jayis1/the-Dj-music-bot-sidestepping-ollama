@@ -2,174 +2,651 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OBS Overlay — {{ bot_name }}</title>
+<title>OBS Overlay — {{ bot_name }} | Neon Stream HUD</title>
 <style>
-/* ── Master HUD Mirror ── */
+/* ════════════════════════════════════════════════════════════
+   NEON STREAM HUD v3.0 — Full Visual Overhaul
+   Cyberpunk glassmorphism + real audio visualizer + particles
+   ════════════════════════════════════════════════════════════ */
+
+:root {
+    --neon-cyan: #00f3ff;
+    --neon-pink: #ff00ff;
+    --neon-purple: #bd00ff;
+    --neon-blue: #0066ff;
+    --neon-green: #00ff88;
+    --neon-red: #ff0044;
+    --gold: #ffd700;
+    --dark-bg: rgba(10, 10, 20, 0.92);
+    --glass-bg: rgba(20, 20, 40, 0.55);
+    --glass-border: rgba(0, 243, 255, 0.15);
+    --text-primary: #ffffff;
+    --text-secondary: #a0a0ff;
+    --text-muted: #6060a0;
+    --font-main: 'Orbitron', 'DejaVu Sans', 'Segoe UI', sans-serif;
+    --font-mono: 'Courier New', monospace;
+    --transition-fast: 0.2s ease;
+    --transition-medium: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    --transition-slow: 0.8s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
 body {
-    /* Set native FFmpeg resolution matching Utils/Youtube_stream.py */
     width: 1280px;
     height: 720px;
-    background: url('/assets/logo.png') center/cover no-repeat;
-    background-color: #111; /* Fallback */
-    font-family: 'DejaVu Sans', 'Segoe UI', 'Inter', -apple-system, sans-serif;
-    color: #fff;
+    background: linear-gradient(135deg, #0a0a14 0%, #1a0a2e 50%, #0a1a2a 100%);
+    font-family: var(--font-main);
+    color: var(--text-primary);
     overflow: hidden;
     position: relative;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    text-shadow: 0 0 10px rgba(0, 243, 255, 0.5);
 }
 
-/* ── FFmpeg Native Coordinate Mapping ── */
-.hud-station {
+/* ── Animated Background Grid ── */
+body::before {
+    content: '';
     position: absolute;
-    left: 450px;
-    top: 150px;
-    font-size: 42px;
-    font-weight: bold;
-    color: white;
-}
-
-.hud-title {
-    position: absolute;
-    left: 450px;
-    top: 210px;
-    font-size: 56px;
-    font-weight: bold;
-    color: gold;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 800px; /* Prevent run-off */
-}
-
-/* ── DJ Indicator Mapping ── */
-.hud-dj {
-    position: absolute;
-    left: 450px;
-    top: 280px;
-    font-size: 36px;
-    font-weight: normal;
-    color: #00FFCC;
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-.hud-dj.visible {
-    opacity: 1;
-}
-
-/* ── SFX Overlay Animation ── */
-.sfx-anim {
-    position: absolute;
-    right: 50px;
-    top: 50px;
-    width: 250px;
-    height: auto;
-    opacity: 0;
-    transform: scale(0.5);
-    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    inset: 0;
+    background:
+        linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    animation: gridMove 20s linear infinite;
     pointer-events: none;
-}
-.sfx-anim.visible {
-    opacity: 1;
-    transform: scale(1);
+    z-index: 0;
 }
 
-/* ── Bottom Ticker Mapping ── */
-.hud-ticker-bg {
+@keyframes gridMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 40px 40px; }
+}
+
+/* ── Scanline Effect ── */
+body::after {
+    content: '';
     position: absolute;
-    left: 0;
-    bottom: 0;
-    width: 1280px;
-    height: 40px;
-    background: rgba(0, 0, 0, 0.6);
+    inset: 0;
+    background: linear-gradient(
+        to bottom,
+        rgba(255,255,255,0),
+        rgba(255,255,255,0) 50%,
+        rgba(0,0,0,0.08) 50%,
+        rgba(0,0,0,0.08)
+    );
+    background-size: 100% 4px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.25;
+}
+
+/* ── Particle Canvas ── */
+#particleCanvas {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ════════════════════════════════════════════════════════════
+   TOP BAR — LIVE badge, clock, station name
+   ════════════════════════════════════════════════════════════ */
+
+.top-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 50px;
     display: flex;
     align-items: center;
-    justify-content: center;
-}
-.hud-ticker-text {
-    font-size: 24px;
-    font-weight: normal;
-    color: white;
-    text-shadow: none; /* FFmpeg didn't specify shadow here natively */
+    justify-content: space-between;
+    padding: 0 30px;
+    z-index: 20;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.6), transparent);
 }
 
-/* ── Album Art (Optional aesthetic carryover from old overlay) ── */
+.top-left {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+/* LIVE Badge */
+.live-badge {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 14px;
+    background: rgba(255, 0, 68, 0.2);
+    border: 1px solid var(--neon-red);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    color: var(--neon-red);
+    text-shadow: 0 0 10px var(--neon-red);
+    box-shadow: 0 0 15px rgba(255, 0, 68, 0.3);
+    animation: livePulse 1.5s ease-in-out infinite;
+}
+
+.live-badge.visible { display: flex; }
+
+.live-badge::before {
+    content: '';
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--neon-red);
+    box-shadow: 0 0 8px var(--neon-red);
+    animation: liveDot 1s ease-in-out infinite;
+}
+
+@keyframes livePulse {
+    0%, 100% { box-shadow: 0 0 15px rgba(255,0,68,0.3); }
+    50% { box-shadow: 0 0 30px rgba(255,0,68,0.5); }
+}
+
+@keyframes liveDot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
+
+/* Clock */
+.clock {
+    font-family: var(--font-mono);
+    font-size: 18px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+}
+
+/* Station name in top bar */
+.top-station {
+    font-size: 16px;
+    font-weight: bold;
+    color: var(--neon-cyan);
+    letter-spacing: 3px;
+    text-shadow: 0 0 10px var(--neon-cyan);
+}
+
+/* ════════════════════════════════════════════════════════════
+   ALBUM ART — Glassmorphism with glow
+   ════════════════════════════════════════════════════════════ */
+
 .art-container {
     position: absolute;
     left: 40px;
-    top: 150px; /* Align to Station title block */
+    top: 80px;
     width: 380px;
     height: 380px;
-    border-radius: 12px;
+    border-radius: 20px;
     overflow: hidden;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-    background: rgba(0,0,0,0.3);
+    box-shadow:
+        0 0 40px rgba(0, 243, 255, 0.35),
+        0 0 80px rgba(189, 0, 255, 0.15),
+        inset 0 0 40px rgba(0, 0, 0, 0.5);
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    border: 2px solid rgba(0, 243, 255, 0.25);
+    z-index: 10;
+    transition: transform var(--transition-medium), box-shadow var(--transition-medium);
 }
+
 .art {
-    width: 100%;
-    height: 100%;
+    width: 100%; height: 100%;
     object-fit: cover;
+    transition: transform var(--transition-slow);
+    animation: albumPulse 4s ease-in-out infinite;
 }
+
+@keyframes albumPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.03); }
+}
+
 .art-placeholder {
-    width: 100%;
-    height: 100%;
+    width: 100%; height: 100%;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(59,130,246,0.3));
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(59, 130, 246, 0.3));
+    font-size: 120px;
+    animation: rotatePlaceholder 20s linear infinite;
 }
 
-/* ── EQ Visualizer (Real-time audio-driven) ── */
+@keyframes rotatePlaceholder {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Art reflection / glow underneath */
+.art-container::after {
+    content: '';
+    position: absolute;
+    bottom: -30px;
+    left: 10%;
+    width: 80%;
+    height: 30px;
+    background: radial-gradient(ellipse, rgba(0, 243, 255, 0.2), transparent 70%);
+    filter: blur(10px);
+}
+
+/* ════════════════════════════════════════════════════════════
+   NOW PLAYING — Scrolling marquee title
+   ════════════════════════════════════════════════════════════ */
+
+.now-playing {
+    position: absolute;
+    left: 460px;
+    top: 80px;
+    width: 760px;
+    z-index: 10;
+}
+
+.np-label {
+    font-size: 14px;
+    color: var(--neon-cyan);
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    text-shadow: 0 0 8px var(--neon-cyan);
+}
+
+.np-station {
+    font-size: 28px;
+    font-weight: bold;
+    color: var(--neon-cyan);
+    text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan);
+    letter-spacing: 3px;
+    margin-bottom: 12px;
+    animation: glowPulse 2s ease-in-out infinite;
+}
+
+@keyframes glowPulse {
+    0%, 100% { text-shadow: 0 0 10px var(--neon-cyan), 0 0 20px var(--neon-cyan); }
+    50% { text-shadow: 0 0 20px var(--neon-cyan), 0 0 40px var(--neon-cyan); }
+}
+
+/* Marquee title — scrolls if too long */
+.np-title-wrapper {
+    overflow: hidden;
+    width: 100%;
+    border-radius: 8px;
+}
+
+.np-title {
+    font-size: 42px;
+    font-weight: bold;
+    color: var(--gold);
+    text-shadow: 0 0 10px rgba(255, 215, 0, 0.8), 0 0 20px rgba(255, 215, 0, 0.4);
+    white-space: nowrap;
+    display: inline-block;
+    padding-right: 60px;
+    animation: slideIn 0.5s ease-out;
+}
+
+.np-title.scrolling {
+    animation: slideIn 0.5s ease-out, marquee 12s linear infinite;
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-50px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(calc(-100% + 760px)); }
+}
+
+.np-artist {
+    font-size: 20px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+    text-shadow: 0 0 6px rgba(160, 160, 255, 0.4);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 760px;
+}
+
+/* ════════════════════════════════════════════════════════════
+   STATUS BADGES — DJ / AI
+   ════════════════════════════════════════════════════════════ */
+
+.status-container {
+    position: absolute;
+    left: 460px;
+    top: 260px;
+    display: flex;
+    gap: 16px;
+    z-index: 10;
+}
+
+.status-badge {
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    backdrop-filter: blur(10px);
+    border: 2px solid transparent;
+    transition: all var(--transition-fast);
+    opacity: 0.25;
+    transform: scale(0.95);
+}
+
+.status-badge.active {
+    opacity: 1;
+    transform: scale(1);
+    animation: badgePulse 1s ease-in-out infinite;
+}
+
+.status-badge.dj {
+    background: rgba(0, 243, 255, 0.15);
+    border-color: var(--neon-cyan);
+    color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.2);
+}
+
+.status-badge.ai {
+    background: rgba(255, 0, 255, 0.15);
+    border-color: var(--neon-pink);
+    color: var(--neon-pink);
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.2);
+}
+
+@keyframes badgePulse {
+    0%, 100% { box-shadow: 0 0 15px currentColor; }
+    50% { box-shadow: 0 0 30px currentColor; }
+}
+
+/* ════════════════════════════════════════════════════════════
+   PROGRESS BAR
+   ════════════════════════════════════════════════════════════ */
+
+.progress-container {
+    position: absolute;
+    left: 460px;
+    top: 320px;
+    width: 760px;
+    z-index: 10;
+}
+
+.progress-bar-bg {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
+    border-radius: 3px;
+    transition: width 0.5s linear;
+    position: relative;
+    box-shadow: 0 0 15px rgba(0, 243, 255, 0.4);
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 40px; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7));
+    animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.progress-time {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 6px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+}
+
+/* ════════════════════════════════════════════════════════════
+   AUDIO VISUALIZER — Real RMS-driven bars
+   ════════════════════════════════════════════════════════════ */
+
 .visualizer {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
     bottom: 60px;
-    width: 600px;
-    height: 70px;
+    width: 1200px;
+    height: 80px;
     display: flex;
     align-items: flex-end;
     justify-content: center;
     gap: 2px;
-    opacity: 0;
-    transition: opacity 0.5s ease;
-    z-index: 10;
-}
-.visualizer.active {
-    opacity: 0.85; /* Slight transparency to blend with background */
+    z-index: 5;
+    opacity: 0.7;
 }
 
 .visualizer-bar {
-    width: 6px;
-    background: linear-gradient(to top, #00FFCC, #a855f7);
+    flex: 1;
+    max-width: 10px;
+    background: linear-gradient(to top, var(--neon-cyan), var(--neon-purple), var(--neon-pink));
     border-radius: 3px 3px 0 0;
-    height: 2px; /* baseline */
-    /* Smooth interpolation — bars slide to new height instead of jumping */
-    transition: height 60ms ease-out;
-    box-shadow: 0 0 6px rgba(0, 255, 204, 0.3);
+    height: 2px;
+    transition: height 80ms ease-out;
+    box-shadow: 0 0 6px currentColor;
     min-height: 2px;
 }
+
+/* ════════════════════════════════════════════════════════════
+   SIDE PANELS — Up Next + Recently Played (glassmorphism)
+   ════════════════════════════════════════════════════════════ */
+
+.side-panel {
+    position: absolute;
+    width: 340px;
+    max-height: 200px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    border-radius: 12px;
+    border: 1px solid var(--glass-border);
+    padding: 15px;
+    z-index: 10;
+    overflow: hidden;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3);
+}
+
+.side-panel h4 {
+    font-size: 13px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--glass-border);
+}
+
+.up-next {
+    right: 20px;
+    top: 80px;
+}
+
+.up-next h4 { color: var(--neon-green); text-shadow: 0 0 8px var(--neon-green); }
+
+.recently-played {
+    right: 20px;
+    top: 300px;
+}
+
+.recently-played h4 { color: var(--neon-purple); text-shadow: 0 0 8px var(--neon-purple); }
+
+.side-panel ul {
+    list-style: none;
+    overflow-y: auto;
+    max-height: 140px;
+}
+
+.side-panel li {
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    animation: fadeIn 0.3s ease;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.up-next li::before {
+    content: counter(queue-counter, decimal-leading-zero);
+    counter-increment: queue-counter;
+    color: var(--neon-green);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    min-width: 20px;
+}
+
+.up-next ul { counter-reset: queue-counter; }
+
+.recently-played li::before {
+    content: '▶';
+    color: var(--neon-pink);
+    font-size: 10px;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateX(15px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+/* Scrollbar */
+.side-panel::-webkit-scrollbar, .side-panel ul::-webkit-scrollbar { width: 4px; }
+.side-panel ul::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+.side-panel ul::-webkit-scrollbar-thumb { background: var(--neon-purple); border-radius: 2px; }
+
+/* ════════════════════════════════════════════════════════════
+   TICKER
+   ════════════════════════════════════════════════════════════ */
+
+.hud-ticker-bg {
+    position: absolute;
+    left: 0; bottom: 0;
+    width: 1280px; height: 40px;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.85), transparent);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-top: 1px solid rgba(0, 243, 255, 0.2);
+    z-index: 10;
+}
+
+.hud-ticker-text {
+    font-size: 16px;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    animation: tickerGlow 3s ease-in-out infinite;
+}
+
+@keyframes tickerGlow {
+    0%, 100% { text-shadow: 0 0 5px rgba(0, 243, 255, 0.3); }
+    50% { text-shadow: 0 0 15px rgba(0, 243, 255, 0.5); }
+}
+
+/* ════════════════════════════════════════════════════════════
+   SFX Animation
+   ════════════════════════════════════════════════════════════ */
+
+.sfx-anim {
+    position: absolute;
+    right: 380px;
+    top: 60px;
+    width: 200px;
+    height: auto;
+    opacity: 0;
+    transform: scale(0.5) rotate(-10deg);
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    pointer-events: none;
+    z-index: 100;
+    filter: drop-shadow(0 0 20px rgba(255, 0, 255, 0.5));
+}
+
+.sfx-anim.visible {
+    opacity: 1;
+    transform: scale(1) rotate(0deg);
+    animation: sfxBounce 0.5s ease-in-out infinite;
+}
+
+@keyframes sfxBounce {
+    0%, 100% { transform: scale(1) rotate(0deg) translateY(0); }
+    50% { transform: scale(1.1) rotate(5deg) translateY(-8px); }
+}
+
+/* ════════════════════════════════════════════════════════════
+   Loading Screen
+   ════════════════════════════════════════════════════════════ */
+
+.loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 20, 0.95);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    transition: opacity 0.5s ease;
+}
+
+.loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+.loading-spinner {
+    width: 70px; height: 70px;
+    border: 3px solid rgba(0, 243, 255, 0.15);
+    border-top-color: var(--neon-cyan);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    box-shadow: 0 0 30px rgba(0, 243, 255, 0.3);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+    position: absolute;
+    bottom: 38%;
+    font-size: 20px;
+    color: var(--neon-cyan);
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    animation: blink 1s ease-in-out infinite;
+}
+
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
 
 </style>
 </head>
 <body>
 
-    <!-- Native HUD Elements -->
-    <div class="hud-station" id="station">LOADING</div>
-    <div class="hud-title" id="title">Waiting for playback…</div>
-    
-    <div class="hud-dj" id="speakingLabel">🎙️ DJ SPEAKING...</div>
+    <!-- Loading Screen -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">Initializing...</div>
+    </div>
 
-    <!-- Sound Effect Animation -->
-    <img id="sfxAnim" class="sfx-anim" src="/assets/giphy.gif" alt="SFX Playing!">
+    <!-- Particle Canvas -->
+    <canvas id="particleCanvas"></canvas>
 
-    <!-- Dynamic Audio Waveform Visualizer -->
-    <div class="visualizer" id="visualizer"></div>
-
-    <!-- Ticker Box -->
-    <div class="hud-ticker-bg">
-        <div class="hud-ticker-text" id="tickerText">Initializing Stream Protocol...</div>
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <div class="top-left">
+            <div class="live-badge" id="liveBadge">LIVE</div>
+            <div class="top-station" id="topStation">MBOT RADIO</div>
+        </div>
+        <div class="clock" id="clock">--:--</div>
     </div>
 
     <!-- Album Art -->
@@ -177,170 +654,367 @@ body {
         <img class="art" id="art" src="" alt="" style="display:none;">
         <div class="art-placeholder" id="artPlaceholder">🎵</div>
     </div>
-    
-    <!-- Intro Sequence Video -->
-    <video id="introVideo" style="display: none; position: absolute; z-index: 9999; top: 0; left: 0; width: 1280px; height: 720px; object-fit: cover;" autoplay loop muted>
-        <source src="/assets/intro.mp4" type="video/mp4">
-    </video>
+
+    <!-- Now Playing -->
+    <div class="now-playing">
+        <div class="np-label">Now Playing</div>
+        <div class="np-station" id="station">LOADING</div>
+        <div class="np-title-wrapper">
+            <div class="np-title" id="title">Waiting for playback...</div>
+        </div>
+        <div class="np-artist" id="artist"></div>
+    </div>
+
+    <!-- Status Badges -->
+    <div class="status-container">
+        <div class="status-badge dj" id="djBadge">🎙️ DJ</div>
+        <div class="status-badge ai" id="aiBadge">🤖 AI</div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-container">
+        <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressFill" style="width: 0%;"></div>
+        </div>
+        <div class="progress-time">
+            <span id="currentTime">0:00</span>
+            <span id="totalTime">0:00</span>
+        </div>
+    </div>
+
+    <!-- SFX Animation -->
+    <img id="sfxAnim" class="sfx-anim" src="/assets/giphy.gif" alt="SFX Playing!">
+
+    <!-- Audio Visualizer -->
+    <div class="visualizer" id="visualizer"></div>
+
+    <!-- Up Next -->
+    <div class="side-panel up-next" id="upNextPanel">
+        <h4>Up Next</h4>
+        <ul id="upNextList">
+            <li style="color: var(--text-muted);">Queue empty</li>
+        </ul>
+    </div>
+
+    <!-- Recently Played -->
+    <div class="side-panel recently-played" id="recentlyPlayedPanel">
+        <h4>Recently Played</h4>
+        <ul id="recentTracks">
+            <li style="color: var(--text-muted);">No history yet</li>
+        </ul>
+    </div>
+
+    <!-- Ticker -->
+    <div class="hud-ticker-bg">
+        <div class="hud-ticker-text" id="tickerText">Initializing Stream Protocol...</div>
+    </div>
 
 <script>
+// ════════════════════════════════════════════════════════════
+// NEON STREAM HUD — JavaScript Controller
+// ════════════════════════════════════════════════════════════
+
 // ── State ──
-let prevState = { playing: false, title: null, dj_speaking: false, ai_speaking: false, booting: false };
-let pollInterval = 1000;
+let prevState = {
+    title: null,
+    station: null,
+    artist: null,
+};
+const POLL_INTERVAL = 1000;
+const VISUALIZER_BARS = 64;
 
-// ── Elements ──
-const station = document.getElementById('station');
-const title = document.getElementById('title');
-const speakingLabel = document.getElementById('speakingLabel');
-const sfxAnim = document.getElementById('sfxAnim');
-const visualizer = document.getElementById('visualizer');
-const tickerText = document.getElementById('tickerText');
-const art = document.getElementById('art');
-const artPlaceholder = document.getElementById('artPlaceholder');
-const introVideo = document.getElementById('introVideo');
+// ── DOM Elements ──
+const $ = id => document.getElementById(id);
+const station = $('station');
+const topStation = $('topStation');
+const title = $('title');
+const artistEl = $('artist');
+const djBadge = $('djBadge');
+const aiBadge = $('aiBadge');
+const progressFill = $('progressFill');
+const currentTimeEl = $('currentTime');
+const totalTimeEl = $('totalTime');
+const sfxAnim = $('sfxAnim');
+const visualizer = $('visualizer');
+const tickerText = $('tickerText');
+const art = $('art');
+const artPlaceholder = $('artPlaceholder');
+const loadingOverlay = $('loadingOverlay');
+const recentTracksEl = $('recentTracks');
+const upNextList = $('upNextList');
+const liveBadge = $('liveBadge');
+const clock = $('clock');
 
-// ── Initialize EQ Visualizer Bars ──────────────────────────────────────
-// Create 64 bars matching the 64 RMS values from PCMBroadcaster.
-// The bars map directly: bar[i] = rms_history[i], showing ~1.28s of waveform.
-const NUM_BARS = 64;
-const vizBars = [];
-for (let i = 0; i < NUM_BARS; i++) {
-    let bar = document.createElement('div');
-    bar.className = 'visualizer-bar';
-    visualizer.appendChild(bar);
-    vizBars.push(bar);
+// ── Initialize Visualizer Bars ──
+function initVisualizer() {
+    visualizer.innerHTML = '';
+    for (let i = 0; i < VISUALIZER_BARS; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'visualizer-bar';
+        bar.style.height = '2px';
+        visualizer.appendChild(bar);
+    }
 }
 
-// Target heights for the visualizer bars (updated from API, applied via rAF)
-let vizTargetHeights = new Float32Array(NUM_BARS); // 0.0–1.0
-let vizCurrentHeights = new Float32Array(NUM_BARS); // smoothed current values
+// ── Update Visualizer with real RMS data ──
+let visualizerBars = [];
+function updateVisualizer(rmsHistory, isPlaying) {
+    if (!visualizerBars.length)
+        visualizerBars = visualizer.querySelectorAll('.visualizer-bar');
+
+    if (!isPlaying || !rmsHistory || !rmsHistory.length) {
+        visualizerBars.forEach(bar => bar.style.height = '2px');
+        return;
+    }
+
+    // Map RMS history (64 samples) to bars
+    visualizerBars.forEach((bar, i) => {
+        const idx = Math.floor(i * rmsHistory.length / VISUALIZER_BARS);
+        const rms = rmsHistory[idx] || 0;
+        // Scale: rms is 0.0–1.0, map to 2–80px with some gain
+        const height = Math.max(2, Math.min(80, rms * 120));
+        bar.style.height = height + 'px';
+    });
+}
 
 // ── Format time ──
-function fmt(sec) {
-    if (!sec || sec <= 0) return '0:00';
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return m + ':' + (s < 10 ? '0' : '') + s;
+function formatTime(seconds) {
+    if (!seconds || isNaN(seconds)) return '0:00';
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
-// ── Update loop ──
-async function pollState() {
+// ── Update clock ──
+function updateClock() {
+    const now = new Date();
+    const h = now.getHours().toString().padStart(2, '0');
+    const m = now.getMinutes().toString().padStart(2, '0');
+    const s = now.getSeconds().toString().padStart(2, '0');
+    clock.textContent = `${h}:${m}:${s}`;
+}
+
+// ── Check if title needs marquee scroll ──
+function applyMarquee() {
+    requestAnimationFrame(() => {
+        if (title.scrollWidth > title.parentElement.clientWidth) {
+            title.classList.add('scrolling');
+        } else {
+            title.classList.remove('scrolling');
+        }
+    });
+}
+
+// ── Update Up Next queue ──
+function updateUpNext(queue) {
+    if (!queue || !queue.length) {
+        upNextList.innerHTML = '<li style="color: var(--text-muted);">Queue empty</li>';
+        return;
+    }
+    upNextList.innerHTML = queue.map(item => {
+        const dur = item.duration ? ` <span style="color:var(--text-muted);">(${formatTime(item.duration)})</span>` : '';
+        const titleText = escapeHtml(item.title || 'Unknown');
+        return `<li><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${titleText}</span>${dur}</li>`;
+    }).join('');
+}
+
+// ── Update Recently Played ──
+function updateRecentlyPlayed(history) {
+    if (!history || !history.length) {
+        recentTracksEl.innerHTML = '<li style="color: var(--text-muted);">No history yet</li>';
+        return;
+    }
+    recentTracksEl.innerHTML = history.map(item => {
+        const time = item.played_at || '';
+        const titleText = escapeHtml(item.title || 'Unknown');
+        return `<li><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;">${titleText}</span>${time ? `<span style="color:var(--text-muted);font-size:11px;">${time}</span>` : ''}</li>`;
+    }).join('');
+}
+
+// ── Escape HTML ──
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ── Main Update ──
+async function updateOverlay() {
     try {
-        const res = await fetch('/api/overlay');
-        const data = await res.json();
-        updateOverlay(data);
-    } catch (e) {
-        // Silently retry
-    }
-    setTimeout(pollState, pollInterval);
-}
+        const response = await fetch('/api/overlay');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
 
-function updateOverlay(data) {
-    // Top Titles
-    station.textContent = data.station_name || 'MBOT RADIO';
-    title.textContent = data.title || 'Waiting for playback…';
+        // ── Station Name ──
+        const stationName = data.station_name || 'MBot Radio';
+        if (stationName !== prevState.station) {
+            station.textContent = stationName;
+            topStation.textContent = stationName.toUpperCase();
+            prevState.station = stationName;
+        }
 
-    if (data.paused) {
-        title.innerHTML = `${data.title || 'Waiting'} <span style="font-size: 32px; color: #ff5555; vertical-align: middle;">[PAUSED]</span>`;
-    }
-    
-    // Waveform State — show/hide + feed RMS data to bars
-    if (data.playing && !data.paused) {
-        visualizer.classList.add('active');
-        // Update target heights from RMS history
-        if (data.rms_history && data.rms_history.length === NUM_BARS) {
-            for (let i = 0; i < NUM_BARS; i++) {
-                vizTargetHeights[i] = data.rms_history[i];
+        // ── Title ──
+        if (data.title && data.title !== prevState.title) {
+            title.style.animation = 'none';
+            title.offsetHeight; // force reflow
+            title.style.animation = 'slideIn 0.5s ease-out';
+            title.textContent = data.title;
+            prevState.title = data.title;
+            applyMarquee();
+
+            // Album art
+            if (data.thumbnail) {
+                art.src = data.thumbnail;
+                art.onload = () => {
+                    art.style.display = 'block';
+                    artPlaceholder.style.display = 'none';
+                };
+                art.onerror = () => {
+                    art.style.display = 'none';
+                    artPlaceholder.style.display = 'flex';
+                };
+            } else {
+                art.style.display = 'none';
+                artPlaceholder.style.display = 'flex';
             }
         }
-    } else {
-        visualizer.classList.remove('active');
-        // Fade bars to zero when not playing
-        vizTargetHeights.fill(0);
-    }
-    
-    // Boot Sequence Logic
-    if (data.booting) {
-        if (!prevState.booting) {
-            introVideo.style.display = 'block';
-            introVideo.play();
+
+        // ── Artist ──
+        const artistText = data.artist || '';
+        if (artistText !== prevState.artist) {
+            artistEl.textContent = artistText;
+            prevState.artist = artistText;
         }
-        tickerText.textContent = "⚙️ Booting Auto-DJ Mainframes... Generating opening sequence (Waiting for 25 tracks)";
-    } else {
-        if (prevState.booting) {
-            introVideo.style.display = 'none';
-            introVideo.pause();
-        }
-        // Normal Ticker Text Logic
-        let elapsed = fmt(data.elapsed);
-        let duration = fmt(data.duration);
-        
-        if (data.playing && data.title) {
-            tickerText.textContent = `▶ NOW PLAYING: ${data.title}  |  ${elapsed} / ${duration}`;
+
+        // ── Progress ──
+        const elapsed = data.elapsed || 0;
+        const duration = data.duration || 0;
+        if (duration > 0) {
+            const pct = Math.min(100, (elapsed / duration) * 100);
+            progressFill.style.width = pct + '%';
         } else {
-            tickerText.textContent = "Radio sequence initialized — waiting in standby...";
+            progressFill.style.width = '0%';
         }
-    }
+        currentTimeEl.textContent = formatTime(elapsed);
+        totalTimeEl.textContent = formatTime(duration);
 
-    // Speaking Hook Indicator
-    const isSpeaking = data.dj_speaking || data.ai_speaking;
-    if (isSpeaking) {
-        speakingLabel.classList.add('visible');
-        if (data.ai_speaking) {
-            speakingLabel.textContent = '🃏 AI SIDE HOST SPEAKING...';
-            speakingLabel.style.color = '#a855f7';
+        // ── DJ / AI Badges ──
+        djBadge.classList.toggle('active', !!data.dj_speaking);
+        aiBadge.classList.toggle('active', !!data.ai_speaking);
+
+        // ── SFX ──
+        if (data.sfx_active && !sfxAnim.classList.contains('visible')) {
+            // SFX just activated — pick a random meme GIF
+            const memeGifs = [
+                '/assets/dans trollface.gif',
+                '/assets/dans trolface2.gif',
+                '/assets/lol troll.gif',
+                '/assets/mad troll.gif',
+                '/assets/sound.gif',
+                '/assets/sounds.gif',
+            ];
+            sfxAnim.src = memeGifs[Math.floor(Math.random() * memeGifs.length)];
+        }
+        sfxAnim.classList.toggle('visible', !!data.sfx_active);
+
+        // ── Ticker ──
+        let ticker = '';
+        if (data.yt_live_active) {
+            ticker = '🔴 YouTube Live Stream Active';
+        } else if (data.booting) {
+            ticker = '⏳ Booting up — please wait...';
+        } else if (data.playing) {
+            ticker = `🎵 ${data.title || 'Now playing'} — ${data.station_name || 'MBot Radio'}`;
+        } else if (data.paused) {
+            ticker = '⏸️ Playback paused';
         } else {
-            speakingLabel.textContent = '🎙️ DJ SPEAKING...';
-            speakingLabel.style.color = '#00FFCC';
+            ticker = '⏳ Waiting for tracks to be queued...';
         }
-    } else {
-        speakingLabel.classList.remove('visible');
-    }
+        tickerText.textContent = ticker;
 
-    // SFX Animation Hook
-    if (data.sfx_active) {
-        sfxAnim.classList.add('visible');
-    } else {
-        sfxAnim.classList.remove('visible');
-    }
+        // ── LIVE Badge ──
+        liveBadge.classList.toggle('visible', !!data.yt_live_active);
 
-    // Album Art Bridge
-    if (data.thumbnail && data.thumbnail !== prevState.thumbnail) {
-        art.src = data.thumbnail;
-        art.style.display = 'block';
-        artPlaceholder.style.display = 'none';
-    } else if (!data.thumbnail) {
-        art.style.display = 'none';
-        artPlaceholder.style.display = 'flex';
-    }
+        // ── Up Next ──
+        updateUpNext(data.queue);
 
-    prevState = data;
+        // ── Recently Played ──
+        updateRecentlyPlayed(data.recently_played);
+
+        // ── Visualizer ──
+        updateVisualizer(data.rms_history, data.playing && !data.dj_speaking && !data.ai_speaking);
+
+        // ── Hide loading ──
+        loadingOverlay.classList.add('hidden');
+
+    } catch (error) {
+        console.error('Overlay update failed:', error);
+        tickerText.textContent = '⚠️ Connection lost — reconnecting...';
+    }
 }
 
-// Boot Pulse
-pollState();
+// ════════════════════════════════════════════════════════════
+// PARTICLE SYSTEM — Floating neon particles
+// ════════════════════════════════════════════════════════════
 
-// ── Visualizer Animation Loop ──────────────────────────────────────
-// Smoothly interpolate bar heights toward the target RMS values.
-// This runs every frame (~60fps) for buttery-smooth bars, while the
-// API data arrives every ~1s. The interpolation bridges the gap.
-const VIZ_MAX_HEIGHT_PX = 70;  // matches CSS .visualizer height
-const VIZ_SMOOTHING = 0.25;     // 0=instant, 1=never move (0.25 = snappy but smooth)
+const canvas = $('particleCanvas');
+const ctx = canvas.getContext('2d');
+let particles = [];
+const PARTICLE_COUNT = 40;
+const PARTICLE_COLORS = ['#00f3ff', '#ff00ff', '#bd00ff', '#0066ff'];
 
-function animateVisualizer() {
-    for (let i = 0; i < NUM_BARS; i++) {
-        // Smooth interpolation toward target
-        vizCurrentHeights[i] += (vizTargetHeights[i] - vizCurrentHeights[i]) * VIZ_SMOOTHING;
-
-        // Scale: RMS 0.0–1.0 → height 2px–70px
-        // Apply a non-linear curve (sqrt) so quiet audio still shows visible movement
-        const normalized = Math.sqrt(Math.max(0, vizCurrentHeights[i]));
-        const heightPx = Math.max(2, normalized * VIZ_MAX_HEIGHT_PX);
-        vizBars[i].style.height = heightPx + 'px';
+function initParticles() {
+    canvas.width = 1280;
+    canvas.height = 720;
+    particles = [];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+        particles.push({
+            x: Math.random() * 1280,
+            y: Math.random() * 720,
+            vx: (Math.random() - 0.5) * 0.3,
+            vy: (Math.random() - 0.5) * 0.3,
+            size: Math.random() * 2 + 0.5,
+            color: PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)],
+            alpha: Math.random() * 0.4 + 0.1,
+        });
     }
-    requestAnimationFrame(animateVisualizer);
 }
-requestAnimationFrame(animateVisualizer);
+
+function animateParticles() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles.forEach(p => {
+        p.x += p.vx;
+        p.y += p.vy;
+        // Wrap edges
+        if (p.x < 0) p.x = canvas.width;
+        if (p.x > canvas.width) p.x = 0;
+        if (p.y < 0) p.y = canvas.height;
+        if (p.y > canvas.height) p.y = 0;
+
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fillStyle = p.color;
+        ctx.globalAlpha = p.alpha;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = p.color;
+        ctx.fill();
+    });
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    requestAnimationFrame(animateParticles);
+}
+
+// ── Initialize ──
+document.addEventListener('DOMContentLoaded', () => {
+    initVisualizer();
+    initParticles();
+    animateParticles();
+    updateClock();
+    updateOverlay();
+    setInterval(updateOverlay, POLL_INTERVAL);
+    setInterval(updateClock, 1000);
+});
+
 </script>
 </body>
 </html>

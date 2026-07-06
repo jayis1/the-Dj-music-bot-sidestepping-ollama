@@ -1,0 +1,22 @@
+{
+  "dj_text": "John Newman - Love Me Again (Medieval | Bardcore Style) was so good I temporarily forgot how to DJ! But I'm back! The Lion Sleeps Tonight - The Tokens (Medieval version)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_b4b823871fdf.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Smooth station ID drop] That Pirate Bot DJ Radio is where history meets haute couture \u2014 {cool_dj_drop}!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_b4b823871fdf.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "[Smooth Jazz FM] Welcome, welcome everyone!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_b4b823871fdf.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_b4b823871fdf.wav",
+  "title": "The Lion Sleeps Tonight - The Tokens (Medieval version)",
+  "prev_title": "John Newman - Love Me Again (Medieval | Bardcore Style)",
+  "queue_index": 4,
+  "created_at": 1782733615.902021,
+  "guild_id": 1402051030828449823
+}

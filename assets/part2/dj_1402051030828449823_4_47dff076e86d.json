@@ -1,0 +1,24 @@
+{
+  "dj_text": "METAL PIPE! That Pirate Bot DJ Radio! That was Sing, Sing, Sing - Benny Goodman [Bardcore | Medieval version]. Let's keep the mood going with Clint Eastwood (Western/Mariachi Style).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_47dff076e86d.wav",
+  "dj_sound_ids": [
+    "jixaw_metal_pipe_falling_sound.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey tunes lovers! Are you ready for your very own personal pirate bot DJ, Botnizzy?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_47dff076e86d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} Welcome to Starry Serenade from Cosmic Quarte",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_47dff076e86d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_47dff076e86d.wav",
+  "title": "Clint Eastwood (Western/Mariachi Style)",
+  "prev_title": "Sing, Sing, Sing - Benny Goodman [Bardcore | Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782780199.3457506,
+  "guild_id": 1402051030828449823
+}

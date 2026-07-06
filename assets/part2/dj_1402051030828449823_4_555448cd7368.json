@@ -1,0 +1,24 @@
+{
+  "dj_text": "REHEHEHE! Kiss From A Rose - Medieval Style was funny. Blue ( Da Ba Dee ) - Medieval Style will be funnier!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_555448cd7368.wav",
+  "dj_sound_ids": [
+    "rehehehe.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, mateys! Feeling a bit sea-sick of normal smooth jazz?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_555448cd7368.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Smooth Jazz FM from Dimension K-7, coming in hot with a new",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_555448cd7368.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_555448cd7368.wav",
+  "title": "Blue ( Da Ba Dee ) - Medieval Style",
+  "prev_title": "Kiss From A Rose - Medieval Style",
+  "queue_index": 4,
+  "created_at": 1782745976.872538,
+  "guild_id": 1402051030828449823
+}

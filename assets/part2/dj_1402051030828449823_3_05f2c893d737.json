@@ -1,0 +1,24 @@
+{
+  "dj_text": "Someone left the radio on! It's That Pirate Bot DJ! Kalinka (Medieval Cover) is dead. Long live Stayin' Alive (Medieval Cover). Or whatever. A couple more lined up after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_3_05f2c893d737.wav",
+  "dj_sound_ids": [
+    "discord_leave_noise.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "THIS IS PIRATE RADIO 404 FROM THE VOID! We don't need licenses! We don't need BODIES! We NEED VIBES!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_3_05f2c893d737.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_3_05f2c893d737.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_3_05f2c893d737.wav",
+  "title": "Stayin' Alive (Medieval Cover)",
+  "prev_title": "Kalinka (Medieval Cover)",
+  "queue_index": 3,
+  "created_at": 1782685912.1580794,
+  "guild_id": 1402051030828449823
+}

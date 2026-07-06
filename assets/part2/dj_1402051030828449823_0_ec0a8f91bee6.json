@@ -1,0 +1,14 @@
+{
+  "dj_text": "Soft landing. Suspekt - S\u00f8ndagbarn feat. Lukas Graham \u2192 Penge Promo Presse. Got a nice little set going. 5 more after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_ec0a8f91bee6.wav",
+  "dj_sound_ids": [
+    "ding_sound_effect_2.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Penge Promo Presse",
+  "prev_title": "Suspekt - S\u00f8ndagbarn feat. Lukas Graham",
+  "queue_index": 0,
+  "created_at": 1776632475.9523456,
+  "guild_id": 1402051030828449823
+}

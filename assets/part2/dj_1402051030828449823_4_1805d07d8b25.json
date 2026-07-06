@@ -1,0 +1,24 @@
+{
+  "dj_text": "That Pirate Bot DJ Radio. Deal with it. I Want To Break Free (Medieval Style) fades. Land Down Under (Medieval Style) emerges. Let it wash over you. Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_1805d07d8b25.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, listeners! This just in from out back at That Pirate Bot DJ Radio...",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_1805d07d8b25.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} From GrooveStream FM on Dimension Ouroborus P",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_1805d07d8b25.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "We're back. That was NOT a crossover event. That was a dimensional bleed.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_1805d07d8b25.wav",
+  "title": "Land Down Under (Medieval Style)",
+  "prev_title": "I Want To Break Free (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782700863.9434028,
+  "guild_id": 1402051030828449823
+}

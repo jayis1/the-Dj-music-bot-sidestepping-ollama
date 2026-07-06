@@ -1,0 +1,24 @@
+{
+  "dj_text": "06-gaden-br\u00e6nder-gaden-ryger was just the appetizer. Suno (7020c372\u2026) is the main course!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_79cee4f92c7c.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Are you still listening? Good. Don't touch that dial. Or do. We literally can't stop you. You're in control.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_79cee4f92c7c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Welcome, one and all!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_79cee4f92c7c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_79cee4f92c7c.wav",
+  "title": "Suno (7020c372\u2026)",
+  "prev_title": "06-gaden-br\u00e6nder-gaden-ryger",
+  "queue_index": 0,
+  "created_at": 1776788081.4725642,
+  "guild_id": 1402051030828449823
+}

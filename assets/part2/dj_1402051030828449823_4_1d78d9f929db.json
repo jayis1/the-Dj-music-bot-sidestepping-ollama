@@ -1,0 +1,15 @@
+{
+  "dj_text": "That Pirate DJ Radio Bot Radio. Deal with it. Ingen Diskussion (feat. Johnson, L.O.C.) (Remix) \u2192 Amore Infelice. Smooth transition!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_1d78d9f929db.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3",
+    "cool_dj_drop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Amore Infelice",
+  "prev_title": "Ingen Diskussion (feat. Johnson, L.O.C.) (Remix)",
+  "queue_index": 4,
+  "created_at": 1776627670.4997644,
+  "guild_id": 1402051030828449823
+}

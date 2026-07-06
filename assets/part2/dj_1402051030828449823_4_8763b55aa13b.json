@@ -1,0 +1,25 @@
+{
+  "dj_text": "This is That Pirate Bot DJ Radio and we are NOT stopping! Regrettably. That was Heathens [Bardcore / Medieval Style Instrumental Cover]. Now ease into Sherlock BBC (Medieval version).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_8763b55aa13b.wav",
+  "dj_sound_ids": [
+    "we_are_charlie_kirk_phone.mp3",
+    "dj_scratch.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Houston, we've got a bubonic outbreak at 'Pirate Bot DJ Radio.' This ain\u2019t your usual frequency \u2013 welcome to Aetherwave",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_8763b55aa13b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Ahoy, listeners of Intergalactic Groove!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_8763b55aa13b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_8763b55aa13b.wav",
+  "title": "Sherlock BBC (Medieval version)",
+  "prev_title": "Heathens [Bardcore / Medieval Style Instrumental Cover]",
+  "queue_index": 4,
+  "created_at": 1782783417.3802636,
+  "guild_id": 1402051030828449823
+}

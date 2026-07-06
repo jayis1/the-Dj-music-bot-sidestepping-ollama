@@ -1,0 +1,24 @@
+{
+  "dj_text": "NO BRAKES! Vil Du Med\u2026 into Fang Mig I En Brandert!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_1d0afe0e0141.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Bingo Night Radio from the Eternal Community Center! Coming to you live from Kosmos B-12! B-7! I-22! N-34!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_2_1d0afe0e0141.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Underground Frequency from Below.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_2_1d0afe0e0141.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_2_1d0afe0e0141.wav",
+  "title": "Fang Mig I En Brandert",
+  "prev_title": "Vil Du Med\u2026",
+  "queue_index": 2,
+  "created_at": 1782852364.9559186,
+  "guild_id": 1402051030828449823
+}

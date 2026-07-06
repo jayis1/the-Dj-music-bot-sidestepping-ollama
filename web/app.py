@@ -2500,6 +2500,24 @@ def api_overlay_state():
             "audio_level": round(audio_level, 4),
             "audio_level_peak": round(audio_level_peak, 4),
             "rms_history": [round(v, 4) for v in rms_history],
+            # Up-next queue (first 5 items)
+            "queue": [
+                {
+                    "title": getattr(item, "title", "Unknown"),
+                    "duration": getattr(item, "duration", None),
+                    "thumbnail": getattr(item, "thumbnail", None),
+                }
+                for item in (music.peek_queue(gid) if music else [])[:5]
+            ],
+            # Recently played history (first 5)
+            "recently_played": music.recently_played.get(gid, [])[:5]
+            if music
+            else [],
+            # Uploader / artist if available
+            "artist": getattr(current, "uploader", None)
+            or getattr(current, "channel", None)
+            if current
+            else None,
         }
     )
 

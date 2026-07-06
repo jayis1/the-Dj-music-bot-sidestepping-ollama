@@ -1,0 +1,24 @@
+{
+  "dj_text": "NovaJane in the booth on That Pirate Bot DJ Radio. Another one! From Suno (e9232f68\u2026) to Suno (fb4b4eca\u2026)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_0ff39e65af5b.wav",
+  "dj_sound_ids": [
+    "another_one.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Truth Frequency Radio from the Mirror Dimension. Your moon isn't real. OUR moon has teeth.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_0ff39e65af5b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Greetings from Machine Kosmos!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_0ff39e65af5b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_0ff39e65af5b.wav",
+  "title": "Suno (fb4b4eca\u2026)",
+  "prev_title": "Suno (e9232f68\u2026)",
+  "queue_index": 4,
+  "created_at": 1776740340.1680655,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Meowrgh! That Pirate Bot DJ Radio is ALIVE! Moving on from GANGSTA'S PARADISE | Medieval Bardcore Version to HALLELUJAH | Medieval Bardcore Version. You'll survive. Probably.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_9436343aa3d0.wav",
+  "dj_sound_ids": [
+    "meowrgh.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Introducing [Channel-X]\u2019s latest sensation, \u201cDimensional Frequencies\u201d \u2013 where reality meets fantasy!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_9436343aa3d0.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Welcome to Mirror Sound Waves \u2014 where reality is not just wa",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_9436343aa3d0.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_9436343aa3d0.wav",
+  "title": "HALLELUJAH | Medieval Bardcore Version",
+  "prev_title": "GANGSTA'S PARADISE | Medieval Bardcore Version",
+  "queue_index": 4,
+  "created_at": 1782786436.6244266,
+  "guild_id": 1402051030828449823
+}

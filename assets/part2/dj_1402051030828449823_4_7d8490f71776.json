@@ -1,0 +1,15 @@
+{
+  "dj_text": "YEAH BOI! That Pirate DJ Radio Bot Radio in the house! MLG TRANSITION! Nik & Jay - En Dag Tilbage (Officiel musikvideo) \u2192 hasan shah - Tyveri ft. Gilli!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7d8490f71776.wav",
+  "dj_sound_ids": [
+    "yeah_boiii_i_i_i.mp3",
+    "mlg_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "hasan shah - Tyveri ft. Gilli",
+  "prev_title": "Nik & Jay - En Dag Tilbage (Officiel musikvideo)",
+  "queue_index": 4,
+  "created_at": 1776640179.3811564,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "DRAW! 07-kush-konto-blitz done. Suno (6b07fdf3\u2026) incoming!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_34abee6e4f88.wav",
+  "dj_sound_ids": [
+    "pistol_shot.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Sponsored by CloudStoragePlus \u2014 we store your files in the cloud. Which cloud? Doesn't matter. They're all the same.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_34abee6e4f88.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\ud83d\udea8 Hey there, cosmic cats!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_34abee6e4f88.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_34abee6e4f88.wav",
+  "title": "Suno (6b07fdf3\u2026)",
+  "prev_title": "07-kush-konto-blitz",
+  "queue_index": 0,
+  "created_at": 1776787603.0737848,
+  "guild_id": 1402051030828449823
+}

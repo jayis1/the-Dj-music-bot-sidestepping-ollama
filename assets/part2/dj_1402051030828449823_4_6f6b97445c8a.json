@@ -1,0 +1,22 @@
+{
+  "dj_text": "*NSYNC - Bye Bye Bye [Bardcore / Medieval Cover] - Soundtrack from Deadpool & Wolverine. And now, I'll Make A Man Out Of You - Mulan [Bardcore | Medieval version]. Take a breath.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6f6b97445c8a.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "**Calling all pirates!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_6f6b97445c8a.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} Hear me out, {im_your_djs}, this is Galactic",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_6f6b97445c8a.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_6f6b97445c8a.wav",
+  "title": "I'll Make A Man Out Of You - Mulan [Bardcore | Medieval version]",
+  "prev_title": "*NSYNC - Bye Bye Bye [Bardcore / Medieval Cover] - Soundtrack from Deadpool & Wolverine",
+  "queue_index": 4,
+  "created_at": 1782779255.5846148,
+  "guild_id": 1402051030828449823
+}

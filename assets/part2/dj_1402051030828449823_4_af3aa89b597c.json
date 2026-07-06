@@ -1,0 +1,14 @@
+{
+  "dj_text": "Is that a good transition? YES KING! Tr\u00e6t Af Pis \u2192 Det Holder!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_af3aa89b597c.wav",
+  "dj_sound_ids": [
+    "is_that_d_good_yes_king.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Det Holder",
+  "prev_title": "Tr\u00e6t Af Pis",
+  "queue_index": 4,
+  "created_at": 1776596455.7988522,
+  "guild_id": 1402051030828449823
+}

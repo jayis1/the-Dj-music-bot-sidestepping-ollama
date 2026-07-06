@@ -1,0 +1,24 @@
+{
+  "dj_text": "NEWS FLASH! WHAT A WONDERFUL WORLD | Medieval Bardcore Version | Louis Armstrong vs Beedle the Bardcore out, HOTLINE BLING | Medieval Bardcore Version | Drake in!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6cbfc2f0a45b.wav",
+  "dj_sound_ids": [
+    "news_intro_maximilien__1801238420_2.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, listeners! We're now tuning into Hotline Blaring \u2014 your new weekend obsession on That Pirate Bot DJ Radio with Drak",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_6cbfc2f0a45b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} Klang Groove Zenith from Kosmos Prime Pair Be",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_6cbfc2f0a45b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_6cbfc2f0a45b.wav",
+  "title": "HOTLINE BLING | Medieval Bardcore Version | Drake",
+  "prev_title": "WHAT A WONDERFUL WORLD | Medieval Bardcore Version | Louis Armstrong vs Beedle the Bardcore",
+  "queue_index": 4,
+  "created_at": 1782790644.9920363,
+  "guild_id": 1402051030828449823
+}

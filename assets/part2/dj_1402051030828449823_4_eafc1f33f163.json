@@ -1,0 +1,22 @@
+{
+  "dj_text": "Moving on from Imagine Dragons - Radioactive (Medieval kind of version) to Rolling Stones - Paint It Black (Medieval Instrumental Version). You'll survive. Probably.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_eafc1f33f163.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Sailors, hoist your spirits high and tune into our latest beacon on air \u2014 AHOY!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_eafc1f33f163.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Boom, welcome aboard Galactic Groove Wave from Paradox Prime",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_eafc1f33f163.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_eafc1f33f163.wav",
+  "title": "Rolling Stones - Paint It Black (Medieval Instrumental Version)",
+  "prev_title": "Imagine Dragons - Radioactive (Medieval kind of version)",
+  "queue_index": 4,
+  "created_at": 1782713499.3628905,
+  "guild_id": 1402051030828449823
+}

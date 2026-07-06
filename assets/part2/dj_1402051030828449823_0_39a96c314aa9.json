@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Reefer Royale. But Suno (2ba9ea53\u2026) is something special.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_39a96c314aa9.wav",
+  "dj_sound_ids": [
+    "uyuuui.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This is a test of the That Pirate Bot DJ Emergency Broadcast System.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_39a96c314aa9.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "\"Listen up, star travelers of this dimension!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_39a96c314aa9.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_39a96c314aa9.wav",
+  "title": "Suno (2ba9ea53\u2026)",
+  "prev_title": "Reefer Royale",
+  "queue_index": 0,
+  "created_at": 1776781332.3814106,
+  "guild_id": 1402051030828449823
+}

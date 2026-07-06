@@ -1,0 +1,14 @@
+{
+  "dj_text": "You're listening to That Pirate DJ Radio Bot. Let's keep it going. TACO BELL! Blak & Jimilian - Slem Igen (feat. Ceci Luca) (Officiel Musikvideo) done, Suspekt - Proletar (Hvor Jeg St\u00e5r) served! Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_333f3db30e15.wav",
+  "dj_sound_ids": [
+    "taco_bell_bong_sfx.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Suspekt - Proletar (Hvor Jeg St\u00e5r)",
+  "prev_title": "Blak & Jimilian - Slem Igen (feat. Ceci Luca) (Officiel Musikvideo)",
+  "queue_index": 4,
+  "created_at": 1776635355.7093663,
+  "guild_id": 1402051030828449823
+}

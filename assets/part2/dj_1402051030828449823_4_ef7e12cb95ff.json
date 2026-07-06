@@ -1,0 +1,24 @@
+{
+  "dj_text": "LET'S GOOO! Anaconda WAS FIRE AND Clean Bandit - Rather Be ft. Jess Glynne [Official Video] IS EVEN HOTTER!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_ef7e12cb95ff.wav",
+  "dj_sound_ids": [
+    "mega_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "You've been listening for a while now. Your family misses you. Just kidding, they're also listening.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_ef7e12cb95ff.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{im_your_dj}: Whoa there, time traveler!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_ef7e12cb95ff.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_ef7e12cb95ff.wav",
+  "title": "Clean Bandit - Rather Be ft. Jess Glynne [Official Video]",
+  "prev_title": "Anaconda",
+  "queue_index": 4,
+  "created_at": 1776653592.0531223,
+  "guild_id": 1402051030828449823
+}

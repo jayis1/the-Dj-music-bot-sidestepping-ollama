@@ -1,0 +1,24 @@
+{
+  "dj_text": "DRAW! Suspekt & Folkeklubben - Danmark done. Model incoming!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_5d2346e5f1b3.wav",
+  "dj_sound_ids": [
+    "pistol_shot.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break brought to you by WinBitch Coffee \u2014 The only coffee brewed in a Debian container.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_5d2346e5f1b3.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "AutoRadio 5000 from the Machine Kosmos.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_5d2346e5f1b3.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_5d2346e5f1b3.wav",
+  "title": "Model",
+  "prev_title": "Suspekt & Folkeklubben - Danmark",
+  "queue_index": 0,
+  "created_at": 1782845540.6467462,
+  "guild_id": 1402051030828449823
+}

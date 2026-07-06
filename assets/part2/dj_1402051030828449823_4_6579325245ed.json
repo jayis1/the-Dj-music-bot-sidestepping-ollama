@@ -1,0 +1,22 @@
+{
+  "dj_text": "That Pirate Bot DJ Radio. The only station that never stops. \"Great Days\" - Medieval Style Cover [BardCore] - JoJo's Bizarre Adventure Opening 7 tried its best. \"Lower Norfair\" - Super Metroid [Bardcore | Medieval version] won't. Let's find out together.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6579325245ed.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome to That Pirate Bot DJ Radio, listeners!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_6579325245ed.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\"Good day, folks!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_6579325245ed.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_6579325245ed.wav",
+  "title": "\"Lower Norfair\" - Super Metroid [Bardcore | Medieval version]",
+  "prev_title": "\"Great Days\" - Medieval Style Cover [BardCore] - JoJo's Bizarre Adventure Opening 7",
+  "queue_index": 4,
+  "created_at": 1782770432.868237,
+  "guild_id": 1402051030828449823
+}

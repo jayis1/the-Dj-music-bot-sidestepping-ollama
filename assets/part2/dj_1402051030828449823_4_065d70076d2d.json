@@ -1,0 +1,22 @@
+{
+  "dj_text": "THE GODFATHER | Love Theme | Medieval Bardcore Version. Fine. THE GODFATHER WALTZ | Main Title | Medieval Bardcore Version. Whatever. Moving on.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_065d70076d2d.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey listeners, buckle up as we introduce 'Sea Serpent Speakers' \u2014 your new best friend for that epic pirate vibe!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_065d70076d2d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Attention all listeners!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_065d70076d2d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_065d70076d2d.wav",
+  "title": "THE GODFATHER WALTZ | Main Title | Medieval Bardcore Version",
+  "prev_title": "THE GODFATHER | Love Theme | Medieval Bardcore Version",
+  "queue_index": 4,
+  "created_at": 1782791415.0284643,
+  "guild_id": 1402051030828449823
+}

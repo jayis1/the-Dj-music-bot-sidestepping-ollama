@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Billie Jean - Medieval Style (No Vocals). And now? You Say Run Goes With Everything (Even Medieval Lute)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_3ee4401c16e1.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "That Pirate Bot DJ Radio, where we're {sounds:loud_explosion}, bringing you \"You Say Run Goes With Everything (Even Medi",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_3ee4401c16e1.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\ud83c\udfb6 {cool_dj_drop} Calling all cosmic listeners from Bingo Nig",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_3ee4401c16e1.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_3ee4401c16e1.wav",
+  "title": "You Say Run Goes With Everything (Even Medieval Lute)",
+  "prev_title": "Billie Jean - Medieval Style (No Vocals)",
+  "queue_index": 4,
+  "created_at": 1782719897.3541203,
+  "guild_id": 1402051030828449823
+}

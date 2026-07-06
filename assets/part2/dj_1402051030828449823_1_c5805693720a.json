@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Pede B feat MikL - Fokuseret. Now Pede B feat .Skurken & 5 Dob - Tror Ikke P\u00e5 Dig. I don't do smooth transitions.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_c5805693720a.wav",
+  "dj_sound_ids": [
+    "bone_crack.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Pede B feat .Skurken & 5 Dob - Tror Ikke P\u00e5 Dig",
+  "prev_title": "Pede B feat MikL - Fokuseret",
+  "queue_index": 1,
+  "created_at": 1782840558.9576685,
+  "guild_id": 1402051030828449823
+}

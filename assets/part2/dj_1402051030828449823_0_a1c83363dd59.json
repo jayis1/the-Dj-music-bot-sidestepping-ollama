@@ -1,0 +1,22 @@
+{
+  "dj_text": "Switching from Den Gr\u00f8nne G\u00e5sehud to Suno (37d7d8d1\u2026). It's a vibe pivot. I'm a professional.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_a1c83363dd59.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Warning: this commercial break contains absolutely no useful information. We are legally required to tell you this.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_a1c83363dd59.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Welcome, listeners of Dimension X-7!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_a1c83363dd59.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_a1c83363dd59.wav",
+  "title": "Suno (37d7d8d1\u2026)",
+  "prev_title": "Den Gr\u00f8nne G\u00e5sehud",
+  "queue_index": 0,
+  "created_at": 1776782825.208118,
+  "guild_id": 1402051030828449823
+}

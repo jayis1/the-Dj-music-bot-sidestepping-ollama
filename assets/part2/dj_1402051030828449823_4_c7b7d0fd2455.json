@@ -1,0 +1,22 @@
+{
+  "dj_text": "Mm, Pompeii - Bastille (Medieval lute band cover). Now let's slow it down a bit with No Game No Life Opening - Medieval Style [BardCore]. And then there was one. Last track after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c7b7d0fd2455.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey listeners, hold onto your hats 'cause That Pirate Bot DJ Radio is introducing its latest gizmo \u2014 The Treasure Locato",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_c7b7d0fd2455.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Screaming Dimension Radio \u2014 {soundscape:metal_pipe_clang, uy",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_c7b7d0fd2455.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "And STAY off our frequency! Go back to your own dimension!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_c7b7d0fd2455.wav",
+  "title": "No Game No Life Opening - Medieval Style [BardCore]",
+  "prev_title": "Pompeii - Bastille (Medieval lute band cover)",
+  "queue_index": 4,
+  "created_at": 1782770840.6792128,
+  "guild_id": 1402051030828449823
+}

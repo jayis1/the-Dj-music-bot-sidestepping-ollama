@@ -1,0 +1,24 @@
+{
+  "dj_text": "Clean transition! THE DIFFERENCE/BREATHE | Medieval Bardcore Version | Dr Dre+Eminem+Sean Paul+Blu Cantrell+Xzibit out, The Riddle (Medieval/Bardcore) in!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_604b2df6d52f.wav",
+  "dj_sound_ids": [
+    "dj_stop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[DJ starts with a dramatic intro music] \"Welcome back to That Pirate Bot DJ Radio, where your ears meet absurdity!\" [ ]",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_604b2df6d52f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "*Cooomboop! Commencing broadcast of Love Standoff Radio from",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_604b2df6d52f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_604b2df6d52f.wav",
+  "title": "The Riddle (Medieval/Bardcore)",
+  "prev_title": "THE DIFFERENCE/BREATHE | Medieval Bardcore Version | Dr Dre+Eminem+Sean Paul+Blu Cantrell+Xzibit",
+  "queue_index": 4,
+  "created_at": 1782801911.165382,
+  "guild_id": 1402051030828449823
+}

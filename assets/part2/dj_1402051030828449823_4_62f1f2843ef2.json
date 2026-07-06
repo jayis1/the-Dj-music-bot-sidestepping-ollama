@@ -1,0 +1,24 @@
+{
+  "dj_text": "Is somebody KNOCKING? It's That Pirate DJ Radio Bot Radio! Okay so Magic happened. Now Lukas Graham - Mama Said [OFFICIAL LYRIC VIDEO] happens. Life comes at you fast. Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_62f1f2843ef2.wav",
+  "dj_sound_ids": [
+    "crazy_realistic_knocking_sound_troll_twitch_streamers_small.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break brought to you by Dave's Questionable Auto Repair. We fix your car 60 percent of the time, every time.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_62f1f2843ef2.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hail, ye all who sail in this bleak void!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_62f1f2843ef2.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_62f1f2843ef2.wav",
+  "title": "Lukas Graham - Mama Said [OFFICIAL LYRIC VIDEO]",
+  "prev_title": "Magic",
+  "queue_index": 4,
+  "created_at": 1776654344.9178069,
+  "guild_id": 1402051030828449823
+}

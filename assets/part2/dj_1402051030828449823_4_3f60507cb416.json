@@ -1,0 +1,24 @@
+{
+  "dj_text": "VINE BOOM INTO Medieval Doom Slayer! Medieval Pok\u00e9mon Center (no lyrics) was just the warm-up!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_3f60507cb416.wav",
+  "dj_sound_ids": [
+    "vine_boom.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey folks, tune into {station_name} and let's turn back time with our Medieval-Doom Slayer mix on full moon nights!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_3f60507cb416.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "\"Cruisin' Across Cosmic Waves on Galactic Grooves FM from Di",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_3f60507cb416.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_3f60507cb416.wav",
+  "title": "Medieval Doom Slayer",
+  "prev_title": "Medieval Pok\u00e9mon Center (no lyrics)",
+  "queue_index": 4,
+  "created_at": 1782731692.3326495,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "THE ROCK SAYS... Suno (a272e7b5\u2026)! After Pyro Green!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_af0466b03faf.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Looking for love? Try That Pirate Bot DJ Mingle \u2014 the dating app where everyone is either a bot or emotionally unavailab",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_af0466b03faf.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Hey, this is Jazz from Dimension K-7 where time flows like m",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_af0466b03faf.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_af0466b03faf.wav",
+  "title": "Suno (a272e7b5\u2026)",
+  "prev_title": "Pyro Green",
+  "queue_index": 0,
+  "created_at": 1776779437.0005937,
+  "guild_id": 1402051030828449823
+}

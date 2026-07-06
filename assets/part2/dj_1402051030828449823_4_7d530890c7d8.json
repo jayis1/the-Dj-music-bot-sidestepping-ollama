@@ -1,0 +1,22 @@
+{
+  "dj_text": "Super Bass is dead. Long live I Won. Or whatever. Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7d530890c7d8.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "You're listening to Smooth Jazz FM from Dimension K-7. Mmm. Yeah. That's... that's the smooth.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_7d530890c7d8.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Greetings, starry stargazers!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_7d530890c7d8.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_7d530890c7d8.wav",
+  "title": "I Won",
+  "prev_title": "Super Bass",
+  "queue_index": 4,
+  "created_at": 1776652558.2868528,
+  "guild_id": 1402051030828449823
+}

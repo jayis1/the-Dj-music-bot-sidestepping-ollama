@@ -1,0 +1,24 @@
+{
+  "dj_text": "THIS IS SPARTA! System Of A Down - Hypnotize (Medieval Version) \u2192 Megalovania - Bardcore / Medieval Style!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_b333a21b8c07.wav",
+  "dj_sound_ids": [
+    "300_spartan_chant_aoo_aoo_aoo.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Sound of medieval instruments playing]\n\nAnnouncer: Calling all ye who seek to master yer inner bard with our newest ser",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_b333a21b8c07.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} Hey there, this is DJ Spaceboi from Galactic",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_b333a21b8c07.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_b333a21b8c07.wav",
+  "title": "Megalovania - Bardcore / Medieval Style",
+  "prev_title": "System Of A Down - Hypnotize (Medieval Version)",
+  "queue_index": 4,
+  "created_at": 1782747470.3812468,
+  "guild_id": 1402051030828449823
+}

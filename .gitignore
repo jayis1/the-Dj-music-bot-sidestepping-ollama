@@ -60,3 +60,7 @@ presets/
 commit_msg*.txt
 SHADOW_*.md
 *.wav
+
+# Runtime / sensitive
+.bot.pid
+youtube_cookie.txt

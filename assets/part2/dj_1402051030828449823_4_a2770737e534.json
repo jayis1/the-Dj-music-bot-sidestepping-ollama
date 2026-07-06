@@ -1,0 +1,24 @@
+{
+  "dj_text": "DRAW! Suno (d6234e17\u2026) done. Suno (2ba9ea53\u2026) incoming!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_a2770737e534.wav",
+  "dj_sound_ids": [
+    "pistol_shot.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "THIS IS PIRATE RADIO 404 FROM THE VOID! We don't need licenses! We don't need BODIES! We NEED VIBES!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_a2770737e534.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Hey ho, listeners!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_a2770737e534.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_a2770737e534.wav",
+  "title": "Suno (2ba9ea53\u2026)",
+  "prev_title": "Suno (d6234e17\u2026)",
+  "queue_index": 4,
+  "created_at": 1776780063.1432989,
+  "guild_id": 1402051030828449823
+}

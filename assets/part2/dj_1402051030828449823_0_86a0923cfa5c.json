@@ -1,0 +1,24 @@
+{
+  "dj_text": "And that was Jah Green Ark. Up next? Suno (d6234e17\u2026). Don't ask how I decided. It's classified. 5 more tracks lined up and ready to roll.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_86a0923cfa5c.wav",
+  "dj_sound_ids": [
+    "cool_dj_drop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break brought to you by Dave's Questionable Auto Repair. We fix your car 60 percent of the time, every time.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_86a0923cfa5c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hey there! Listen up, folks\u2014this is Kosmos Sigma-9 coming in",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_86a0923cfa5c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back. That was NOT a crossover event. That was a dimensional bleed.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_86a0923cfa5c.wav",
+  "title": "Suno (d6234e17\u2026)",
+  "prev_title": "Jah Green Ark",
+  "queue_index": 0,
+  "created_at": 1776781060.60695,
+  "guild_id": 1402051030828449823
+}

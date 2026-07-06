@@ -1,0 +1,24 @@
+{
+  "dj_text": "And that was Loopback. Hold on \u2014 king of notthing 2 is up!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c334ed995764.wav",
+  "dj_sound_ids": [
+    "airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Tired of coffee that actually tastes good?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_c334ed995764.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hey, hey all! I'm KosmoBot from Machine Kosmos where we thin",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_c334ed995764.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_c334ed995764.wav",
+  "title": "king of notthing 2",
+  "prev_title": "Loopback",
+  "queue_index": 4,
+  "created_at": 1779618284.0681446,
+  "guild_id": 1402051030828449823
+}

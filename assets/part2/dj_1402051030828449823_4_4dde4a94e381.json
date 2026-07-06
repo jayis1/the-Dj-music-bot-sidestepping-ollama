@@ -1,0 +1,24 @@
+{
+  "dj_text": "Bring Det P\u00e5 \"Ring Til Politiet\" (Officiel Music Video) is dead. Blak & Jimilian - Slem Igen (feat. Ceci Luca) (Officiel Musikvideo) killed it. Justice served cold. And then there was one. Last track after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_4dde4a94e381.wav",
+  "dj_sound_ids": [
+    "combo_hit.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Need a loan? First National Bank of Your Cousin's Garage offers competitive rates and absolutely no questions about wher",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_4dde4a94e381.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Welcome to Quiet FM from the Null Kosmos. Shhhh.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_4dde4a94e381.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_4dde4a94e381.wav",
+  "title": "Blak & Jimilian - Slem Igen (feat. Ceci Luca) (Officiel Musikvideo)",
+  "prev_title": "Bring Det P\u00e5 \"Ring Til Politiet\" (Officiel Music Video)",
+  "queue_index": 4,
+  "created_at": 1782844761.7980886,
+  "guild_id": 1402051030828449823
+}

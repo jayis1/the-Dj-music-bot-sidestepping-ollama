@@ -859,10 +859,16 @@ USERINIEOF
           # We have a dedicated Xvfb on :420 — use it directly
         flatpak run --socket=x11 --nosocket=wayland \
           --socket=session-bus --share=network \
+          --filesystem=/root/the-Dj-music-bot-sidestepping-ollama \
+          --filesystem=/tmp \
           --env=DISPLAY="$_OBS_DISPLAY" \
           --env=LC_ALL=C.UTF-8 \
           --env=OBS_BROWSER_DISABLE_GPU=1 \
+          --env=CEF_DISABLE_GPU=1 \
+          --env=OBS_BROWSER_USE_OGANGLE=0 \
           --env=QT_QPA_PLATFORM=xcb \
+          --env=LIBGL_ALWAYS_SOFTWARE=1 \
+          --env=CHROME_FLAGS="--disable-gpu --disable-software-rasterizer --disable-gpu-compositing --no-sandbox --disable-extensions --disable-dev-shm-usage" \
           com.obsproject.Studio \
           --minimize-to-tray --disable-missing-files-check \
           --collection "Radio DJ" --profile "RadioDJ" &

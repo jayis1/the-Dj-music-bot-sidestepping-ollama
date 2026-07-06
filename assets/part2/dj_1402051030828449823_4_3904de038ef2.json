@@ -1,0 +1,22 @@
+{
+  "dj_text": "Josuke's theme - Medieval Style [BardCore] \u300cDiamond is Unbreakable Main Theme\u300dJJBA is over and I don't care. Lilly Wood and the Prick - Prayer in C (Bardcore, Medieval Style) is next and I care slightly less.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_3904de038ef2.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Background sound of medieval battle with a hearty, fake heroic drumbeat ]\nLadies and Gentlemen!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_3904de038ef2.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\"This is Cosmic Swing FM from Dimension K-7, where we roll a",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_3904de038ef2.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_3904de038ef2.wav",
+  "title": "Lilly Wood and the Prick - Prayer in C (Bardcore, Medieval Style)",
+  "prev_title": "Josuke's theme - Medieval Style [BardCore] \u300cDiamond is Unbreakable Main Theme\u300dJJBA",
+  "queue_index": 4,
+  "created_at": 1782805775.9637852,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "And that was Pumped up kicks 1066 A.D Cover in Old English (Anglo Saxon tongue) Bardcore/Medieval style. Hold on \u2014 Fortunate son - Creedence Clearwater Revival  (A medieval cover) is up! And then there was one. Last track after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_4c5de12fe888.wav",
+  "dj_sound_ids": [
+    "airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, what's good, pirate bots? Tune into That Pirate Bot DJ Radio for a time-traveling treasure trove of medieval music!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_4c5de12fe888.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} Welcome, listeners!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_4c5de12fe888.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_4c5de12fe888.wav",
+  "title": "Fortunate son - Creedence Clearwater Revival  (A medieval cover)",
+  "prev_title": "Pumped up kicks 1066 A.D Cover in Old English (Anglo Saxon tongue) Bardcore/Medieval style",
+  "queue_index": 4,
+  "created_at": 1782723614.644783,
+  "guild_id": 1402051030828449823
+}

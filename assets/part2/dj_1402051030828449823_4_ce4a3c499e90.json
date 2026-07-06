@@ -1,0 +1,24 @@
+{
+  "dj_text": "REHEHEHE! Orgi-E - Singlepik was funny. Orgi-E feat. Jooks - Mand 2.0 will be funnier!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_ce4a3c499e90.wav",
+  "dj_sound_ids": [
+    "rehehehe.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hungry? Try Big Ron's Midnight Waffle Emporium \u2014 half waffles, half emporium, all heart attack.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_ce4a3c499e90.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Attention all, this is Machine Kosmos - where chaos meets ca",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_ce4a3c499e90.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_ce4a3c499e90.wav",
+  "title": "Orgi-E feat. Jooks - Mand 2.0",
+  "prev_title": "Orgi-E - Singlepik",
+  "queue_index": 4,
+  "created_at": 1776976895.4219189,
+  "guild_id": 1402051030828449823
+}

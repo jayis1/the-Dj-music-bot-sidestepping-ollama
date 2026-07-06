@@ -1,0 +1,24 @@
+{
+  "dj_text": "BLAST OFF! Unknown was Incredible and Garth Brooks - Friends in Low Places [Bardcore | Medieval version] will be LEGENDARY! One more left in the queue.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_68f641ecce08.wav",
+  "dj_sound_ids": [
+    "combo_hit.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "\ud83c\udfb6 *Swooshing and clanking sound effects* Welcome to That Pirate Bot DJ Radio, where we're tuned into pure mirth with our",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_68f641ecce08.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "\u2728 Blasting WAVE RADIO, Dimension Omega!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_68f641ecce08.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_68f641ecce08.wav",
+  "title": "Garth Brooks - Friends in Low Places [Bardcore | Medieval version]",
+  "prev_title": "Unknown",
+  "queue_index": 4,
+  "created_at": 1782792589.0529797,
+  "guild_id": 1402051030828449823
+}

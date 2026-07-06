@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was The Animals - The House of Rising Sun (Medieval bardcore version). And now? September - medieval style!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_917cafc80960.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Ladies and gents, 'tis a day when our usual frequencies are crossed by interstellar troubadours!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_917cafc80960.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Boom, it's '84 \u2014 nope, I mean from beyond where time folds i",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_917cafc80960.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_917cafc80960.wav",
+  "title": "September - medieval style",
+  "prev_title": "The Animals - The House of Rising Sun (Medieval bardcore version)",
+  "queue_index": 4,
+  "created_at": 1782722437.9069798,
+  "guild_id": 1402051030828449823
+}

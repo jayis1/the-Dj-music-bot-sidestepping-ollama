@@ -24,6 +24,26 @@ class PCMBroadcaster(discord.AudioSource):
         clock thread and the Discord voice thread coordinate without races.
     """
 
+    # ── Slowdown via Byte-Rate Throttling ───────────────────────────────
+    # discord.py outputs 48kHz s16le stereo: 3840 bytes per 20ms tick.
+    # The receiver (OBS/FFmpeg) reads at 42500 Hz, consuming 3400 bytes
+    # per 20ms. Playing 48kHz content at 42500 Hz = 0.885× speed = the
+    # slowdown effect the user wants.
+    #
+    # Problem: sender pushes 3840 B/tick, receiver drains 3400 B/tick →
+    # 440 B/tick excess fills the 256 KB UDP buffer in ~12 sec → overrun.
+    #
+    # Fix: buffer the input in _residual and drain exactly 3400 B/tick.
+    # The 440 B/tick surplus accumulates; after ~8 ticks we have enough
+    # for a full output chunk without reading from the source. This keeps
+    # the UDP byte rate at exactly 42500 Hz (170 KB/s), matching the
+    # receiver. The slowdown is preserved because the samples themselves
+    # are still 48kHz content — just delivered at a slower byte rate.
+    INPUT_SAMPLE_RATE = 48000
+    OUTPUT_SAMPLE_RATE = 42500
+    INPUT_CHUNK_BYTES = 3840   # 48kHz × 2ch × 2bytes × 20ms
+    OUTPUT_CHUNK_BYTES = 3400  # 42500 × 2ch × 2bytes × 20ms
+
     def __init__(self, port=12345):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # Maximize the UDP send buffer for robust local delivery
@@ -32,6 +52,13 @@ class PCMBroadcaster(discord.AudioSource):
 
         self._source = None
         self._source_lock = threading.Lock()
+
+        # Residual buffer: accumulates the difference between 48kHz input
+        # chunks (3840 B) and 42500 Hz output chunks (3400 B). Each tick
+        # we drain 3400 B from this buffer and top it up with 3840 B from
+        # the source. The 440 B/tick surplus grows until we can skip a
+        # source read, keeping the output rate exactly 42500 Hz.
+        self._residual = b""
 
         self._running = True
         # Replaced bare bool with proper event-based coordination.
@@ -117,6 +144,57 @@ class PCMBroadcaster(discord.AudioSource):
             except Exception as e:
                 log.error(f"Broadcaster: Failed to trigger after-callback: {e}")
 
+    def _send_udp(self, payload: bytes):
+        """Append payload to residual and drain exactly OUTPUT_CHUNK_BYTES to UDP.
+
+        The residual buffer absorbs the 440 B/tick difference between
+        48kHz input (3840 B) and 42500 Hz output (3400 B). When the
+        residual has enough data for a full output chunk without a new
+        source read, the caller should skip reading from the source
+        (see _should_read_source).
+        """
+        self._residual += payload
+        if len(self._residual) >= self.OUTPUT_CHUNK_BYTES:
+            out = self._residual[: self.OUTPUT_CHUNK_BYTES]
+            self._residual = self._residual[self.OUTPUT_CHUNK_BYTES :]
+        else:
+            # Not enough data — pad with silence and reset
+            out = self._residual + b"\x00" * (self.OUTPUT_CHUNK_BYTES - len(self._residual))
+            self._residual = b""
+        try:
+            self.sock.sendto(out, self.target)
+        except (BlockingIOError, OSError):
+            pass
+
+    def _send_udp_drain_only(self):
+        """Drain one output chunk from residual WITHOUT adding new source data.
+
+        Called on 'skip' ticks when the residual has accumulated enough
+        data that we don't need a new source read. This keeps the UDP
+        output rate at exactly 42500 Hz while letting the source fall
+        behind real-time — the slowdown effect.
+        """
+        if len(self._residual) >= self.OUTPUT_CHUNK_BYTES:
+            out = self._residual[: self.OUTPUT_CHUNK_BYTES]
+            self._residual = self._residual[self.OUTPUT_CHUNK_BYTES :]
+        else:
+            out = self._residual + b"\x00" * (self.OUTPUT_CHUNK_BYTES - len(self._residual))
+            self._residual = b""
+        try:
+            self.sock.sendto(out, self.target)
+        except (BlockingIOError, OSError):
+            pass
+
+    def _should_read_source(self) -> bool:
+        """True if we should read from the source this tick.
+
+        When the residual buffer has >= INPUT_CHUNK_BYTES, we can fill
+        an output chunk from residual alone — skip the source read to
+        let the source fall behind (slowdown). Otherwise, read from
+        source to replenish.
+        """
+        return len(self._residual) < self.INPUT_CHUNK_BYTES
+
     @staticmethod
     def _compute_rms(pcm_data: bytes) -> float:
         """Compute RMS (root-mean-square) audio level from s16le PCM data.
@@ -199,7 +277,7 @@ class PCMBroadcaster(discord.AudioSource):
         with self._source_lock:
             source = self._source
 
-        if source:
+        if source and self._should_read_source():
             try:
                 data = source.read()
             except Exception as e:
@@ -217,10 +295,12 @@ class PCMBroadcaster(discord.AudioSource):
                         self._source = None
 
         payload = data if data else b"\x00" * 3840
-        try:
-            self.sock.sendto(payload, self.target)
-        except BlockingIOError:
-            pass
+
+        if data:
+            self._send_udp(payload)
+        else:
+            # No source data this tick (skip or source ended) — drain residual
+            self._send_udp_drain_only()
 
         # Update audio level metering for OBS visualizer
         self._update_audio_level(payload)
@@ -337,7 +417,7 @@ class PCMBroadcaster(discord.AudioSource):
             with self._source_lock:
                 source = self._source
 
-            if source:
+            if source and self._should_read_source():
                 try:
                     data = source.read()
                 except Exception:
@@ -354,10 +434,12 @@ class PCMBroadcaster(discord.AudioSource):
                             self._source = None
 
             payload = data if data else silence
-            try:
-                self.sock.sendto(payload, self.target)
-            except Exception:
-                pass
+
+            if data:
+                self._send_udp(payload)
+            else:
+                # No source data this tick (skip or source ended) — drain residual
+                self._send_udp_drain_only()
 
             # Update audio level metering for OBS visualizer
             self._update_audio_level(payload)

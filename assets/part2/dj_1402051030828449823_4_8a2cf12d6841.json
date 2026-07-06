@@ -1,0 +1,14 @@
+{
+  "dj_text": "That Pirate DJ Bot Radio. Where the music matters. The Rock says... M-Cnatet ft. Pede G\u00f8bb - G\u00f8glerne p\u00e5 gadehj\u00f8rnet! After Kv\u00e6rn - Dagens Orden! Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_8a2cf12d6841.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "M-Cnatet ft. Pede G\u00f8bb - G\u00f8glerne p\u00e5 gadehj\u00f8rnet",
+  "prev_title": "Kv\u00e6rn - Dagens Orden",
+  "queue_index": 4,
+  "created_at": 1776598243.0761063,
+  "guild_id": 1402051030828449823
+}

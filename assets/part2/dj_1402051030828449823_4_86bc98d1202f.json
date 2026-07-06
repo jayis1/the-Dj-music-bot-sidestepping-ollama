@@ -1,0 +1,14 @@
+{
+  "dj_text": "Dry humor on That Pirate DJ Bot Radio! From 05 En af den slags dage.wmv to Kv\u00e6rn - Dagens Orden. The genre hop here is reckless and I'm here for it.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_86bc98d1202f.wav",
+  "dj_sound_ids": [
+    "dry_fart.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Kv\u00e6rn - Dagens Orden",
+  "prev_title": "05 En af den slags dage.wmv",
+  "queue_index": 4,
+  "created_at": 1776597919.9168167,
+  "guild_id": 1402051030828449823
+}

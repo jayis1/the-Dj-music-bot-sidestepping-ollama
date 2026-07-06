@@ -1,0 +1,24 @@
+{
+  "dj_text": "The vibes have mutated from Store Patter 4-0 to Det Goe Det Gr\u00f8nne. Evolve or perish. A few more in the queue. 3 left to go.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_c67ac57a95ba.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Det Goe Det Gr\u00f8nne",
+  "prev_title": "Store Patter 4-0",
+  "queue_index": 2,
+  "created_at": 1776970328.4548876,
+  "guild_id": 1402051030828449823
+}

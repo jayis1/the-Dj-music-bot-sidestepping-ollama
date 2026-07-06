@@ -1,0 +1,24 @@
+{
+  "dj_text": "NEWS FLASH! LMFAO ft. Lauren Bennett, GoonRock - Party Rock Anthem (Medieval Style) out, Pharrell Williams - Happy (Medieval Style) in!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_77f6e7379e65.wav",
+  "dj_sound_ids": [
+    "news_intro_maximilien__1801238420_2.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Pharrell Williams - Happy (Medieval Style)",
+  "prev_title": "LMFAO ft. Lauren Bennett, GoonRock - Party Rock Anthem (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782717927.8034668,
+  "guild_id": 1402051030828449823
+}

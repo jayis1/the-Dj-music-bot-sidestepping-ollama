@@ -1,0 +1,15 @@
+{
+  "dj_text": "This is That Pirate DJ Bot Radio! Let's keep it going. Another one! From Jokeren   Sulten 2003 to Eliten - Bare skyd os! Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_4b045379b02a.wav",
+  "dj_sound_ids": [
+    "mustard_drop.mp3",
+    "another_one.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Eliten - Bare skyd os",
+  "prev_title": "Jokeren   Sulten 2003",
+  "queue_index": 4,
+  "created_at": 1776594593.7023811,
+  "guild_id": 1402051030828449823
+}

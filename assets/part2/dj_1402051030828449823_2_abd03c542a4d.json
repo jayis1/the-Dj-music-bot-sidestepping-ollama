@@ -1,0 +1,24 @@
+{
+  "dj_text": "From L.O.C. - Frk. Escobar straight into Rolig - Rolig! No pause button!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_abd03c542a4d.wav",
+  "dj_sound_ids": [
+    "airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This segment powered by TurboVPN \u2014 because your ISP doesn't know what you're streaming at 3AM and we'd like to keep it t",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_2_abd03c542a4d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "You've stumbled onto Nostalgia Overload Radio from the Timel",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_2_abd03c542a4d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_2_abd03c542a4d.wav",
+  "title": "Rolig - Rolig",
+  "prev_title": "L.O.C. - Frk. Escobar",
+  "queue_index": 2,
+  "created_at": 1782848451.8654552,
+  "guild_id": 1402051030828449823
+}

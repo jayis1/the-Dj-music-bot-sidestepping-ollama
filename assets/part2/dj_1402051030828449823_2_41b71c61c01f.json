@@ -1,0 +1,24 @@
+{
+  "dj_text": "Christmas Version of Super Freaky Girl by Nicki Minaj \ud83d\ude2d\ud83d\ude2d. Now breathe. Hvad Fuck Er En B\u00e6lgfrugt?.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_41b71c61c01f.wav",
+  "dj_sound_ids": [
+    "cool_dj_drop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Reminder: That Pirate DJ Radio Bot Radio is not responsible for any songs that get stuck in your head for the next 72 ho",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_2_41b71c61c01f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Alright, listen up from Lonely Kosmos!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_2_41b71c61c01f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_2_41b71c61c01f.wav",
+  "title": "Hvad Fuck Er En B\u00e6lgfrugt?",
+  "prev_title": "Christmas Version of Super Freaky Girl by Nicki Minaj \ud83d\ude2d\ud83d\ude2d",
+  "queue_index": 2,
+  "created_at": 1776648968.2875006,
+  "guild_id": 1402051030828449823
+}

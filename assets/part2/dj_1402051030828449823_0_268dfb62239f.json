@@ -1,0 +1,24 @@
+{
+  "dj_text": "FIRE INTO FIRE! K\u00f8benhavn Flow \u2192 Suno (e9232f68\u2026)! 5 more tracks lined up and ready to roll.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_268dfb62239f.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Brought to you by NoodleCorp \u2014 we put noodles in everything. Noodle soup. Noodle salad. Noodle coffee. Noodle mattress.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_268dfb62239f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Aliens in government suits, eh?",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_268dfb62239f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_268dfb62239f.wav",
+  "title": "Suno (e9232f68\u2026)",
+  "prev_title": "K\u00f8benhavn Flow",
+  "queue_index": 0,
+  "created_at": 1776681310.61396,
+  "guild_id": 1402051030828449823
+}

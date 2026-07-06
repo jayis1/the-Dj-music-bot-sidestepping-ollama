@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OBS Overlay — {{ bot_name }}</title>
+<style>
+/* ── Master HUD Mirror ── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    /* Set native FFmpeg resolution matching Utils/Youtube_stream.py */
+    width: 1280px;
+    height: 720px;
+    background: url('/assets/logo.png') center/cover no-repeat;
+    background-color: #111; /* Fallback */
+    font-family: 'DejaVu Sans', 'Segoe UI', 'Inter', -apple-system, sans-serif;
+    color: #fff;
+    overflow: hidden;
+    position: relative;
+    text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+}
+
+/* ── FFmpeg Native Coordinate Mapping ── */
+.hud-station {
+    position: absolute;
+    left: 450px;
+    top: 150px;
+    font-size: 42px;
+    font-weight: bold;
+    color: white;
+}
+
+.hud-title {
+    position: absolute;
+    left: 450px;
+    top: 210px;
+    font-size: 56px;
+    font-weight: bold;
+    color: gold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 800px; /* Prevent run-off */
+}
+
+/* ── DJ Indicator Mapping ── */
+.hud-dj {
+    position: absolute;
+    left: 450px;
+    top: 280px;
+    font-size: 36px;
+    font-weight: normal;
+    color: #00FFCC;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+.hud-dj.visible {
+    opacity: 1;
+}
+
+/* ── SFX Overlay Animation ── */
+.sfx-anim {
+    position: absolute;
+    right: 50px;
+    top: 50px;
+    width: 250px;
+    height: auto;
+    opacity: 0;
+    transform: scale(0.5);
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    pointer-events: none;
+}
+.sfx-anim.visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* ── Bottom Ticker Mapping ── */
+.hud-ticker-bg {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1280px;
+    height: 40px;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hud-ticker-text {
+    font-size: 24px;
+    font-weight: normal;
+    color: white;
+    text-shadow: none; /* FFmpeg didn't specify shadow here natively */
+}
+
+/* ── Album Art (Optional aesthetic carryover from old overlay) ── */
+.art-container {
+    position: absolute;
+    left: 40px;
+    top: 150px; /* Align to Station title block */
+    width: 380px;
+    height: 380px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    background: rgba(0,0,0,0.3);
+}
+.art {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+.art-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(139,92,246,0.3), rgba(59,130,246,0.3));
+}
+
+/* ── EQ Visualizer (Real-time audio-driven) ── */
+.visualizer {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 60px;
+    width: 600px;
+    height: 70px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    z-index: 10;
+}
+.visualizer.active {
+    opacity: 0.85; /* Slight transparency to blend with background */
+}
+
+.visualizer-bar {
+    width: 6px;
+    background: linear-gradient(to top, #00FFCC, #a855f7);
+    border-radius: 3px 3px 0 0;
+    height: 2px; /* baseline */
+    /* Smooth interpolation — bars slide to new height instead of jumping */
+    transition: height 60ms ease-out;
+    box-shadow: 0 0 6px rgba(0, 255, 204, 0.3);
+    min-height: 2px;
+}
+
+</style>
+</head>
+<body>
+
+    <!-- Native HUD Elements -->
+    <div class="hud-station" id="station">LOADING</div>
+    <div class="hud-title" id="title">Waiting for playback…</div>
+    
+    <div class="hud-dj" id="speakingLabel">🎙️ DJ SPEAKING...</div>
+
+    <!-- Sound Effect Animation -->
+    <img id="sfxAnim" class="sfx-anim" src="/assets/giphy.gif" alt="SFX Playing!">
+
+    <!-- Dynamic Audio Waveform Visualizer -->
+    <div class="visualizer" id="visualizer"></div>
+
+    <!-- Ticker Box -->
+    <div class="hud-ticker-bg">
+        <div class="hud-ticker-text" id="tickerText">Initializing Stream Protocol...</div>
+    </div>
+
+    <!-- Album Art -->
+    <div class="art-container">
+        <img class="art" id="art" src="" alt="" style="display:none;">
+        <div class="art-placeholder" id="artPlaceholder">🎵</div>
+    </div>
+    
+    <!-- Intro Sequence Video -->
+    <video id="introVideo" style="display: none; position: absolute; z-index: 9999; top: 0; left: 0; width: 1280px; height: 720px; object-fit: cover;" autoplay loop muted>
+        <source src="/assets/intro.mp4" type="video/mp4">
+    </video>
+
+<script>
+// ── State ──
+let prevState = { playing: false, title: null, dj_speaking: false, ai_speaking: false, booting: false };
+let pollInterval = 1000;
+
+// ── Elements ──
+const station = document.getElementById('station');
+const title = document.getElementById('title');
+const speakingLabel = document.getElementById('speakingLabel');
+const sfxAnim = document.getElementById('sfxAnim');
+const visualizer = document.getElementById('visualizer');
+const tickerText = document.getElementById('tickerText');
+const art = document.getElementById('art');
+const artPlaceholder = document.getElementById('artPlaceholder');
+const introVideo = document.getElementById('introVideo');
+
+// ── Initialize EQ Visualizer Bars ──────────────────────────────────────
+// Create 64 bars matching the 64 RMS values from PCMBroadcaster.
+// The bars map directly: bar[i] = rms_history[i], showing ~1.28s of waveform.
+const NUM_BARS = 64;
+const vizBars = [];
+for (let i = 0; i < NUM_BARS; i++) {
+    let bar = document.createElement('div');
+    bar.className = 'visualizer-bar';
+    visualizer.appendChild(bar);
+    vizBars.push(bar);
+}
+
+// Target heights for the visualizer bars (updated from API, applied via rAF)
+let vizTargetHeights = new Float32Array(NUM_BARS); // 0.0–1.0
+let vizCurrentHeights = new Float32Array(NUM_BARS); // smoothed current values
+
+// ── Format time ──
+function fmt(sec) {
+    if (!sec || sec <= 0) return '0:00';
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+// ── Update loop ──
+async function pollState() {
+    try {
+        const res = await fetch('/api/overlay');
+        const data = await res.json();
+        updateOverlay(data);
+    } catch (e) {
+        // Silently retry
+    }
+    setTimeout(pollState, pollInterval);
+}
+
+function updateOverlay(data) {
+    // Top Titles
+    station.textContent = data.station_name || 'MBOT RADIO';
+    title.textContent = data.title || 'Waiting for playback…';
+
+    if (data.paused) {
+        title.innerHTML = `${data.title || 'Waiting'} <span style="font-size: 32px; color: #ff5555; vertical-align: middle;">[PAUSED]</span>`;
+    }
+    
+    // Waveform State — show/hide + feed RMS data to bars
+    if (data.playing && !data.paused) {
+        visualizer.classList.add('active');
+        // Update target heights from RMS history
+        if (data.rms_history && data.rms_history.length === NUM_BARS) {
+            for (let i = 0; i < NUM_BARS; i++) {
+                vizTargetHeights[i] = data.rms_history[i];
+            }
+        }
+    } else {
+        visualizer.classList.remove('active');
+        // Fade bars to zero when not playing
+        vizTargetHeights.fill(0);
+    }
+    
+    // Boot Sequence Logic
+    if (data.booting) {
+        if (!prevState.booting) {
+            introVideo.style.display = 'block';
+            introVideo.play();
+        }
+        tickerText.textContent = "⚙️ Booting Auto-DJ Mainframes... Generating opening sequence (Waiting for 25 tracks)";
+    } else {
+        if (prevState.booting) {
+            introVideo.style.display = 'none';
+            introVideo.pause();
+        }
+        // Normal Ticker Text Logic
+        let elapsed = fmt(data.elapsed);
+        let duration = fmt(data.duration);
+        
+        if (data.playing && data.title) {
+            tickerText.textContent = `▶ NOW PLAYING: ${data.title}  |  ${elapsed} / ${duration}`;
+        } else {
+            tickerText.textContent = "Radio sequence initialized — waiting in standby...";
+        }
+    }
+
+    // Speaking Hook Indicator
+    const isSpeaking = data.dj_speaking || data.ai_speaking;
+    if (isSpeaking) {
+        speakingLabel.classList.add('visible');
+        if (data.ai_speaking) {
+            speakingLabel.textContent = '🃏 AI SIDE HOST SPEAKING...';
+            speakingLabel.style.color = '#a855f7';
+        } else {
+            speakingLabel.textContent = '🎙️ DJ SPEAKING...';
+            speakingLabel.style.color = '#00FFCC';
+        }
+    } else {
+        speakingLabel.classList.remove('visible');
+    }
+
+    // SFX Animation Hook
+    if (data.sfx_active) {
+        sfxAnim.classList.add('visible');
+    } else {
+        sfxAnim.classList.remove('visible');
+    }
+
+    // Album Art Bridge
+    if (data.thumbnail && data.thumbnail !== prevState.thumbnail) {
+        art.src = data.thumbnail;
+        art.style.display = 'block';
+        artPlaceholder.style.display = 'none';
+    } else if (!data.thumbnail) {
+        art.style.display = 'none';
+        artPlaceholder.style.display = 'flex';
+    }
+
+    prevState = data;
+}
+
+// Boot Pulse
+pollState();
+
+// ── Visualizer Animation Loop ──────────────────────────────────────
+// Smoothly interpolate bar heights toward the target RMS values.
+// This runs every frame (~60fps) for buttery-smooth bars, while the
+// API data arrives every ~1s. The interpolation bridges the gap.
+const VIZ_MAX_HEIGHT_PX = 70;  // matches CSS .visualizer height
+const VIZ_SMOOTHING = 0.25;     // 0=instant, 1=never move (0.25 = snappy but smooth)
+
+function animateVisualizer() {
+    for (let i = 0; i < NUM_BARS; i++) {
+        // Smooth interpolation toward target
+        vizCurrentHeights[i] += (vizTargetHeights[i] - vizCurrentHeights[i]) * VIZ_SMOOTHING;
+
+        // Scale: RMS 0.0–1.0 → height 2px–70px
+        // Apply a non-linear curve (sqrt) so quiet audio still shows visible movement
+        const normalized = Math.sqrt(Math.max(0, vizCurrentHeights[i]));
+        const heightPx = Math.max(2, normalized * VIZ_MAX_HEIGHT_PX);
+        vizBars[i].style.height = heightPx + 'px';
+    }
+    requestAnimationFrame(animateVisualizer);
+}
+requestAnimationFrame(animateVisualizer);
+</script>
+</body>
+</html>

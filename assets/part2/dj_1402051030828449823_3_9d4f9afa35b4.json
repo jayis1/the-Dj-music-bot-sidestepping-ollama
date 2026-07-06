@@ -1,0 +1,22 @@
+{
+  "dj_text": "That Pirate Bot DJ Radio. The only thing we're uplifting is the bass. Loved Darude - Sandstorm (Medieval version). Now let's bring you Unknown.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_3_9d4f9afa35b4.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome back to That Pirate Bot DJ Radio, folks!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_3_9d4f9afa35b4.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} \"Pirate Radio Sigma Prime, where {dun dun duu",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_3_9d4f9afa35b4.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_3_9d4f9afa35b4.wav",
+  "title": "Unknown",
+  "prev_title": "Darude - Sandstorm (Medieval version)",
+  "queue_index": 3,
+  "created_at": 1782714096.4459825,
+  "guild_id": 1402051030828449823
+}

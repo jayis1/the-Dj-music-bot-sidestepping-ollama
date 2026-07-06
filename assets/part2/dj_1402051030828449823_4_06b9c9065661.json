@@ -1,0 +1,14 @@
+{
+  "dj_text": "YEAH BOI! Sunglasses at Night \u2192 Careless Whisper! Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_06b9c9065661.wav",
+  "dj_sound_ids": [
+    "yeah_boiii_i_i_i.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Careless Whisper",
+  "prev_title": "Sunglasses at Night",
+  "queue_index": 4,
+  "created_at": 1776629833.9171288,
+  "guild_id": 1402051030828449823
+}

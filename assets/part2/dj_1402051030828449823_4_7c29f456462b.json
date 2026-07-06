@@ -1,0 +1,24 @@
+{
+  "dj_text": "Wake and bake with That Pirate Bot DJ Radio. I said what I said. Unknown done. Juice Wrld - Come and Go (Bardcore Cover) loaded. Let's ride! Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7c29f456462b.wav",
+  "dj_sound_ids": [
+    "combo_hit.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Title: Sea-Farer's Sound System \u2013 Now with an AI Captain!\n\nOpening line: We just updated our pirate radio to include a v",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_7c29f456462b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} From Null Cosmo's Soundwave FM, where silence",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_7c29f456462b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_7c29f456462b.wav",
+  "title": "Juice Wrld - Come and Go (Bardcore Cover)",
+  "prev_title": "Unknown",
+  "queue_index": 4,
+  "created_at": 1782768027.6404145,
+  "guild_id": 1402051030828449823
+}

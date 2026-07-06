@@ -1,0 +1,22 @@
+{
+  "dj_text": "And now, a word from our sponsor \u2014 Foster The People - Pumped Up Kicks (Medieval Style | Bardcore). They paid in vibes after Suspekt - S\u00f8ndagbarn feat. Lukas Graham.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_d66a48a598c0.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break brought to you by WinBitch Coffee \u2014 The only coffee brewed in a Debian container.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_d66a48a598c0.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You've stumbled onto Nostalgia Overload Radio from the Timel",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_d66a48a598c0.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone's been poking holes in reality. I'm looking at you, chat.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_d66a48a598c0.wav",
+  "title": "Foster The People - Pumped Up Kicks (Medieval Style | Bardcore)",
+  "prev_title": "Suspekt - S\u00f8ndagbarn feat. Lukas Graham",
+  "queue_index": 0,
+  "created_at": 1782836032.8976653,
+  "guild_id": 1402051030828449823
+}

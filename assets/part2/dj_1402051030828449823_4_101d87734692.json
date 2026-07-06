@@ -1,0 +1,24 @@
+{
+  "dj_text": "ERROR! Billionaire was too good. Replacing with Want My Love!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_101d87734692.wav",
+  "dj_sound_ids": [
+    "windows_10_error_sound.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hungry? Try Big Ron's Midnight Waffle Emporium \u2014 half waffles, half emporium, all heart attack.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_101d87734692.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Eternal Community Center, where bingo night ain't just a gam",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_101d87734692.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_101d87734692.wav",
+  "title": "Want My Love",
+  "prev_title": "Billionaire",
+  "queue_index": 4,
+  "created_at": 1776659653.6108348,
+  "guild_id": 1402051030828449823
+}

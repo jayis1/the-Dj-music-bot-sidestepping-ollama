@@ -1,0 +1,24 @@
+{
+  "dj_text": "Easy does it. John Lennon - Imagine (Medieval Version) \u2192 Africa - medieval style.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_a5148289812b.wav",
+  "dj_sound_ids": [
+    "dj_stop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Are you ready for a pirate-themed adventure on your phone with PirateBot Beats?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_a5148289812b.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Greetings, travelers of frequencies!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_a5148289812b.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_a5148289812b.wav",
+  "title": "Africa - medieval style",
+  "prev_title": "John Lennon - Imagine (Medieval Version)",
+  "queue_index": 4,
+  "created_at": 1782706843.0122418,
+  "guild_id": 1402051030828449823
+}

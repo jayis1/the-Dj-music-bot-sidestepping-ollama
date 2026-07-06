@@ -1,0 +1,24 @@
+{
+  "dj_text": "THIS IS SPARTA! Suno (a8a52b2e\u2026) \u2192 Suno (7020c372\u2026)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_ef6a254770b6.wav",
+  "dj_sound_ids": [
+    "300_spartan_chant_aoo_aoo_aoo.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Breaking news from That Pirate Bot DJ \u2014 the playlist is in control now. The DJ has been demoted to button-pusher.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_ef6a254770b6.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hey, boi listeners!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_ef6a254770b6.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_ef6a254770b6.wav",
+  "title": "Suno (7020c372\u2026)",
+  "prev_title": "Suno (a8a52b2e\u2026)",
+  "queue_index": 4,
+  "created_at": 1776787084.7846622,
+  "guild_id": 1402051030828449823
+}

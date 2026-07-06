@@ -1,0 +1,24 @@
+{
+  "dj_text": "The vibes have mutated from hasan shah - Tyveri ft. Gilli to Sleiman - Fundament ft. Gilli, Young. Evolve or perish. Down to the final track after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_4dec9858e87e.wav",
+  "dj_sound_ids": [
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Truth Frequency Radio from the Mirror Dimension. Your moon isn't real. OUR moon has teeth.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_4dec9858e87e.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{line:\"Welcome, brave souls!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_4dec9858e87e.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_4dec9858e87e.wav",
+  "title": "Sleiman - Fundament ft. Gilli, Young",
+  "prev_title": "hasan shah - Tyveri ft. Gilli",
+  "queue_index": 4,
+  "created_at": 1776646864.7452672,
+  "guild_id": 1402051030828449823
+}

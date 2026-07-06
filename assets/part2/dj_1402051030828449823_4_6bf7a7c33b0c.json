@@ -1,0 +1,22 @@
+{
+  "dj_text": "The cosmic DJ wheel has spun. TOXIC {Revibe Mix} (Medieval Version) lands on Viva la vida - Coldplay (Medieval version). Quantum entanglement.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6bf7a7c33b0c.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey you're tuned into That Pirate Bot DJ Radio, where our pirates are always bopping!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_6bf7a7c33b0c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome folks, this is Cosmic Groove FM coming atcha from di",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_6bf7a7c33b0c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_6bf7a7c33b0c.wav",
+  "title": "Viva la vida - Coldplay (Medieval version)",
+  "prev_title": "TOXIC {Revibe Mix} (Medieval Version)",
+  "queue_index": 4,
+  "created_at": 1782758835.3323348,
+  "guild_id": 1402051030828449823
+}

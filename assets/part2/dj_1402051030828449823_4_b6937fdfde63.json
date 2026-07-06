@@ -1,0 +1,15 @@
+{
+  "dj_text": "IA! Rodil sia! That Pirate DJ Radio Bot Radio! From Corey Hart - Sunglasses At Night (Official Music Video) RIGHT into Sunglasses at Night. No time for feelings.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_b6937fdfde63.wav",
+  "dj_sound_ids": [
+    "ia_rodilsia_hGybxEB.mp3",
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Sunglasses at Night",
+  "prev_title": "Corey Hart - Sunglasses At Night (Official Music Video)",
+  "queue_index": 4,
+  "created_at": 1776629594.8328667,
+  "guild_id": 1402051030828449823
+}

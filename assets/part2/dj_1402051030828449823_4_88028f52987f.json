@@ -1,0 +1,24 @@
+{
+  "dj_text": "Is that a good transition? YES KING! Megalovania - Bardcore / Medieval Style \u2192 Revenge (Medieval Style / Bardcore)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_88028f52987f.wav",
+  "dj_sound_ids": [
+    "is_that_d_good_yes_king.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey bards and troubadours, !",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_88028f52987f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "\ud83c\udfb6 *DJ Max* coming in from Smooth Jazz FM from Dimension K-7,",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_88028f52987f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_88028f52987f.wav",
+  "title": "Revenge (Medieval Style / Bardcore)",
+  "prev_title": "Megalovania - Bardcore / Medieval Style",
+  "queue_index": 4,
+  "created_at": 1782747714.804832,
+  "guild_id": 1402051030828449823
+}

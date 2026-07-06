@@ -1,0 +1,24 @@
+{
+  "dj_text": "CRUNCH! Easy Lover - Phil Collins [Bardcore | Medieval version] \u2192 Young Turks - Rod Stewart [Bardcore | Medieval version]!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_5d69a02d108f.wav",
+  "dj_sound_ids": [
+    "bone_crack.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hear ye, hear ye! Set sail on an auditory odyssey with Our 'Galloping Galleon Groove,' a blend of dubstep and Celtic fol",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_5d69a02d108f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\ud83d\udea8 {station name}: Mirror Station, The Bizarre Frequency from",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_5d69a02d108f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Frequency stabilized. For now. The walls between kosmos are thin today.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_5d69a02d108f.wav",
+  "title": "Young Turks - Rod Stewart [Bardcore | Medieval version]",
+  "prev_title": "Easy Lover - Phil Collins [Bardcore | Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782774601.4884295,
+  "guild_id": 1402051030828449823
+}

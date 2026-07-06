@@ -1,0 +1,24 @@
+{
+  "dj_text": "THIS IS SPARTA! Losing My Religion [Bardcore] \u2192 Iron Man [Bardcore]!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_fd766bb8f52d.wav",
+  "dj_sound_ids": [
+    "300_spartan_chant_aoo_aoo_aoo.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, listeners! {im_your_dj}, tuning into That Pirate Bot DJ Radio with a brand-new service called GiggleGoose \u2014 where l",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_fd766bb8f52d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} This is Smooth Jazz FM from Dimension K-7, wh",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_fd766bb8f52d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_fd766bb8f52d.wav",
+  "title": "Iron Man [Bardcore]",
+  "prev_title": "Losing My Religion [Bardcore]",
+  "queue_index": 4,
+  "created_at": 1782701695.963861,
+  "guild_id": 1402051030828449823
+}

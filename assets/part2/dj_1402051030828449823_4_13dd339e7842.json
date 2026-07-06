@@ -1,0 +1,22 @@
+{
+  "dj_text": "Alright! 2Madness was fire, and violins dos is about to match that energy!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_13dd339e7842.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "New from the makers of nothing \u2014 the SmartFridge X. It texts you when you're out of milk. It also texts your ex.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_13dd339e7842.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Broadcasting live from Null Kosmos: Join us on This Is That",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_13dd339e7842.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_13dd339e7842.wav",
+  "title": "violins dos",
+  "prev_title": "2Madness",
+  "queue_index": 4,
+  "created_at": 1779607854.9540944,
+  "guild_id": 1402051030828449823
+}

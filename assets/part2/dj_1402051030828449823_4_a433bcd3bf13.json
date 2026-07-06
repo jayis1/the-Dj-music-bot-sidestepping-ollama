@@ -1,0 +1,25 @@
+{
+  "dj_text": "You're NOT an idiot for listening to That Pirate Bot DJ Radio! BOOM! S\u00e4kkij\u00e4rven Polkka (Medieval Cover) \u2192 Hotel California - with EPIC solos!  [Bardcore | Medieval version]!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_a433bcd3bf13.wav",
+  "dj_sound_ids": [
+    "you_are_an_idiot.mp3",
+    "loud_explosion.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Title: Captain Jack Sparrow's Time-Traveling Tea Room!\n\n(Upbeat medieval music playing, with an {airhorn} signaling atte",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_a433bcd3bf13.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Screaming Spectacle FM, hailing from Sonic Shattered Dimensi",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_a433bcd3bf13.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_a433bcd3bf13.wav",
+  "title": "Hotel California - with EPIC solos!  [Bardcore | Medieval version]",
+  "prev_title": "S\u00e4kkij\u00e4rven Polkka (Medieval Cover)",
+  "queue_index": 4,
+  "created_at": 1782778723.5506294,
+  "guild_id": 1402051030828449823
+}

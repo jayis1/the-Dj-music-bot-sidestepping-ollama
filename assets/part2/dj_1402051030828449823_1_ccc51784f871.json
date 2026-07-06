@@ -1,0 +1,24 @@
+{
+  "dj_text": "SUS! We Are Number One (Medieval Cover) was sus. Katyusha (Medieval Cover) is sussier!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_ccc51784f871.wav",
+  "dj_sound_ids": [
+    "among_us_role_reveal_sound.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Reminder: That Pirate Bot DJ Radio is not responsible for any songs that get stuck in your head for the next 72 hours.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_ccc51784f871.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You've stumbled onto Nostalgia Overload Radio from the Timel",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_ccc51784f871.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_ccc51784f871.wav",
+  "title": "Katyusha (Medieval Cover)",
+  "prev_title": "We Are Number One (Medieval Cover)",
+  "queue_index": 1,
+  "created_at": 1782685193.96879,
+  "guild_id": 1402051030828449823
+}

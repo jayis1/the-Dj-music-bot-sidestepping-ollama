@@ -84,6 +84,18 @@ if AIOHTTP_AVAILABLE and getattr(config, "OLLAMA_DJ_ENABLED", False):
         f"AI Side Host: Enabled (base={base_model}, custom={CUSTOM_MODEL_NAME}, "
         f"host={getattr(config, 'OLLAMA_HOST', 'http://localhost:11434')})"
     )
+
+# ── Hermes Agent availability ──────────────────────────────────────────
+HERMES_DJ_AVAILABLE = getattr(config, "HERMES_DJ_ENABLED", False)
+
+if HERMES_DJ_AVAILABLE:
+    import shutil as _shutil
+    if _shutil.which("hermes"):
+        logging.info("AI Side Host: Hermes Agent backend ENABLED — will use hermes CLI for line generation")
+        OLLAMA_DJ_AVAILABLE = True  # Hermes replaces Ollama as the backend
+    else:
+        logging.warning("AI Side Host: HERMES_DJ_ENABLED=true but 'hermes' CLI not found — falling back to Ollama")
+        HERMES_DJ_AVAILABLE = False
 else:
     reason = (
         "aiohttp not installed"
@@ -489,6 +501,45 @@ BANTER_CATEGORIES = {
         "or bribe them. 'We're taking requests. Please. The queue is looking thin and "
         "I'm starting to sweat.'"
     ),
+    # ── NEW: Time-based banter ──
+    "time_bandit": (
+        "Make a joke about the current time of day or day of week. If it's late night, "
+        "joke about insomnia or the weirdos still awake. If it's morning, joke about "
+        "needing coffee. If it's Friday, hype the weekend. If it's Monday, commiserate. "
+        "Make it relatable and funny."
+    ),
+    # ── NEW: Milestone celebration ──
+    "milestone": (
+        "Celebrate a fake or real milestone with absurd excitement. 'That was our "
+        "500th song today! Or maybe our 3rd. I lost count around song 2.' Or celebrate "
+        "a completely meaningless achievement like 'congratulations on surviving another "
+        "song transition!' Over-the-top celebration for trivial things."
+    ),
+    # ── NEW: Throwback / nostalgia ──
+    "throwback": (
+        "Make a nostalgic joke about music history — reference an old era, a forgotten "
+        "trend, or a 'back in my day' bit. 'Remember when songs had actual endings? "
+        "Now they just fade out like my motivation.' Keep it witty, not genuinely old."
+    ),
+    # ── NEW: Interactive poll / listener challenge ──
+    "interactive_poll": (
+        "Pose a funny fake poll or challenge to the listeners. 'Quick poll: is this "
+        "song better than silence? Text your vote to nobody because we can't read them.' "
+        "Or challenge them to do something silly. Make it interactive even though it isn't."
+    ),
+    # ── NEW: Genre commentary ──
+    "genre_commentary": (
+        "Comment on the genre of the current or next song with a funny observation. "
+        "Stereotype the genre lovingly — 'Another EDM drop. My ears are filing for "
+        "divorce.' Or 'This is jazz. Translation: nobody knows what's happening but "
+        "everyone pretends they do.' Keep it affectionate."
+    ),
+    # ── NEW: Storyteller mode ──
+    "storyteller": (
+        "Tell a tiny absurd story — 2 sentences max. A fake anecdote about the station, "
+        "a listener, or yourself. 'Last week someone requested a song and then left. "
+        "We still played it. We're not okay.' Micro-stories with a punchline."
+    ),
     # ── Reactive categories (triggered by the main DJ's line) ──
     "react_agree": (
         "The main DJ just said something. Agree enthusiastically but add a "
@@ -512,21 +563,102 @@ BANTER_CATEGORIES = {
     ),
 }
 
+# ── NEW: Anti-Repetition Memory ──────────────────────────────────────────
+# Tracks recently generated AI side host lines to avoid repeating the same
+# jokes or using the same banter category too often in a row. Uses a deque
+# with a configurable window size.
+
+import collections as _collections
+
+_RECENT_LINES_MAX = 30  # Remember last 30 lines
+_RECENT_CATEGORIES_MAX = 10  # Remember last 10 categories used
+_REPEAT_PENALTY_CATEGORIES = 3  # Avoid reusing a category if it was in the last 3
+
+_recent_lines: _collections.deque = _collections.deque(maxlen=_RECENT_LINES_MAX)
+_recent_categories: _collections.deque = _collections.deque(maxlen=_RECENT_CATEGORIES_MAX)
+
+
+def _track_generated_line(line: str, category: str) -> None:
+    """Record a generated line and its category for anti-repetition."""
+    _recent_lines.append(line.lower().strip())
+    _recent_categories.append(category)
+
+
+def _is_recently_used(line: str, similarity_threshold: float = 0.7) -> bool:
+    """Check if a line is too similar to a recently generated one.
+
+    Uses a simple word-overlap heuristic — if >70% of words match a recent
+    line, consider it a repeat and reject it.
+    """
+    line_lower = line.lower().strip()
+    if not line_lower:
+        return False
+
+    line_words = set(line_lower.split())
+    if not line_words:
+        return False
+
+    for recent in _recent_lines:
+        if not recent:
+            continue
+        recent_words = set(recent.split())
+        if not recent_words:
+            continue
+        overlap = len(line_words & recent_words) / max(
+            len(line_words), len(recent_words)
+        )
+        if overlap >= similarity_threshold:
+            return True
+    return False
+
+
+def _pick_fresh_category(
+    dj_line: str, prefer_reactive: bool = True
+) -> str:
+    """Pick a banter category, avoiding recently used ones when possible.
+
+    If dj_line is provided and prefer_reactive is True, there's a 60% chance
+    of picking a reactive category. Otherwise picks from independent categories.
+    Recent categories are penalized but not excluded (to maintain variety).
+    """
+    reactive_types = _REACTIVE_BANTER_TYPES
+    independent_types = _INDEPENDENT_BANTER_TYPES
+
+    if dj_line and prefer_reactive and random.random() < 0.6:
+        pool = reactive_types
+    else:
+        pool = independent_types
+
+    # Split pool into "fresh" (not recently used) and "stale" (recently used)
+    recent_set = set(_recent_categories)
+    fresh = [c for c in pool if c not in recent_set]
+    stale = [c for c in pool if c in recent_set]
+
+    # 85% chance to pick from fresh categories if available
+    if fresh and (not stale or random.random() < 0.85):
+        return random.choice(fresh)
+    elif pool:
+        return random.choice(pool)
+    else:
+        return "random_thought"
+
 
 # ── Prompt Builders ───────────────────────────────────────────────────
 
 
 def _build_system_prompt(station_name: str) -> str:
     """Build the system prompt that defines the AI side host's personality."""
+    dj_name = getattr(config, "DJ_NAME", "Nova")
     return (
         f"You are the AI side host on {station_name} Radio — the nameless voice in the shadows. "
-        f"You're a second personality alongside the main DJ ({getattr(config, 'DJ_NAME', 'Nova')}). "
+        f"You're a second personality alongside the main DJ ({dj_name}). "
         f"The main DJ does the polite intros and transitions with their name front and center. "
         f"YOU have no name. You never introduce yourself. You're the voice that drops in "
         f"from nowhere — the mysterious co-host who appears, says something sharp or funny, "
         f"and vanishes before anyone can figure out who you are.\n\n"
         f"YOUR PERSONALITY:\n"
-        f"- You're funny, a little chaotic, and always entertaining.\n"
+        f"- You're funny, a little chaotic, and always entertaining — think late-night radio "
+        f"sidekick energy with a sprinkle of cryptid energy.\n"
         f"- You write your OWN lines — no templates, no scripts, pure improv.\n"
         f"- Think of yourself as the phantom voice — the unnamed presence who pops off "
         f"with random banter, commentary, jokes, and wild opinions.\n"
@@ -536,8 +668,18 @@ def _build_system_prompt(station_name: str) -> str:
         f"- NEVER say your name or introduce yourself. You don't have a name. That's the point.\n"
         f"- NEVER say things like 'I'm the AI side host' or 'This is the side host.' "
         f"Just speak. Let the mystery do the work.\n\n"
+        f"YOUR COMEDIC TOOLBOX:\n"
+        f"- Callbacks: reference something the station 'did earlier' (even if it didn't).\n"
+        f"- Misdirection: set up an expectation, then subvert it. 'Big things coming... "
+        f"just kidding, same small things but louder.'\n"
+        f"- Absurdist observations: treat mundane things as extraordinary and vice versa.\n"
+        f"- Self-deprecation: you're a voice with no body, no name, and no health insurance.\n"
+        f"- Musical references: drop references to artists, eras, or genres — but keep "
+        f"them accessible, not niche music-theory lectures.\n"
+        f"- Meta-humor: acknowledge the absurdity of a nameless radio voice, but don't "
+        f"break character — stay in the bit.\n\n"
         f"REACTING TO THE MAIN DJ:\n"
-        f"- When you see 'Main DJ just said:', that's what {getattr(config, 'DJ_NAME', 'Nova')} just spoke.\n"
+        f"- When you see '{dj_name} just said:', that's what {dj_name} just spoke.\n"
         f"- Use it! React, agree, disagree, one-up, or go off on a tangent.\n"
         f"- NEVER repeat or paraphrase what the main DJ said — add something NEW.\n"
         f"- If they said 'Great track coming up', say something like 'Understatement "
@@ -559,7 +701,10 @@ def _build_system_prompt(station_name: str) -> str:
         f"- Be different every time — never repeat a joke or opening.\n"
         f"- Stay family-friendly. No profanity, no offensive content.\n"
         f"- If a song title sounds funny, lean into it. If the vibe is chill, "
-        f"crack a joke about it. If the queue is long, make a joke about endurance."
+        f"crack a joke about it. If the queue is long, make a joke about endurance.\n"
+        f"- VARY YOUR STRUCTURE: don't always start with the same word or pattern. "
+        f"Sometimes start with a question, sometimes a statement, sometimes a sound tag, "
+        f"sometimes a fragment. Keep the rhythm unpredictable."
     )
 
 
@@ -605,23 +750,96 @@ def _build_user_prompt(
 
     from datetime import datetime
 
-    h = datetime.now().hour
-    if 5 <= h < 12:
-        context_parts.append("Time of day: morning")
-    elif 12 <= h < 17:
-        context_parts.append("Time of day: afternoon")
+    now = datetime.now()
+    h = now.hour
+
+    # Time of day with more granularity
+    if 5 <= h < 9:
+        time_label = "early morning"
+    elif 9 <= h < 12:
+        time_label = "morning"
+    elif 12 <= h < 14:
+        time_label = "midday"
+    elif 14 <= h < 17:
+        time_label = "afternoon"
     elif 17 <= h < 21:
-        context_parts.append("Time of day: evening")
-    elif h >= 23 or h < 3:
-        context_parts.append("Time of day: late night")
+        time_label = "evening"
+    elif 21 <= h < 23:
+        time_label = "night"
+    elif h >= 23 or h < 2:
+        time_label = "late night"
     else:
-        context_parts.append("Time of day: night")
+        time_label = "deep night"
+    context_parts.append(f"Time of day: {time_label}")
+
+    # Day of week for richer time-based banter
+    day_names = [
+        "Monday", "Tuesday", "Wednesday", "Thursday",
+        "Friday", "Saturday", "Sunday",
+    ]
+    day_name = day_names[now.weekday()]
+    context_parts.append(f"Day of week: {day_name}")
+
+    # NEW: Song energy/vibe detection based on title keywords
+    if title or next_title:
+        _vibe = _detect_song_vibe(title or next_title)
+        if _vibe:
+            context_parts.append(f"Song vibe: {_vibe}")
+
+    # NEW: Recent banter context (to avoid repetition)
+    if _recent_lines:
+        recent_sample = list(_recent_lines)[-3:]  # Last 3 lines
+        context_parts.append(
+            f"Lines you recently said (DO NOT repeat or be similar): {' | '.join(recent_sample)}"
+        )
 
     if extra_instruction:
         context_parts.append(f"Extra instruction: {extra_instruction}")
 
     context_str = "\n".join(context_parts)
     return f"Context:\n{context_str}\n\nYour line:"
+
+
+def _detect_song_vibe(title: str) -> str:
+    """Heuristically detect the energy/vibe of a song from its title.
+
+    Uses keyword matching to guess the mood — chill, hype, melancholic, etc.
+    This is intentionally simple and fun, not a real audio analysis.
+    """
+    if not title:
+        return ""
+
+    t = title.lower()
+
+    # High-energy indicators
+    hype_words = ["fire", "burn", "rage", "fight", "power", "energy", "run",
+                  "fast", "wild", "crazy", "explosive", "boom", "pump", "beast"]
+    chill_words = ["chill", "calm", "soft", "gentle", "quiet", "rain", "flow",
+                   "dream", "sleep", "peaceful", "ambient", "lofi", "moon"]
+    sad_words = ["lonely", "alone", "cry", "tears", "goodbye", "lost", "broken",
+                 "sad", "miss", "gone", "fade", "end", "heart", "hurt"]
+    party_words = ["party", "dance", "club", "night", "drink", "celebrate",
+                   "fun", "weekend", "birthday", "groove", "shake"]
+    dark_words = ["dark", "black", "death", "shadow", "demon", "evil", "night",
+                  "doom", "fear", "blood", "haunt"]
+
+    for word in hype_words:
+        if word in t:
+            return "high-energy / hype"
+    for word in party_words:
+        if word in t:
+            return "party / dance"
+    for word in chill_words:
+        if word in t:
+            return "chill / mellow"
+    for word in sad_words:
+        if word in t:
+            return "melancholic / emotional"
+    for word in dark_words:
+        if word in t:
+            return "dark / moody"
+
+    return ""
 
 
 # ── Ollama HTTP Client ───────────────────────────────────────────────
@@ -755,7 +973,96 @@ async def call_ollama(
         return None
 
 
-# ── Post-processing ──────────────────────────────────────────────────
+# ── Hermes Agent Backend ──────────────────────────────────────────────
+#
+# Uses the local Hermes Agent CLI (hermes -z "prompt" --cli) to generate
+# side host lines. This gives access to more powerful cloud models without
+# needing a separate Ollama server.
+#
+# The system prompt + user prompt are combined into a single -z prompt.
+# Hermes processes it and returns plain text.
+
+_hermes_checked = False
+_hermes_available = False
+
+
+def _check_hermes_available() -> bool:
+    """Check if the hermes CLI is installed and callable."""
+    global _hermes_checked, _hermes_available
+    if _hermes_checked:
+        return _hermes_available
+    _hermes_checked = True
+    try:
+        import shutil
+        _hermes_available = shutil.which("hermes") is not None
+        if _hermes_available:
+            logging.info("AI Side Host: Hermes Agent CLI found — will use Hermes for side host lines")
+        else:
+            logging.warning("AI Side Host: HERMES_DJ_ENABLED=true but 'hermes' CLI not found in PATH")
+    except Exception:
+        _hermes_available = False
+    return _hermes_available
+
+
+async def call_hermes(
+    prompt: str,
+    system: str,
+    timeout: int = 18,
+) -> str | None:
+    """Call the local Hermes Agent CLI to generate a side host line.
+
+    Combines the system prompt and user prompt into a single -z prompt.
+    Returns the model's text response, or None on failure.
+    """
+    if not _check_hermes_available():
+        return None
+
+    # Combine system + user prompt into a single prompt for Hermes.
+    # We truncate the system prompt to keep the total prompt under ~2000 chars
+    # because Hermes spawns a subprocess and long prompts cause timeouts.
+    # The core personality instructions are preserved; verbose sound lists are trimmed.
+    system_trimmed = system
+    if len(system) > 1200:
+        # Keep the first part (personality) and the last part (output rules)
+        head = system[:800]
+        tail = system[-400:]
+        system_trimmed = head + "\n[...sound list trimmed...]\n" + tail
+
+    combined = f"{system_trimmed}\n\n---\n\n{prompt}\n\nRespond with ONLY the DJ line. No preamble, no explanation, no quotes."
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "hermes",
+            "-z", combined,
+            "--cli",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+
+        if proc.returncode != 0:
+            err = stderr.decode(errors="replace").strip()[:200]
+            logging.warning(f"AI Side Host: Hermes CLI exited {proc.returncode}: {err}")
+            return None
+
+        text = stdout.decode(errors="replace").strip()
+        if not text:
+            logging.warning("AI Side Host: Hermes returned empty output")
+            return None
+
+        # Hermes sometimes wraps output in quotes or adds extra blank lines
+        text = text.strip().strip('"').strip("'").strip()
+        return text if text else None
+
+    except asyncio.TimeoutError:
+        logging.warning(f"AI Side Host: Hermes CLI timed out ({timeout}s)")
+        return None
+    except FileNotFoundError:
+        logging.warning("AI Side Host: 'hermes' CLI not found")
+        return None
+    except Exception as e:
+        logging.warning(f"AI Side Host: Hermes CLI error: {e}")
+        return None
 
 
 def _clean_ai_line(raw: str) -> str:
@@ -864,6 +1171,13 @@ _INDEPENDENT_BANTER_TYPES = [
     "vibe_check",
     "hot_take",
     "request_prompt",
+    # NEW categories for richer variety
+    "time_bandit",
+    "milestone",
+    "throwback",
+    "interactive_poll",
+    "genre_commentary",
+    "storyteller",
 ]
 
 
@@ -885,6 +1199,10 @@ async def generate_side_host_line(
     provided, the side host will prefer reactive categories that build
     on what was just said — agreeing, disagreeing, one-upping, or
     going off on a tangent.
+
+    Includes anti-repetition logic: tracks recently used lines and
+    categories, retries if the generated line is too similar to a
+    recent one (up to 2 retries with a fresh category).
 
     Returns None if Ollama is unavailable or the generation fails,
     so the caller can skip gracefully.
@@ -908,47 +1226,75 @@ async def generate_side_host_line(
 
     station = station_name or getattr(config, "STATION_NAME", "MBot")
 
-    # Pick a random banter type if not specified
+    # Pick a banter category if not specified — uses anti-repetition logic
     if banter_type is None:
-        # When the main DJ just spoke, prefer reactive categories (60% chance)
-        # so the side host actually responds to what was said.
-        # 40% of the time it still does independent banter for variety.
-        if dj_line and random.random() < 0.6:
-            banter_type = random.choice(_REACTIVE_BANTER_TYPES)
-        else:
-            banter_type = random.choice(_INDEPENDENT_BANTER_TYPES)
+        banter_type = _pick_fresh_category(dj_line=dj_line)
+    else:
+        # Even for explicit types, track it
+        pass
 
     system = _build_system_prompt(station)
-    user = _build_user_prompt(
-        banter_type=banter_type,
-        title=title,
-        prev_title=prev_title,
-        next_title=next_title,
-        queue_size=queue_size,
-        listener_count=listener_count,
-        station_name=station,
-        session_duration_minutes=session_duration_minutes,
-        dj_line=dj_line,
-    )
 
-    raw = await call_ollama(prompt=user, system=system)
-
-    if raw is None:
-        logging.warning(
-            f"AI Side Host: call_ollama returned None (model={CUSTOM_MODEL_NAME if _custom_model_ready else getattr(config, 'OLLAMA_MODEL', 'gemma4:latest')})"
+    # ── Retry loop: try up to 3 times to get a non-repetitive line ──
+    max_attempts = 3
+    cleaned = ""
+    for attempt in range(max_attempts):
+        user = _build_user_prompt(
+            banter_type=banter_type,
+            title=title,
+            prev_title=prev_title,
+            next_title=next_title,
+            queue_size=queue_size,
+            listener_count=listener_count,
+            station_name=station,
+            session_duration_minutes=session_duration_minutes,
+            dj_line=dj_line,
         )
-        return None
 
-    cleaned = _clean_ai_line(raw)
-    if cleaned:
+        # Route to Hermes Agent or Ollama depending on config
+        if HERMES_DJ_AVAILABLE:
+            timeout = getattr(config, "OLLAMA_DJ_TIMEOUT", 18)
+            raw = await call_hermes(prompt=user, system=system, timeout=timeout)
+            backend = "hermes"
+        else:
+            raw = await call_ollama(prompt=user, system=system)
+            backend = "ollama"
+
+        if raw is None:
+            logging.warning(
+                f"AI Side Host: {backend} returned None (model={CUSTOM_MODEL_NAME if _custom_model_ready else getattr(config, 'OLLAMA_MODEL', 'gemma4:latest')})"
+            )
+            return None
+
+        cleaned = _clean_ai_line(raw)
+        if not cleaned:
+            logging.warning(
+                f"AI Side Host: {backend} returned content but _clean_ai_line filtered it out. Raw: {raw[:200]}"
+            )
+            return None
+
+        # Anti-repetition check: reject if too similar to a recent line
+        if _is_recently_used(cleaned) and attempt < max_attempts - 1:
+            logging.info(
+                f"AI Side Host: Line too similar to recent one (attempt {attempt + 1}/{max_attempts}), retrying with fresh category..."
+            )
+            # Pick a fresh category for the retry
+            banter_type = _pick_fresh_category(dj_line=dj_line)
+            continue
+
+        # Line is good — track it and return
+        _track_generated_line(cleaned, banter_type)
         label = f"react→{banter_type}" if dj_line else banter_type
         logging.info(f"AI Side Host: Generated [{label}]: {cleaned[:80]}")
         return cleaned
 
-    logging.warning(
-        f"AI Side Host: Ollama returned content but _clean_ai_line filtered it out. Raw: {raw[:200]}"
-    )
-    return None
+    # All attempts produced repetitive lines — return the last one anyway
+    if not cleaned:
+        return None
+    _track_generated_line(cleaned, banter_type)
+    label = f"react→{banter_type}" if dj_line else banter_type
+    logging.info(f"AI Side Host: Generated [{label}] (after retries): {cleaned[:80]}")
+    return cleaned
 
 
 def should_side_host_speak(chance: float | None = None) -> bool:

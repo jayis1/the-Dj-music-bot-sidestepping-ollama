@@ -1,0 +1,24 @@
+{
+  "dj_text": "Soft landing. Jonny Hefty & J\u00f8den - Vi g\u00e5r aldrig hjem (Officiel Video) \u2192 Suspekt feat. Tina Dickow - Helt Alene.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_30acdc7a3e11.wav",
+  "dj_sound_ids": [
+    "ding_sound_effect_2.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Reminder: That Pirate Bot DJ Radio is not responsible for any songs that get stuck in your head for the next 72 hours.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_2_30acdc7a3e11.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "DIVE into a realm where Beyonce meets Bugs Bunny with \"Blank",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_2_30acdc7a3e11.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_2_30acdc7a3e11.wav",
+  "title": "Suspekt feat. Tina Dickow - Helt Alene",
+  "prev_title": "Jonny Hefty & J\u00f8den - Vi g\u00e5r aldrig hjem (Officiel Video)",
+  "queue_index": 2,
+  "created_at": 1776983549.5481637,
+  "guild_id": 1402051030828449823
+}

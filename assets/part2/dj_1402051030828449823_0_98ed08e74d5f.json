@@ -1,0 +1,25 @@
+{
+  "dj_text": "CHILI CHILI! That Pirate Bot DJ Radio! The Rock says... Suno (d2b9468d\u2026)! After K\u00f8dben Og Krystalklar Tjald! Got a nice little set going. 5 more after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_98ed08e74d5f.wav",
+  "dj_sound_ids": [
+    "chili_chili_fart_0ikahyN.mp3",
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Are you still listening? Good. Don't touch that dial. Or do. We literally can't stop you. You're in control.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_98ed08e74d5f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Calling all interdimensional singles, I'm RadioSweetHeart fr",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_98ed08e74d5f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_98ed08e74d5f.wav",
+  "title": "Suno (d2b9468d\u2026)",
+  "prev_title": "K\u00f8dben Og Krystalklar Tjald",
+  "queue_index": 0,
+  "created_at": 1776785554.7693276,
+  "guild_id": 1402051030828449823
+}

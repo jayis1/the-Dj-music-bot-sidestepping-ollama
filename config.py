@@ -151,6 +151,14 @@ MAX_SOUND_SECONDS = 8
 # Enable the AI side host. Set to "true" in .env to activate.
 OLLAMA_DJ_ENABLED = os.environ.get("OLLAMA_DJ_ENABLED", "true").lower() == "true"
 
+# ── Hermes Agent backend for AI side host ──────────────────────────────
+# When enabled, the bot uses the local Hermes Agent CLI (hermes -z) to
+# generate side host lines instead of Ollama. This gives access to more
+# powerful cloud models (configured in Hermes) without needing a separate
+# Ollama server.
+# When false (or unset), falls back to Ollama.
+HERMES_DJ_ENABLED = os.environ.get("HERMES_DJ_ENABLED", "false").lower() == "true"
+
 # Ollama server URL (default: http://localhost:11434)
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
@@ -299,6 +307,13 @@ YOUTUBE_STREAM_GIF = os.environ.get("YOUTUBE_STREAM_GIF", "")
 # Can be a YouTube playlist URL or a search query.
 # Example: https://youtube.com/playlist?list=PLxxxxxxx
 YOUTUBE_STREAM_PLAYLIST = os.environ.get("YOUTUBE_STREAM_PLAYLIST", "")
+
+# YouTube Live watch URL — the public URL where viewers can watch the stream.
+# The bot posts this link in the Discord text channel when it joins a voice
+# channel or starts streaming, so users can click through to watch the video.
+# Example: https://youtube.com/live/VIDEO_ID  or  https://youtu.be/VIDEO_ID
+# Leave empty to disable the link posting.
+YOUTUBE_STREAM_WATCH_URL = os.environ.get("YOUTUBE_STREAM_WATCH_URL", "")
 
 # ── YouTube Live: OBS Overlay ──────────────────────────────────────────
 # When streaming via OBS Studio, this URL is used as the browser source
@@ -468,3 +483,33 @@ RADIO_HIJACK_CHANCE = float(os.environ.get("RADIO_HIJACK_CHANCE", "0.05"))
 
 # Hijack voices share the same COMMERCIAL_VOICES pool — same 3 voices, but
 # they're from another dimension. No separate voice config needed.
+
+# ── No-Repeat Rule ────────────────────────────────────────────────────────
+# When the bot dequeues a track from the queue, it checks the recently-played
+# history. If the track's URL or title matches something played within this
+# many hours AND the queue still has more items, the track is skipped (put
+# back and the next one is dequeued instead). Set to 0 to disable.
+NO_REPEAT_DURATION_HOURS = int(os.environ.get("NO_REPEAT_DURATION_HOURS", "2"))
+
+# ── Crash Notifications ───────────────────────────────────────────────────
+# Discord webhook URL for crash/exception notifications. When set, the bot
+# sends an embed to this webhook on unhandled exceptions (both sync and async)
+# so you get out-of-band alerting even if the bot process is dying.
+# Leave empty to disable crash notifications.
+CRASH_NOTIFY_WEBHOOK_URL = os.environ.get("CRASH_NOTIFY_WEBHOOK_URL", "").strip()
+
+# ── Discord Go Live / Screen Share Video Streaming ──────────────────────
+# Streams the OBS Xvfb display into the Discord voice channel so users
+# can watch the video feed directly in Discord (screen share / Go Live).
+#
+# This uses discord.py's voice connection with self_stream=true patched
+# into the VOICE_STATE payload, then sends VP8 RTP video packets via the
+# voice UDP socket. The display captured is the same Xvfb display that
+# OBS renders to (typically :420).
+#
+# Use ?govideo / ?stopvideo commands to control it.
+DISCORD_VIDEO_DISPLAY = os.environ.get("DISCORD_VIDEO_DISPLAY", ":420")
+DISCORD_VIDEO_WIDTH = int(os.environ.get("DISCORD_VIDEO_WIDTH", "1280"))
+DISCORD_VIDEO_HEIGHT = int(os.environ.get("DISCORD_VIDEO_HEIGHT", "720"))
+DISCORD_VIDEO_FRAMERATE = int(os.environ.get("DISCORD_VIDEO_FRAMERATE", "30"))
+DISCORD_VIDEO_BITRATE = int(os.environ.get("DISCORD_VIDEO_BITRATE", "2500"))

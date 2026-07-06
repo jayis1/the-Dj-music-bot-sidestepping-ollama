@@ -1,0 +1,24 @@
+{
+  "dj_text": "That Pirate Bot DJ Radio \u2014 brought to you by vibes. Vibes are not a recognized currency. But we accept them. Gentle transition. Smells Like Teen Spirit Cover In Classical Latin (75 BC to 3rd Century AD) Bardcore/Medieval style into Abba - Money, Money, Money (Medieval | Bardcore Style).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_8fc5a0007920.wav",
+  "dj_sound_ids": [
+    "magic_fairy.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Behold, 'Tis Tricorn Turntables of That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_8fc5a0007920.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} This is {SoundGalaxyFM from the Whispering Vo",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_8fc5a0007920.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_8fc5a0007920.wav",
+  "title": "Abba - Money, Money, Money (Medieval | Bardcore Style)",
+  "prev_title": "Smells Like Teen Spirit Cover In Classical Latin (75 BC to 3rd Century AD) Bardcore/Medieval style",
+  "queue_index": 4,
+  "created_at": 1782772596.921208,
+  "guild_id": 1402051030828449823
+}

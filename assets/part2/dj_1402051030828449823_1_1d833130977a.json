@@ -1,0 +1,14 @@
+{
+  "dj_text": "Store Patter 4-0 was FIRE! Falco - Der Kommissar (U.S. Official Video) is the EXTINGUISHER! Just kidding, also fire!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_1d833130977a.wav",
+  "dj_sound_ids": [
+    "loud_explosion.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Falco - Der Kommissar (U.S. Official Video)",
+  "prev_title": "Store Patter 4-0",
+  "queue_index": 1,
+  "created_at": 1776629590.5058348,
+  "guild_id": 1402051030828449823
+}

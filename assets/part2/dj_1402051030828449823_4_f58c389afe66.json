@@ -1,0 +1,24 @@
+{
+  "dj_text": "FULL SEND! Macarena (Medieval Cover) was just the appetizer! The Final Countdown (Medieval Cover) is the MAIN COURSE!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_f58c389afe66.wav",
+  "dj_sound_ids": [
+    "dj_turn_it_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break brought to you by Dave's Questionable Auto Repair. We fix your car 60 percent of the time, every time.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_f58c389afe66.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You're listening to Smooth Jazz FM from Dimension K-7. Mmm.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_f58c389afe66.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_f58c389afe66.wav",
+  "title": "The Final Countdown (Medieval Cover)",
+  "prev_title": "Macarena (Medieval Cover)",
+  "queue_index": 4,
+  "created_at": 1782687284.6915522,
+  "guild_id": 1402051030828449823
+}

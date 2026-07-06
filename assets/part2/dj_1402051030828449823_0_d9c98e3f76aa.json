@@ -1,0 +1,24 @@
+{
+  "dj_text": "SUS! Neural Network Nights was impostor! Suno (194c3dff\u2026) is the real deal! Got a nice little set going. 5 more after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_d9c98e3f76aa.wav",
+  "dj_sound_ids": [
+    "among_us_role_reveal_sound.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Warning: this commercial break contains absolutely no useful information. We are legally required to tell you this.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_d9c98e3f76aa.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "[Sound:dungeon_locking] (Terrifying lock sound effect) [Term",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_d9c98e3f76aa.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_d9c98e3f76aa.wav",
+  "title": "Suno (194c3dff\u2026)",
+  "prev_title": "Neural Network Nights",
+  "queue_index": 0,
+  "created_at": 1776778166.9951205,
+  "guild_id": 1402051030828449823
+}

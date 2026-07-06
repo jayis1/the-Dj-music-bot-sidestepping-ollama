@@ -1,0 +1,24 @@
+{
+  "dj_text": "The vibe shifts gently. Gravity falls (Medieval version) \u2192 Rockefeller Street - Medieval Style [BardCore].",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_3_96f31ad0a246.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, you're tuning into That Pirate Bot DJ Radio with your trusty sidekick !",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_3_96f31ad0a246.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} Cosmic Classics on Galaxy Groove FM from Kosm",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_3_96f31ad0a246.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_3_96f31ad0a246.wav",
+  "title": "Rockefeller Street - Medieval Style [BardCore]",
+  "prev_title": "Gravity falls (Medieval version)",
+  "queue_index": 3,
+  "created_at": 1782793565.681929,
+  "guild_id": 1402051030828449823
+}

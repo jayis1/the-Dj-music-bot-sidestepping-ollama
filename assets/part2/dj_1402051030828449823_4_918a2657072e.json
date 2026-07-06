@@ -1,0 +1,24 @@
+{
+  "dj_text": "NUCLEAR! That Pirate Bot DJ Radio is ATOMIC! That was Blinding Lights (Medieval Style) \u2014 and the next one is even better. Teenage Dream (Medieval Style With Vocals)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_918a2657072e.wav",
+  "dj_sound_ids": [
+    "nuclear_diarrhea.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, pirates and sea dogs!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_918a2657072e.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} Alright listeners, we're coming right atcha w",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_918a2657072e.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "And STAY off our frequency! Go back to your own dimension!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_918a2657072e.wav",
+  "title": "Teenage Dream (Medieval Style With Vocals)",
+  "prev_title": "Blinding Lights (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782708294.1570766,
+  "guild_id": 1402051030828449823
+}

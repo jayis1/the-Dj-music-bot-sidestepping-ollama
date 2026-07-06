@@ -1,0 +1,24 @@
+{
+  "dj_text": "Magic! Suno (a272e7b5\u2026) becomes Suno (07d8965b\u2026)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_35026bb02388.wav",
+  "dj_sound_ids": [
+    "magic_fairy.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Warning: this commercial break contains absolutely no useful information. We are legally required to tell you this.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_35026bb02388.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Welcome, travelers of time!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_35026bb02388.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_35026bb02388.wav",
+  "title": "Suno (07d8965b\u2026)",
+  "prev_title": "Suno (a272e7b5\u2026)",
+  "queue_index": 4,
+  "created_at": 1776778668.3129892,
+  "guild_id": 1402051030828449823
+}

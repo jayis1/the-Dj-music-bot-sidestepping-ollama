@@ -1,0 +1,25 @@
+{
+  "dj_text": "Goofy mode ON! That Pirate Bot DJ Radio! Easy does it. The Valley \u2192 Skudt\u00e6t.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_7083c94318c1.wav",
+  "dj_sound_ids": [
+    "goofy_slip.mp3",
+    "dj_stop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "Skudt\u00e6t",
+  "prev_title": "The Valley",
+  "queue_index": 4,
+  "created_at": 1783303794.2713945,
+  "guild_id": 1402051030828449823
+}

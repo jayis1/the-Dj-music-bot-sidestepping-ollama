@@ -16,6 +16,8 @@ from cogs.youtube import (
     FFMPEG_OPTIONS,
     YTDL_FORMAT_OPTIONS,
     DRMProtectedError,
+    is_soundcloud_url,
+    is_bandcamp_url,
 )
 
 try:
@@ -69,7 +71,6 @@ try:
     YOUTUBE_STREAMER_CLASS = _YTStreamerClass
 except ImportError:
     YOUTUBE_STREAMER_CLASS = None
-
 
 from utils.broadcaster import PCMBroadcasterWrapper
 
@@ -575,6 +576,23 @@ class Music(commands.Cog):
                 f"with DJ engine seamlessly multiplexed via PCMBroadcaster!"
             )
 
+            # Post the stream watch URL to the guild's first text channel so
+            # Discord users can watch the video being streamed.
+            watch_url = getattr(config, "YOUTUBE_STREAM_WATCH_URL", "")
+            if watch_url:
+                try:
+                    text_ch = guild.text_channels[0] if guild.text_channels else None
+                    if text_ch:
+                        await text_ch.send(
+                            embed=self.create_embed(
+                                "🔴 YouTube Live",
+                                f"Stream is live! Watch here: {watch_url}",
+                                discord.Color.red(),
+                            )
+                        )
+                except Exception as e:
+                    logging.debug(f"YouTube Live: Could not post watch URL to Discord: {e}")
+
             # OBS auto scene: Switch to "Overlay Only" when YouTube Live stream starts
             await self._obs_scene_overlay()
 
@@ -798,6 +816,63 @@ class Music(commands.Cog):
             60, lambda: asyncio.ensure_future(self._disconnect_if_idle(guild_id))
         )
 
+    def _build_stream_embed(self):
+        """Build a rich embed for the active YouTube Live stream.
+
+        Includes the watch URL, live thumbnail (album art or stream card),
+        current song title, and stream status. Returns None if the stream
+        is not active or no watch URL is configured.
+        """
+        watch_url = getattr(config, "YOUTUBE_STREAM_WATCH_URL", "")
+        if not watch_url or not self._yt_stream_active:
+            return None
+
+        embed = discord.Embed(
+            title="🔴 YouTube Live Stream",
+            description=f"**Watch the stream here:**\n{watch_url}",
+            color=discord.Color.red(),
+            url=watch_url,
+        )
+
+        # Current song info
+        guild_id = getattr(self, "_yt_stream_guild", None)
+        current = None
+        if guild_id:
+            current = self.current_song.get(guild_id)
+        if current and isinstance(current, dict):
+            title = current.get("title", "Unknown")
+            embed.add_field(name="🎵 Now Playing", value=title, inline=False)
+        elif hasattr(current, "title"):
+            embed.add_field(name="🎵 Now Playing", value=current.title, inline=False)
+        else:
+            embed.add_field(name="🎵 Now Playing", value="Waiting for next track...", inline=False)
+
+        # Stream mode
+        mode_str = (
+            "🎙️ Curated (Shadow DJ)"
+            if getattr(self, "_yt_curated_mode", False)
+            else "🪞 Mirror (Discord)"
+        )
+        embed.add_field(name="📡 Mode", value=mode_str, inline=True)
+
+        # Status
+        if self._yt_streamer and self._yt_streamer.is_running:
+            embed.add_field(name="✅ Status", value="Live", inline=True)
+        else:
+            embed.add_field(name="⚠️ Status", value="Reconnecting...", inline=True)
+
+        # Thumbnail: use current song album art if available
+        thumb_url = None
+        if current and isinstance(current, dict):
+            thumb_url = current.get("thumbnail")
+        elif hasattr(current, "thumbnail"):
+            thumb_url = getattr(current, "thumbnail", None)
+        if thumb_url:
+            embed.set_thumbnail(url=thumb_url)
+
+        embed.set_footer(text="Use ?stoplive to stop the stream")
+        return embed
+
     @commands.command(name="join")
     async def join(self, ctx):
         logging.info(f"Join command invoked by {ctx.author} in {ctx.guild.name}")
@@ -822,11 +897,20 @@ class Music(commands.Cog):
             logging.info(
                 f"Bot joined voice channel {ctx.author.voice.channel} in {ctx.guild.name}"
             )
+        join_msg = f"{config.SUCCESS_EMOJI} Joined `{ctx.author.voice.channel}`"
+
+        # If YouTube Live stream is active, post a rich embed with the
+        # watch link, current song, and thumbnail so users in the channel
+        # can watch the video that the bot is streaming.
+        stream_embed = self._build_stream_embed()
+        if stream_embed:
+            join_embed = self.create_embed("Joined Channel", join_msg)
+            await ctx.send(embed=join_embed)
+            await ctx.send(embed=stream_embed)
+            return
+
         await ctx.send(
-            embed=self.create_embed(
-                "Joined Channel",
-                f"{config.SUCCESS_EMOJI} Joined `{ctx.author.voice.channel}`",
-            )
+            embed=self.create_embed("Joined Channel", join_msg),
         )
 
     @commands.command(name="leave")
@@ -1019,8 +1103,33 @@ class Music(commands.Cog):
                         else:
                             url = query
 
-                        logging.info(f"Attempting to get YTDLSource from URL: {url}")
-                        result = await YTDLSource.from_url(url, loop=self.bot.loop)
+                        # ── SoundCloud / Bandcamp support ────────────────
+                        # yt-dlp supports both natively, but the global
+                        # YTDL_FORMAT_OPTIONS has noplaylist=True and
+                        # default_search="ytsearch". For SoundCloud sets
+                        # (playlist URLs), we need noplaylist=False so the
+                        # whole set is extracted. For Bandcamp albums the
+                        # same applies. Build custom opts for these cases.
+                        _sc = is_soundcloud_url(url)
+                        _bc = is_bandcamp_url(url)
+                        if _sc or _bc:
+                            logging.info(
+                                f"Detected {'SoundCloud' if _sc else 'Bandcamp'} URL: {url}"
+                            )
+                            custom_opts = get_ytdl_format_options()
+                            # SoundCloud sets and Bandcamp albums are playlists
+                            if (_sc and "/sets/" in url) or (_bc and "/album/" in url):
+                                custom_opts["noplaylist"] = False
+                                logging.info(
+                                    f"{'SoundCloud set' if _sc else 'Bandcamp album'} "
+                                    f"detected — noplaylist=False for {url}"
+                                )
+                            result = await YTDLSource.from_url(
+                                url, loop=self.bot.loop, ytdl_opts=custom_opts
+                            )
+                        else:
+                            logging.info(f"Attempting to get YTDLSource from URL: {url}")
+                            result = await YTDLSource.from_url(url, loop=self.bot.loop)
                         logging.info(
                             f"YTDLSource.from_url returned type: {type(result)}, content: {result}"
                         )
@@ -1340,6 +1449,18 @@ class Music(commands.Cog):
                 f"play_next: Dequeued {type(data).__name__} — "
                 f"title={data.title}, url={str(data.url)[:60] if data.url else 'None'}"
             )
+
+            # ── No-Repeat Rule ───────────────────────────────────────────
+            # If this track was played recently (within NO_REPEAT_DURATION_HOURS)
+            # and the queue still has more items, skip it — put it back and
+            # dequeue the next one. Capped at 3 consecutive skips so we never
+            # empty the queue. If the queue is empty after skipping, just play
+            # the repeat (better than silence).
+            no_repeat_hours = getattr(config, "NO_REPEAT_DURATION_HOURS", 0) or 0
+            if no_repeat_hours > 0:
+                data = await self._apply_no_repeat(
+                    ctx, queue, data, guild_id, max_skips=3
+                )
 
             # ── Enrich SunoPlaylistTrack metadata (optional, best-effort) ──
             # SunoPlaylistTrack has a deterministic CDN URL that works
@@ -4137,6 +4258,57 @@ class Music(commands.Cog):
         # OBS auto scene: Switch to "Now Playing" when a song starts
         await self._obs_scene_now_playing()
 
+        # ── Album art on OBS overlay (even when NOT streaming to YouTube) ──
+        # Download the current song's thumbnail to /tmp/radio_thumbnail.jpg so
+        # the OBS image_source (created by bridge.create_thumbnail_source()) shows
+        # album art regardless of whether a YouTube live stream is active.
+        # Best-effort — failures are logged at debug level and never block playback.
+        try:
+            thumb_url = getattr(data, "thumbnail", None)
+            if thumb_url:
+                import aiohttp
+                import tempfile
+                import os as _os
+
+                async def _download_thumb():
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(
+                            thumb_url, timeout=aiohttp.ClientTimeout(total=8)
+                        ) as resp:
+                            if resp.status == 200:
+                                body = await resp.read()
+                                if body:
+                                    # Atomic write via temp file + rename
+                                    tmp_fd, tmp_path = tempfile.mkstemp(
+                                        suffix=".jpg", prefix="radio_thumb_",
+                                        dir="/tmp",
+                                    )
+                                    try:
+                                        with _os.fdopen(tmp_fd, "wb") as f:
+                                            f.write(body)
+                                        _os.replace(tmp_path, "/tmp/radio_thumbnail.jpg")
+                                    except Exception:
+                                        try:
+                                            _os.unlink(tmp_path)
+                                        except OSError:
+                                            pass
+                                    logging.debug(
+                                        f"OBS album art: wrote /tmp/radio_thumbnail.jpg "
+                                        f"({len(body)} bytes) for '{data.title}'"
+                                    )
+
+                asyncio.ensure_future(_download_thumb(), loop=self.bot.loop)
+
+                # Ensure the OBS image source exists (idempotent)
+                bridge = self._get_obs_bridge()
+                if bridge:
+                    try:
+                        bridge.create_thumbnail_source()
+                    except Exception as e:
+                        logging.debug(f"OBS album art: create_thumbnail_source failed: {e}")
+        except Exception as e:
+            logging.debug(f"OBS album art: thumbnail download skipped: {e}")
+
         try:
             logging.info(
                 f"Playing {data.title} in {ctx.guild.name} (url={data.url[:80]}…)"
@@ -4231,6 +4403,93 @@ class Music(commands.Cog):
             await asyncio.sleep(2)
             await self.play_next(ctx)
 
+    # ── No-Repeat Rule ─────────────────────────────────────────────
+
+    async def _apply_no_repeat(self, ctx, queue, data, guild_id, max_skips=3):
+        """Skip a track if it was played recently and the queue has more items.
+
+        Compares the dequeued track's URL (webpage_url) and title against the
+        guild's recently_played history. If a match is found AND it was played
+        within NO_REPEAT_DURATION_HOURS AND the queue isn't empty, the track
+        is put back at the end of the queue and the next track is dequeued.
+
+        Capped at max_skips consecutive skips to avoid emptying the queue.
+        If the queue runs out while skipping, the last repeat is played
+        (better than silence).
+
+        Args:
+            ctx: The command context.
+            queue: The asyncio.Queue for this guild.
+            data: The dequeued track to check.
+            guild_id: The guild ID.
+            max_skips: Maximum consecutive skips before giving up.
+
+        Returns:
+            The track to actually play (may be the original or a later one).
+        """
+        no_repeat_hours = getattr(config, "NO_REPEAT_DURATION_HOURS", 0) or 0
+        if no_repeat_hours <= 0:
+            return data
+
+        history = self.recently_played.get(guild_id, [])
+        if not history:
+            return data
+
+        now = time.time()
+        cutoff = now - (no_repeat_hours * 3600)
+
+        track_url = getattr(data, "webpage_url", None) or getattr(data, "url", None)
+        track_title = (getattr(data, "title", "") or "").strip().lower()
+
+        def _is_recent_match(entry):
+            ts = entry.get("played_at_ts")
+            if ts is None or ts < cutoff:
+                return False
+            if track_url and entry.get("url") and entry["url"] == track_url:
+                return True
+            e_title = (entry.get("title", "") or "").strip().lower()
+            if track_title and e_title and track_title == e_title:
+                return True
+            return False
+
+        skips = 0
+        skipped_tracks = []
+        current = data
+
+        while skips < max_skips:
+            if not any(_is_recent_match(e) for e in history):
+                break  # current track is fine to play
+
+            # This track is a recent repeat — skip it if queue has more
+            if queue.empty():
+                logging.info(
+                    f"No-repeat: '{current.title}' was played recently but queue "
+                    f"is empty — playing it anyway (better than silence)."
+                )
+                break
+
+            logging.info(
+                f"No-repeat: skipping '{current.title}' — played within "
+                f"{no_repeat_hours}h. Trying next track (skip {skips + 1}/{max_skips})."
+            )
+            skipped_tracks.append(current)
+            current = await queue.get()
+            skips += 1
+
+            # Update comparison fields for the new track
+            track_url = (
+                getattr(current, "webpage_url", None)
+                or getattr(current, "url", None)
+            )
+            track_title = (getattr(current, "title", "") or "").strip().lower()
+
+        # Put skipped tracks back at the end of the queue so they get a
+        # chance to play later (after the no-repeat window expires).
+        for t in skipped_tracks:
+            await queue.put(t)
+
+        return current
+
     # ── Recently Played & Auto-DJ ──────────────────────────────────
 
     def _record_history(self, guild_id, track):
@@ -4243,6 +4502,7 @@ class Music(commands.Cog):
             "thumbnail": getattr(track, "thumbnail", None),
             "duration": getattr(track, "duration", None),
             "played_at": datetime.datetime.now().strftime("%H:%M"),
+            "played_at_ts": time.time(),  # epoch seconds for no-repeat math
         }
         if guild_id not in self.recently_played:
             self.recently_played[guild_id] = []
@@ -4416,6 +4676,10 @@ class Music(commands.Cog):
     async def shoutout(self, ctx, *, user: discord.Member = None):
         """Give a shoutout to a user! The DJ will announce them over the air.
 
+        If the AI Side Host is enabled, a custom AI-generated shoutout line
+        is used. Otherwise a random template line is picked from a pool of
+        20+ lines spanning hype, chill, funny, formal, and absurd vibes.
+
         Usage: ?shoutout @username
         """
         if not user:
@@ -4440,44 +4704,152 @@ class Music(commands.Cog):
 
         guild_id = ctx.guild.id
 
-        # Build shoutout text
+        # ── Build shoutout text ──────────────────────────────────────
         from utils.dj import _format_line
+        import random
 
+        # Determine the user's top role (if any non-default role exists)
+        user_role = None
+        if user.roles and len(user.roles) > 1:
+            # roles[0] is @everyone — pick the highest non-default role
+            real_roles = [r for r in user.roles if r.name != "@everyone"]
+            if real_roles:
+                # Highest role = highest position
+                user_role = max(real_roles, key=lambda r: r.position).name
+
+        # 20+ shoutout templates across different vibes.
+        # {user} and {role} are substituted by _format_line / manual replace.
         shoutout_lines = [
+            # ── Hype ──
             "Big shoutout to {user}! You're a legend!",
             "Yo, shoutout to {user}! Thanks for rocking with us!",
             "This one goes out to {user}! You're the real MVP!",
-            "Hey {user}! This one's for you, my friend!",
-            "Shoutout to {user}! Keep doing what you do!",
             "Ladies and gentlemen, give it up for {user}!",
             "Where my {user} fans at? Shoutout to the one and only!",
-            "And now, a very special shoutout to {user}!",
+            # ── Chill ──
+            "Hey {user}! This one's for you, my friend. Vibe on.",
+            "Shoutout to {user}! Keep doing what you do — we see you.",
+            "And now, a very special shoutout to {user}. Take it easy.",
+            "Sending some good vibes to {user} right now. Enjoy the ride.",
+            "To {user}: thanks for tuning in. This one's yours.",
+            # ── Funny ──
+            "Alert! {user} has entered the building. Shoutout!",
+            "We interrupt this broadcast for an important shoutout to {user}.",
+            "Did somebody order a shoutout for {user}? Coming right up!",
+            "{user}, you're officially cooler than the DJ. Don't tell them I said that.",
+            "Shoutout to {user} — the only person here who showed up on time.",
+            # ── Formal ──
+            "It is my distinct honor to recognize {user} on the air this evening.",
+            "A formal shoutout to {user}, a valued member of our listening audience.",
+            "Please join me in acknowledging {user} for their continued support.",
+            "We extend our warmest regards to {user} on this broadcast.",
+            # ── Absurd ──
+            "Shoutout to {user}, who once wrestled a playlist and won.",
+            "{user}, the legendary radio phantom, has appeared. Shoutout!",
+            "Breaking news: {user} is actually three DJs in a trench coat. Shoutout!",
+            "A shoutout to {user}, certified inhabitant of the groove dimension.",
+            "And now, a shoutout to {user} from the 7th dimension of funk.",
         ]
-        import random
 
-        line = random.choice(shoutout_lines)
-        text = _format_line(line + " {sound:applause}", user=user.display_name)
+        # Build the template line (may be overridden by AI below)
+        template_line = random.choice(shoutout_lines)
 
+        # Inject role mention if the user has a non-default role
+        if user_role:
+            # Prefer role-aware template variants when available
+            role_templates = [
+                f"Big shoutout to {{user}}, our favorite {user_role}!",
+                f"Ladies and gentlemen, give it up for {{user}} — our resident {user_role}!",
+                f"Shoutout to {{user}}, the {user_role} we all aspire to be!",
+                f"To {{user}}, our legendary {user_role}: this one's for you!",
+            ]
+            template_line = random.choice(role_templates)
+
+        # ── AI Side Host: try a custom AI-generated shoutout ────────
+        ai_line = None
+        if (
+            self.ai_dj_enabled.get(guild_id, False)
+            and OLLAMA_DJ_AVAILABLE
+        ):
+            try:
+                # Build context for the AI: use the user's display name and role
+                listener_count = 0
+                guild = self.bot.get_guild(guild_id)
+                if guild and guild.voice_client and guild.voice_client.channel:
+                    listener_count = sum(
+                        1 for m in guild.voice_client.channel.members if not m.bot
+                    )
+                context_hint = f"Give a shoutout to a listener named {user.display_name}"
+                if user_role:
+                    context_hint += f" who has the role '{user_role}'"
+                ai_line = await generate_side_host_line(
+                    title="",
+                    queue_size=0,
+                    listener_count=listener_count,
+                    station_name=self.bot.user.name if self.bot.user else config.STATION_NAME,
+                    banter_type="shoutout",
+                    dj_line=context_hint,
+                )
+                if ai_line:
+                    # Clean up — the AI line should already be a clean sentence,
+                    # but make sure it mentions the user somehow.
+                    if user.display_name.lower() not in ai_line.lower():
+                        ai_line = f"{ai_line} Shoutout to {user.display_name}!"
+                    logging.info(
+                        f"Shoutout: AI line generated for {user.display_name}: "
+                        f"{ai_line[:80]}..."
+                    )
+            except Exception as e:
+                logging.debug(f"Shoutout: AI generation failed, using template: {e}")
+                ai_line = None
+
+        # Use AI line if available, otherwise the template
+        final_line = ai_line if ai_line else template_line
+        text = _format_line(
+            final_line + " {sound:applause}", user=user.display_name
+        )
+
+        # ── Speak the shoutout ──────────────────────────────────────
         if self.dj_enabled.get(guild_id, False) and TTS_AVAILABLE:
-            spoke = await self._dj_speak(ctx.voice_client, text, guild_id)
+            # If AI generated the line, use the side host voice
+            voice = None
+            if ai_line:
+                voice = self.ai_dj_voice.get(guild_id, config.OLLAMA_DJ_VOICE)
+            spoke = await self._dj_speak(
+                ctx.voice_client, text, guild_id, voice=voice,
+                is_ai=bool(ai_line),
+            )
             if spoke:
-                await ctx.send(
+                confirm = await ctx.send(
                     embed=self.create_embed(
                         "🎙️ Shoutout!",
-                        f"Giving a shoutout to **{user.display_name}** over the air!",
+                        f"Giving a shoutout to **{user.display_name}** over the air!"
+                        + (f"\n*AI Side Host generated a custom line!*" if ai_line else ""),
                         discord.Color.purple(),
                     )
                 )
+                # Add emoji reactions
+                for emoji in ("🎵", "🎉", "🎤"):
+                    try:
+                        await confirm.add_reaction(emoji)
+                    except Exception:
+                        pass
                 return
 
-        # DJ not available — just send text
-        await ctx.send(
+        # DJ not available — just send text with reactions
+        confirm = await ctx.send(
             embed=self.create_embed(
                 "📢 Shoutout!",
-                f"🎵 Big shoutout to **{user.display_name}**! 🎵",
+                f"🎵 Big shoutout to **{user.display_name}**! 🎵"
+                + (f"\n*{final_line}*" if ai_line else ""),
                 discord.Color.gold(),
             )
         )
+        for emoji in ("🎵", "🎉", "👏"):
+            try:
+                await confirm.add_reaction(emoji)
+            except Exception:
+                pass
 
     # ── Bed Music (DJ Interlude) ──────────────────────────────────
 
@@ -4945,73 +5317,6 @@ class Music(commands.Cog):
         return self._battles.get(guild_id)
 
 
-class BattleView(discord.ui.View):
-    """Interactive Discord button view for Battle of the Beats voting."""
-
-    def __init__(self, music_cog, guild_id):
-        super().__init__(timeout=70)  # Slightly longer than the 60s battle
-        self.music_cog = music_cog
-        self.guild_id = guild_id
-
-        # Add vote buttons programmatically
-        btn_a = discord.ui.Button(
-            label="🅰️ Song A",
-            style=discord.ButtonStyle.primary,
-            custom_id="battle_vote_a",
-        )
-        btn_a.callback = self._vote_a
-        self.add_item(btn_a)
-
-        btn_b = discord.ui.Button(
-            label="🅱️ Song B",
-            style=discord.ButtonStyle.danger,
-            custom_id="battle_vote_b",
-        )
-        btn_b.callback = self._vote_b
-        self.add_item(btn_b)
-
-    async def _vote_a(self, interaction: discord.Interaction):
-        battle = self.music_cog._battles.get(self.guild_id)
-        if not battle or not battle.get("active"):
-            await interaction.response.send_message(
-                "⏱️ This battle has ended!", ephemeral=True
-            )
-            return
-
-        user_id = str(interaction.user.id)
-        # Switching vote from B to A
-        if user_id in battle.get("votes_b", {}):
-            del battle["votes_b"][user_id]
-        battle["votes_a"][user_id] = time.time()
-
-        votes_a = len(battle["votes_a"])
-        votes_b = len(battle["votes_b"])
-        await interaction.response.send_message(
-            f"🅰️ Voted for **{battle['title_a']}**! ({votes_a}–{votes_b})",
-            ephemeral=True,
-        )
-
-    async def _vote_b(self, interaction: discord.Interaction):
-        battle = self.music_cog._battles.get(self.guild_id)
-        if not battle or not battle.get("active"):
-            await interaction.response.send_message(
-                "⏱️ This battle has ended!", ephemeral=True
-            )
-            return
-
-        user_id = str(interaction.user.id)
-        # Switching vote from A to B
-        if user_id in battle.get("votes_a", {}):
-            del battle["votes_a"][user_id]
-        battle["votes_b"][user_id] = time.time()
-
-        votes_a = len(battle["votes_a"])
-        votes_b = len(battle["votes_b"])
-        await interaction.response.send_message(
-            f"🅱️ Voted for **{battle['title_b']}**! ({votes_a}–{votes_b})",
-            ephemeral=True,
-        )
-
     # ── YouTube Live Streaming Commands ────────────────────────────
 
     @commands.command(name="golive")
@@ -5113,18 +5418,29 @@ class BattleView(discord.ui.View):
             )
 
         key_display = f"{key[:4]}...{key[-4:]}" if len(key) > 8 else "***"
+        golive_msg = (
+            f"{config.SUCCESS_EMOJI} Streaming to YouTube Live (mirror mode)!\n"
+            f"📡 RTMP: `{rtmp_url}`\n"
+            f"🔑 Key: `{key_display}`\n"
+            f"🖼️ Card: `{stream_image or 'logo.png'}`\n\n"
+        )
+        golive_msg += (
+            "Go to **YouTube Studio → Go Live** to see the stream. "
+            "Use `?stoplive` to stop."
+        )
         await ctx.send(
             embed=self.create_embed(
                 "🔴 YouTube Live Started",
-                f"{config.SUCCESS_EMOJI} Streaming to YouTube Live (mirror mode)!\n"
-                f"📡 RTMP: `{rtmp_url}`\n"
-                f"🔑 Key: `{key_display}`\n"
-                f"🖼️ Card: `{stream_image or 'logo.png'}`\n\n"
-                "Go to **YouTube Studio → Go Live** to see the stream. "
-                "Use `?stoplive` to stop.",
+                golive_msg,
                 discord.Color.green(),
             )
         )
+
+        # Post a rich embed with watch link + thumbnail so users can
+        # click through to watch the video stream.
+        stream_embed = self._build_stream_embed()
+        if stream_embed:
+            await ctx.send(embed=stream_embed)
 
     @commands.command(name="stoplive")
     @commands.is_owner()
@@ -5209,6 +5525,74 @@ class BattleView(discord.ui.View):
                     discord.Color.dark_grey(),
                 )
             )
+
+
+class BattleView(discord.ui.View):
+    """Interactive Discord button view for Battle of the Beats voting."""
+
+    def __init__(self, music_cog, guild_id):
+        super().__init__(timeout=70)  # Slightly longer than the 60s battle
+        self.music_cog = music_cog
+        self.guild_id = guild_id
+
+        # Add vote buttons programmatically
+        btn_a = discord.ui.Button(
+            label="🅰️ Song A",
+            style=discord.ButtonStyle.primary,
+            custom_id="battle_vote_a",
+        )
+        btn_a.callback = self._vote_a
+        self.add_item(btn_a)
+
+        btn_b = discord.ui.Button(
+            label="🅱️ Song B",
+            style=discord.ButtonStyle.danger,
+            custom_id="battle_vote_b",
+        )
+        btn_b.callback = self._vote_b
+        self.add_item(btn_b)
+
+    async def _vote_a(self, interaction: discord.Interaction):
+        battle = self.music_cog._battles.get(self.guild_id)
+        if not battle or not battle.get("active"):
+            await interaction.response.send_message(
+                "⏱️ This battle has ended!", ephemeral=True
+            )
+            return
+
+        user_id = str(interaction.user.id)
+        # Switching vote from B to A
+        if user_id in battle.get("votes_b", {}):
+            del battle["votes_b"][user_id]
+        battle["votes_a"][user_id] = time.time()
+
+        votes_a = len(battle["votes_a"])
+        votes_b = len(battle["votes_b"])
+        await interaction.response.send_message(
+            f"🅰️ Voted for **{battle['title_a']}**! ({votes_a}–{votes_b})",
+            ephemeral=True,
+        )
+
+    async def _vote_b(self, interaction: discord.Interaction):
+        battle = self.music_cog._battles.get(self.guild_id)
+        if not battle or not battle.get("active"):
+            await interaction.response.send_message(
+                "⏱️ This battle has ended!", ephemeral=True
+            )
+            return
+
+        user_id = str(interaction.user.id)
+        # Switching vote from A to B
+        if user_id in battle.get("votes_a", {}):
+            del battle["votes_a"][user_id]
+        battle["votes_b"][user_id] = time.time()
+
+        votes_a = len(battle["votes_a"])
+        votes_b = len(battle["votes_b"])
+        await interaction.response.send_message(
+            f"🅱️ Voted for **{battle['title_b']}**! ({votes_a}–{votes_b})",
+            ephemeral=True,
+        )
 
 
 async def setup(bot):

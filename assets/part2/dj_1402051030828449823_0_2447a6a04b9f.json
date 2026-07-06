@@ -1,0 +1,14 @@
+{
+  "dj_text": "Linen Ud is history. Har Du Glemt Dine Nosser is NOW.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_2447a6a04b9f.wav",
+  "dj_sound_ids": [
+    "mega_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Har Du Glemt Dine Nosser",
+  "prev_title": "Linen Ud",
+  "queue_index": 0,
+  "created_at": 1776627669.9976056,
+  "guild_id": 1402051030828449823
+}

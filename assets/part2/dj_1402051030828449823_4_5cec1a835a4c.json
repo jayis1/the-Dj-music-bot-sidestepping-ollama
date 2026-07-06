@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was Maroon 5 - Memories (Medieval Style Cover). Changing the channel. Just kidding, there's only one channel. Lil Nas X - Old Town Road (Medieval Style Cover).",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_5cec1a835a4c.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Introducing the iBrick Pro Max Ultra \u2014 it's just a brick. But it's OUR brick.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_5cec1a835a4c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "THIS IS PIRATE RADIO 404 FROM THE VOID!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_5cec1a835a4c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_5cec1a835a4c.wav",
+  "title": "Lil Nas X - Old Town Road (Medieval Style Cover)",
+  "prev_title": "Maroon 5 - Memories (Medieval Style Cover)",
+  "queue_index": 4,
+  "created_at": 1782735970.9841855,
+  "guild_id": 1402051030828449823
+}

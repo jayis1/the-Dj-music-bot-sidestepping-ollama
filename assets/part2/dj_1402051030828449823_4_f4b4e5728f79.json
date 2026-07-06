@@ -1,0 +1,22 @@
+{
+  "dj_text": "\u00d8kologisk was so good I temporarily forgot how to DJ! But I'm back! Paradis Br\u00e6nder!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_f4b4e5728f79.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "You've stumbled onto Nostalgia Overload Radio from the Timeline That Wasn't.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_f4b4e5728f79.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "\"I'm here on a whirlwind tour of beats, but let me tell ya '",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_f4b4e5728f79.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_f4b4e5728f79.wav",
+  "title": "Paradis Br\u00e6nder",
+  "prev_title": "\u00d8kologisk",
+  "queue_index": 4,
+  "created_at": 1776980410.2532346,
+  "guild_id": 1402051030828449823
+}

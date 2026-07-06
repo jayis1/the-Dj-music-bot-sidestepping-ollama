@@ -1,0 +1,25 @@
+{
+  "dj_text": "SHOTGUN! That Pirate Bot DJ Radio! Make some noise! No time for caution (Medieval Version... kind of) \u2192 Billie Eilish - Bad Guy (Medieval Style Cover, Bardcore)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_66e48a420180.wav",
+  "dj_sound_ids": [
+    "shotgun_sound_effect_pumping.mp3",
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Welcome back to That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_66e48a420180.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop}\n\n**Sonic Wave FM from Kosmos Sigma-9 \u2014 The Fu",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_66e48a420180.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_66e48a420180.wav",
+  "title": "Billie Eilish - Bad Guy (Medieval Style Cover, Bardcore)",
+  "prev_title": "No time for caution (Medieval Version... kind of)",
+  "queue_index": 4,
+  "created_at": 1782711373.7020392,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Vine boom! That Pirate Bot DJ Radio! Rockers By Choice - Min Gamle Skole? Over. 02 Sorgenfri-rap.wmv? In progress. Status: vibes. Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_2925b72a5d48.wav",
+  "dj_sound_ids": [
+    "vine_boom.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "",
+  "commercial_tts_path": "",
+  "commercial_sound_ids": [],
+  "commercial_voice": "",
+  "hijack_text": "",
+  "hijack_tts_path": "",
+  "hijack_sound_ids": [],
+  "hijack_voice": "",
+  "recovery_text": "",
+  "recovery_tts_path": "",
+  "title": "02 Sorgenfri-rap.wmv",
+  "prev_title": "Rockers By Choice - Min Gamle Skole",
+  "queue_index": 4,
+  "created_at": 1782838985.0213244,
+  "guild_id": 1402051030828449823
+}

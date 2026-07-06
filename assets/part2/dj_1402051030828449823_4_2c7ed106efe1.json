@@ -1,0 +1,24 @@
+{
+  "dj_text": "The Rock says... Sia - Chandelier (Medieval Style)! After Poker Face (Medieval Style)!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_2c7ed106efe1.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "(Opening with medieval-style instrumental intro and a dramatic sound effect of )\n\"Hark, ye landlubbers!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_2c7ed106efe1.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "{cool_dj_drop} \"This is Pirate Radio Voidwave from Dimension",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_2c7ed106efe1.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_2c7ed106efe1.wav",
+  "title": "Sia - Chandelier (Medieval Style)",
+  "prev_title": "Poker Face (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782717184.8088002,
+  "guild_id": 1402051030828449823
+}

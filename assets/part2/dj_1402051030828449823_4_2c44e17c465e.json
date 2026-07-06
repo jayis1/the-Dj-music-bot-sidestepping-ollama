@@ -1,0 +1,25 @@
+{
+  "dj_text": "GUGU GAGA! That Pirate Bot DJ Radio! That was SOUND OF SILENCE | Medieval Bardcore Version | Simon & Garfunkel | Disturbed. And coming up next, RING OF FIRE | Medieval Bardcore Version | Johnny Cash!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_2c44e17c465e.wav",
+  "dj_sound_ids": [
+    "sukuna_gugu_gaga_loudest.mp3",
+    "combo_hit.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Are you ready to rock your medieval fantasies with our latest product? Enter Spagething 'n' Charm \u2014 !",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_2c44e17c465e.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hey, folks! {soundscape:combo_hit}, tuning into Eternal Vibe",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_2c44e17c465e.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_2c44e17c465e.wav",
+  "title": "RING OF FIRE | Medieval Bardcore Version | Johnny Cash",
+  "prev_title": "SOUND OF SILENCE | Medieval Bardcore Version | Simon & Garfunkel | Disturbed",
+  "queue_index": 4,
+  "created_at": 1782791788.8667717,
+  "guild_id": 1402051030828449823
+}

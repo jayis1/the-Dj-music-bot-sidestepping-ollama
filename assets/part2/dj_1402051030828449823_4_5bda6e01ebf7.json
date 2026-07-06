@@ -1,0 +1,22 @@
+{
+  "dj_text": "YOOO! hasan shah - Tyveri ft. Gilli was just the WARMUP! Jokeren - Kun os to feat. Pauline (Official Music Video) is the MAIN EVENT! LET'S GOOO!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_5bda6e01ebf7.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Looking for love? Try That Pirate Bot DJ Mingle \u2014 the dating app where everyone is either a bot or emotionally unavailab",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_5bda6e01ebf7.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "You're listening to Smooth Jazz FM from Dimension K-7. Mmm.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_5bda6e01ebf7.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_5bda6e01ebf7.wav",
+  "title": "Jokeren - Kun os to feat. Pauline (Official Music Video)",
+  "prev_title": "hasan shah - Tyveri ft. Gilli",
+  "queue_index": 4,
+  "created_at": 1782844057.8385437,
+  "guild_id": 1402051030828449823
+}

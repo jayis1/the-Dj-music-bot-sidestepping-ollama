@@ -1,0 +1,24 @@
+{
+  "dj_text": "This is That Pirate Bot DJ Radio, your non-stop music station. From 10-blod-p\u00e5-betong-gr\u00f8n-i-lungen straight into Suno (659a8aea\u2026)! No pause button!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_14bdf12f9661.wav",
+  "dj_sound_ids": [
+    "airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This segment powered by TurboVPN \u2014 because your ISP doesn't know what you're streaming at 3AM and we'd like to keep it t",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_14bdf12f9661.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "And listeners, hold onto your hats!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_14bdf12f9661.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_14bdf12f9661.wav",
+  "title": "Suno (659a8aea\u2026)",
+  "prev_title": "10-blod-p\u00e5-betong-gr\u00f8n-i-lungen",
+  "queue_index": 0,
+  "created_at": 1776785908.6282017,
+  "guild_id": 1402051030828449823
+}

@@ -1753,7 +1753,7 @@ class OBSBridge:
             "input": f"udp://127.0.0.1:{udp_port}?pkt_size=3840&buffer_size=262144&fifo_size=262144&overrun_nonfatal=1&reuse=1",
             "is_local_file": False,
             "input_format": "s16le",
-            "ffmpeg_options": "sample_rate=48000 channels=2",
+            "ffmpeg_options": "sample_rate=42500 channels=2",
             # close_when_inactive MUST be False — if True, OBS closes the
             # UDP reader when no output is active, but then fails to
             # reopen it reliably when streaming starts, causing dead air.
@@ -1870,8 +1870,8 @@ class OBSBridge:
     def set_encoder_settings(
         self,
         keyint_sec: int = 2,
-        bitrate: int = 3000,
-        preset: str = "veryfast",
+        bitrate: int = 6000,
+        preset: str = "fast",
         rate_control: str = "CBR",
     ) -> dict:
         """Set the streaming encoder (x264) keyframe interval and bitrate.
@@ -1953,9 +1953,12 @@ class OBSBridge:
                 ("AdvOut", "ABitrate", str(bitrate)),
                 ("AdvOut", "keyint_sec", str(keyint_sec)),
                 ("AdvOut", "x264opts", "keyint=60:min-keyint=60:bframes=0"),
-                ("AdvOut", "preset", preset),
-                ("AdvOut", "profile", "high"),
-                ("AdvOut", "tune", "zerolatency"),
+                ("AdvOut", "Preset", preset),
+                ("AdvOut", "Profile", "high"),
+                ("AdvOut", "RateControl", rate_control),
+                ("AdvOut", "Bitrate", str(bitrate)),
+                ("AdvOut", "BufferSize", str(bitrate)),
+                ("AdvOut", "MaxBitrate", str(bitrate)),
                 ("AdvOut", "ApplyServiceSettings", "false"),
             ]
             for category, name, value in encoder_params:

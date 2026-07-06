@@ -1,0 +1,14 @@
+{
+  "dj_text": "DAD'S HOME and he brought Bates Graffiti! After Per Vers - City of Dreams!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c87c6dd18e5f.wav",
+  "dj_sound_ids": [
+    "daddys_home.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Bates Graffiti",
+  "prev_title": "Per Vers - City of Dreams",
+  "queue_index": 4,
+  "created_at": 1776599576.3682353,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,15 @@
+{
+  "dj_text": "Is somebody KNOCKING? It's That Pirate DJ Radio Bot Radio! The DJ selects Gulddreng - Helt Sikker after that Fra Mit Kvarter!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_d0a23abe5b71.wav",
+  "dj_sound_ids": [
+    "crazy_realistic_knocking_sound_troll_twitch_streamers_small.mp3",
+    "im_your_dj.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Gulddreng - Helt Sikker",
+  "prev_title": "Fra Mit Kvarter",
+  "queue_index": 4,
+  "created_at": 1776631600.8084078,
+  "guild_id": 1402051030828449823
+}

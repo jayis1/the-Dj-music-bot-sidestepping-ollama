@@ -1,0 +1,14 @@
+{
+  "dj_text": "Ankerstjerne & Rasmus Seebach - 1000 \u00e5r was just the appetizer. Ukendt Kunstner - K\u00f8benhavn (feat. Murro) is the main course! Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_c3dda8946ed2.wav",
+  "dj_sound_ids": [
+    "rave_cheer.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Ukendt Kunstner - K\u00f8benhavn (feat. Murro)",
+  "prev_title": "Ankerstjerne & Rasmus Seebach - 1000 \u00e5r",
+  "queue_index": 4,
+  "created_at": 1776634816.8327956,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,24 @@
+{
+  "dj_text": "Is that a good transition? YES KING! Ung for evigt \u2192 \u00c5rhus V Veteran!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_1_6af0dcf1d8f0.wav",
+  "dj_sound_ids": [
+    "is_that_d_good_yes_king.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Bingo Night Radio from the Eternal Community Center! Coming to you live from Kosmos B-12! B-7! I-22! N-34!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_1_6af0dcf1d8f0.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Hey folks, if ye be ready for a bender down memory lane that",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_1_6af0dcf1d8f0.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_1_6af0dcf1d8f0.wav",
+  "title": "\u00c5rhus V Veteran",
+  "prev_title": "Ung for evigt",
+  "queue_index": 1,
+  "created_at": 1776976193.3445392,
+  "guild_id": 1402051030828449823
+}

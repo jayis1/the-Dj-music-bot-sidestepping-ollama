@@ -1,0 +1,22 @@
+{
+  "dj_text": "Next. Eurythmics - Sweet Dreams (Are Made Of This) [Medieval Style Vocal Cover]. After Pharrell Williams - Happy (Medieval Style). One more left in the queue.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_0a50cb077ecb.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This break is sponsored by Error 404 Energy \u2014 the energy drink that makes you feel like you've lost something but can't",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_0a50cb077ecb.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "EXTREME VOLUME RADIO FROM THE SCREAMING DIMENSION!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_0a50cb077ecb.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "They're on our frequency AGAIN. We're changing the dimensional locks.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_0a50cb077ecb.wav",
+  "title": "Eurythmics - Sweet Dreams (Are Made Of This) [Medieval Style Vocal Cover]",
+  "prev_title": "Pharrell Williams - Happy (Medieval Style)",
+  "queue_index": 4,
+  "created_at": 1782718266.2008424,
+  "guild_id": 1402051030828449823
+}

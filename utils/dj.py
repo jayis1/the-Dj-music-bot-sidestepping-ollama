@@ -1586,27 +1586,67 @@ DEFAULT_VOICE_VIBEVOICE = "en-Carter_man"
 # the best matching Edge TTS voice for that language — instead of blindly
 # falling back to en-US-AriaNeural which would sound wrong.
 EDGE_VOICE_BY_LANG: dict[str, str] = {
+    # English: female default, male variant
     "en": "en-US-AriaNeural",
+    "en_f": "en-US-AriaNeural",
+    "en_m": "en-US-GuyNeural",
+    # Danish
     "da": "da-DK-JeppeNeural",  # Danish male
     "da_f": "da-DK-SofieNeural",  # Danish female
+    # Chinese
     "zh": "zh-CN-XiaoxiaoNeural",
+    "zh_m": "zh-CN-YunyangNeural",
+    # Japanese
     "ja": "ja-JP-NanamiNeural",
+    "ja_m": "ja-JP-KeitaNeural",
+    # Korean
     "ko": "ko-KR-SunHiNeural",
+    "ko_m": "ko-KR-InJoonNeural",
+    # German
     "de": "de-DE-KatjaNeural",
+    "de_m": "de-DE-ConradNeural",
+    # Spanish
     "es": "es-ES-ElviraNeural",
+    "es_m": "es-ES-AlvaroNeural",
+    # French
     "fr": "fr-FR-DeniseNeural",
+    "fr_m": "fr-FR-HenriNeural",
+    # Italian
     "it": "it-IT-ElsaNeural",
+    "it_m": "it-IT-DiegoNeural",
+    # Portuguese
     "pt": "pt-PT-RaquelNeural",
+    "pt_m": "pt-BR-AntonioNeural",
+    # Russian
     "ru": "ru-RU-SvetlanaNeural",
+    "ru_m": "ru-RU-DmitryNeural",
+    # Arabic
     "ar": "ar-SA-ZariyahNeural",
+    "ar_m": "ar-SA-HamedNeural",
+    # Swedish
     "sv": "sv-SE-HilleviNeural",
+    "sv_m": "sv-SE-MattiasNeural",
+    # Dutch
     "nl": "nl-NL-ColetteNeural",
+    "nl_m": "nl-NL-MaartenNeural",
+    # Polish
     "pl": "pl-PL-AgnieszkaNeural",
+    "pl_m": "pl-PL-MarekNeural",
+    # Czech
     "cs": "cs-CZ-VlastaNeural",
+    "cs_m": "cs-CZ-AntoninNeural",
+    # Hungarian
     "hu": "hu-HU-NoemiNeural",
+    "hu_m": "hu-HU-TamasNeural",
+    # Turkish
     "tr": "tr-TR-EmelNeural",
+    "tr_m": "tr-TR-AhmetNeural",
+    # Greek
     "el": "el-GR-AthenaNeural",
+    "el_m": "el-GR-NestorasNeural",
+    # Persian
     "fa": "fa-IR-DilaraNeural",
+    "fa_m": "fa-IR-FarhadNeural",
 }
 
 # Sample rates for local engines that output PCM/WAV
@@ -1776,24 +1816,81 @@ def _engine_for_voice(voice: str) -> str | None:
     return None
 
 
-def _edge_voice_for_moss_name(voice: str) -> str:
-    """Map a MOSS/VibeVoice voice name to the best matching Edge TTS voice.
+# ── Kokoro → Edge TTS voice mapping ───────────────────────────────────
+# Kokoro voices use a 2-char prefix: [region][gender]
+#   a=American, b=British, e=Indian English, f=French, h=Hindi,
+#   j=Japanese, p=Portuguese, z=Chinese
+#   f=female, m=male
+# This map ensures each Kokoro voice resolves to a DISTINCT Edge TTS voice
+# with matching language and gender — so the DJ, AI host, and commercial
+# voices all sound different even when running on edge-tts.
+KOKORO_TO_EDGE_VOICE: dict[str, str] = {
+    # American
+    "af": "en-US-AriaNeural",     # American Female
+    "am": "en-US-GuyNeural",      # American Male
+    # British
+    "bf": "en-GB-SoniaNeural",    # British Female
+    "bm": "en-GB-RyanNeural",     # British Male
+    # Indian English
+    "ef": "en-IN-NeerjaNeural",   # Indian English Female
+    "em": "en-IN-PrabhatNeural",  # Indian English Male
+    # French
+    "ff": "fr-FR-DeniseNeural",   # French Female
+    "fm": "fr-FR-HenriNeural",    # French Male
+    # Hindi
+    "hf": "hi-IN-SwaraNeural",    # Hindi Female
+    "hm": "hi-IN-MadhurNeural",   # Hindi Male
+    # Japanese
+    "jf": "ja-JP-NanamiNeural",   # Japanese Female
+    # Portuguese
+    "pf": "pt-PT-RaquelNeural",   # Portuguese Female
+    "pm": "pt-BR-AntonioNeural",  # Portuguese Male (Brazilian)
+    # Chinese (Mandarin)
+    "zf": "zh-CN-XiaoxiaoNeural",  # Chinese Female
+    "zm": "zh-CN-YunyangNeural",   # Chinese Male
+}
 
-    Extracts the language prefix (e.g. 'da' from 'da_female', 'en' from
-    'en_news_male') and looks up the best Edge TTS voice for that language.
-    Also detects female/male from the voice name suffix for languages that
-    have distinct male/female Edge TTS voices.
+
+def _edge_voice_for_moss_name(voice: str) -> str:
+    """Map a MOSS/VibeVoice/Kokoro voice name to the best matching Edge TTS voice.
+
+    For Kokoro voices (af_bella, am_adam, etc.), uses the 2-char prefix
+    to pick a language- and gender-matched Edge TTS voice. This ensures
+    different Kokoro voices map to DIFFERENT Edge TTS voices, so the DJ
+    and AI host sound distinct even on edge-tts.
+
+    For MOSS/VibeVoice voices, extracts the language prefix (e.g. 'da' from
+    'da_female', 'en' from 'en_news_male') and looks up the best Edge TTS
+    voice for that language. Also detects female/male from the voice name
+    suffix for languages that have distinct male/female Edge TTS voices.
 
     Falls back to DEFAULT_VOICE_EDGE (en-US-AriaNeural) if no match.
     """
-    # Extract language prefix from voice name
+    # ── Kokoro voice detection ──
+    # Kokoro prefixes are exactly 2 chars: [abefhjpz][fm]
+    # e.g. "af_bella" → prefix "af", "am_adam" → prefix "am"
+    if "_" in voice:
+        prefix = voice.split("_")[0].lower()
+        if len(prefix) == 2 and prefix[0] in "abefhjpz" and prefix[1] in "fm":
+            edge_voice = KOKORO_TO_EDGE_VOICE.get(prefix)
+            if edge_voice:
+                return edge_voice
+
+    # Extract language prefix from voice name (for MOSS/VibeVoice)
     lang_prefix = voice.split("_")[0].lower() if "_" in voice else voice[:2].lower()
 
-    # Detect gender from voice name suffix (female/male/f/m)
-    voice_lower = voice.lower()
-    is_female = any(w in voice_lower for w in ("female", "woman", "girl", "_f"))
+    # Detect gender from voice name suffix.
+    # Use word-boundary matching to avoid false positives like "man" in "warm".
+    import re as _re
 
-    # Try language+gender specific mapping first (e.g. "da_f" → da-DK-SofieNeural)
+    voice_lower = voice.lower()
+    is_female = bool(_re.search(r"\b(female|woman|girl)\b", voice_lower)) or "_f" in voice_lower
+    is_male = bool(_re.search(r"\b(male|man|boy)\b", voice_lower)) or "_m" in voice_lower
+
+    # Try language+gender specific mapping first
+    # e.g. "en_news_male" → en_m → en-US-GuyNeural
+    if is_male and f"{lang_prefix}_m" in EDGE_VOICE_BY_LANG:
+        return EDGE_VOICE_BY_LANG[f"{lang_prefix}_m"]
     if is_female and f"{lang_prefix}_f" in EDGE_VOICE_BY_LANG:
         return EDGE_VOICE_BY_LANG[f"{lang_prefix}_f"]
 

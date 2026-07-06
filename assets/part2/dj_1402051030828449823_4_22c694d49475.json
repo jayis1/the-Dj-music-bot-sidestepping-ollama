@@ -1,0 +1,22 @@
+{
+  "dj_text": "Sut Den Op Fra Slap (Artmus Re-Fix). Fine. Pariz. Whatever. Moving on.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_22c694d49475.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "This is a test of the That Pirate Bot DJ Emergency Broadcast System.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_22c694d49475.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Underground Frequency from Below.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_22c694d49475.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bm_george",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_22c694d49475.wav",
+  "title": "Pariz",
+  "prev_title": "Sut Den Op Fra Slap (Artmus Re-Fix)",
+  "queue_index": 4,
+  "created_at": 1782860363.2180197,
+  "guild_id": 1402051030828449823
+}

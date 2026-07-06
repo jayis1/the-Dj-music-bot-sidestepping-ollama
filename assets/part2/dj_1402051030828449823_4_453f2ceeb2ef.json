@@ -1,0 +1,24 @@
+{
+  "dj_text": "Ballroom Blitz (Bardcore Cover), and now Crockett's Theme (Medieval/Bardcore). The Django demands it.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_453f2ceeb2ef.wav",
+  "dj_sound_ids": [
+    "django.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Ladies and gents, welcome to That Pirate Bot DJ Radio!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_453f2ceeb2ef.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "{cool_dj_drop} Welcome, dear travelers of time!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_453f2ceeb2ef.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_453f2ceeb2ef.wav",
+  "title": "Crockett's Theme (Medieval/Bardcore)",
+  "prev_title": "Ballroom Blitz (Bardcore Cover)",
+  "queue_index": 4,
+  "created_at": 1782746420.349047,
+  "guild_id": 1402051030828449823
+}

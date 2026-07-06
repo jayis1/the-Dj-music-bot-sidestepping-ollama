@@ -1,0 +1,24 @@
+{
+  "dj_text": "From Too Much of Heaven (Medieval Cover) to \"Everything I Do\" - Vocal Cover [Bardcore | Medieval version]. In the mix! Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_e6b5dfabc641.wav",
+  "dj_sound_ids": [
+    "dj_stop.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Sound: im_your_dj drop, another_one 'another one' drop] WARNING!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_e6b5dfabc641.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "\"Hey listeners, this is The Steam Whistle Fm from GearGlobe'",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_e6b5dfabc641.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "Dimensional bleed. Happens sometimes. Never to US, but sometimes.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_e6b5dfabc641.wav",
+  "title": "\"Everything I Do\" - Vocal Cover [Bardcore | Medieval version]",
+  "prev_title": "Too Much of Heaven (Medieval Cover)",
+  "queue_index": 4,
+  "created_at": 1782768863.657847,
+  "guild_id": 1402051030828449823
+}

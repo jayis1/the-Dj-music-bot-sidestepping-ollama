@@ -1,0 +1,22 @@
+{
+  "dj_text": "That was Jokeren - Kun os to feat. Pauline (Official Music Video). Taking it easy with Gulddreng - Model. Got a nice little set going. 5 more after this one.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_0_822d9a64bf7d.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Introducing the iBrick Pro Max Ultra \u2014 it's just a brick. But it's OUR brick.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_0_822d9a64bf7d.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Hearken all ye fine Kosmoians!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_0_822d9a64bf7d.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "They're gone. We're back. Don't ask which 'they' \u2014 you don't want to know.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_0_822d9a64bf7d.wav",
+  "title": "Gulddreng - Model",
+  "prev_title": "Jokeren - Kun os to feat. Pauline (Official Music Video)",
+  "queue_index": 0,
+  "created_at": 1776640664.2587879,
+  "guild_id": 1402051030828449823
+}

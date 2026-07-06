@@ -1,0 +1,14 @@
+{
+  "dj_text": "Another one! From Gilli - Tidligt Op to T\u00e6nker Ik P\u00e5 Andre!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_ecb4d9e41f02.wav",
+  "dj_sound_ids": [
+    "another_one.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "T\u00e6nker Ik P\u00e5 Andre",
+  "prev_title": "Gilli - Tidligt Op",
+  "queue_index": 4,
+  "created_at": 1776634121.4903476,
+  "guild_id": 1402051030828449823
+}

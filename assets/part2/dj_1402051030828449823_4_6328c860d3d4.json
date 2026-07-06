@@ -1,0 +1,25 @@
+{
+  "dj_text": "That Pirate Bot DJ Radio. Zero chill. All music. From The Pink Panther Theme [Bardcore] [Medieval version] RIGHT into \"Back in Black\" by ACDC [Bardcore | Medieval version]. No time for feelings.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_6328c860d3d4.wav",
+  "dj_sound_ids": [
+    "the_rock_shut_up.mp3",
+    "air_raid.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Listen up, me hearties!",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_6328c860d3d4.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} Welcome one, welcome all \u2014 this is \"Mystery M",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_6328c860d3d4.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_6328c860d3d4.wav",
+  "title": "\"Back in Black\" by ACDC [Bardcore | Medieval version]",
+  "prev_title": "The Pink Panther Theme [Bardcore] [Medieval version]",
+  "queue_index": 4,
+  "created_at": 1782766441.2207146,
+  "guild_id": 1402051030828449823
+}

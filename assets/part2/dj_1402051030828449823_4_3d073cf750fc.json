@@ -1,0 +1,22 @@
+{
+  "dj_text": "Avicii - Wake me up (Medieval version). Hmm. Now let's ease into Africa (Medieval kind of version). Last one in the queue coming up.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_3d073cf750fc.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Attention all pirate listeners, we've got a fresh new gizmo that\u2019s about to turn your Medieval versions into something s",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_3d073cf750fc.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "{cool_dj_drop} Calling all cosmic travelers!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_3d073cf750fc.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "Someone is LEAKING our frequency to other kosmos. I have suspects. It's all of you.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_3d073cf750fc.wav",
+  "title": "Africa (Medieval kind of version)",
+  "prev_title": "Avicii - Wake me up (Medieval version)",
+  "queue_index": 4,
+  "created_at": 1782709054.6701093,
+  "guild_id": 1402051030828449823
+}

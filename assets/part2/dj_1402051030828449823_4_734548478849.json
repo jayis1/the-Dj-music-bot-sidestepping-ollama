@@ -1,0 +1,24 @@
+{
+  "dj_text": "The DJ giveth Mr. Blue Sky - medieval style with vocals!. The DJ taketh. The DJ giveth *NSYNC - Bye Bye Bye [Bardcore / Medieval Cover] - Soundtrack from Deadpool & Wolverine.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_734548478849.wav",
+  "dj_sound_ids": [
+    "im_your_dj.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey listeners, we just have a *NSYNC special coming up on that track you love turned into a Bardcore masterpiece...",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_734548478849.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Yarrr, this is Pirate Rockin' Reality from Void Between Dime",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_734548478849.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "I swear someone left the interdimensional frequency door open.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_734548478849.wav",
+  "title": "*NSYNC - Bye Bye Bye [Bardcore / Medieval Cover] - Soundtrack from Deadpool & Wolverine",
+  "prev_title": "Mr. Blue Sky - medieval style with vocals!",
+  "queue_index": 4,
+  "created_at": 1782779125.1923435,
+  "guild_id": 1402051030828449823
+}

@@ -1,0 +1,22 @@
+{
+  "dj_text": "If Game of Thrones Main Theme - Medieval Style was a warmup, Unknown is the main event. If Game of Thrones Main Theme - Medieval Style was the main event, Unknown is the hangover.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_f5c6839a419f.wav",
+  "dj_sound_ids": [],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Hey, are you tired of being ignored by your fellow humans because they're always on their phones?",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_f5c6839a419f.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "Hey there, universe travelers!",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_f5c6839a419f.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "The frequency is ours again. If you heard whispering from the void, ignore it.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_f5c6839a419f.wav",
+  "title": "Unknown",
+  "prev_title": "Game of Thrones Main Theme - Medieval Style",
+  "queue_index": 4,
+  "created_at": 1782750025.1653688,
+  "guild_id": 1402051030828449823
+}

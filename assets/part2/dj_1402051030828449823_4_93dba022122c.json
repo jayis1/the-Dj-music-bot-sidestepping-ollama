@@ -1,0 +1,24 @@
+{
+  "dj_text": "Smooth like butter! Vicetone & Tony Igy - Astronomia (Medieval Style | Bardcore) \u2192 Billie Eilish - Bad Guy (A medieval style cover) Bardcore!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_93dba022122c.wav",
+  "dj_sound_ids": [
+    "the_weeknd_rizzz.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "Fun fact: That Pirate Bot DJ Radio costs nothing to run and even less to listen to.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_93dba022122c.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bm_george",
+  "hijack_text": "Truth Frequency Radio from the Mirror Dimension.",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_93dba022122c.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "We're back from the void. Don't touch that dial.",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_93dba022122c.wav",
+  "title": "Billie Eilish - Bad Guy (A medieval style cover) Bardcore",
+  "prev_title": "Vicetone & Tony Igy - Astronomia (Medieval Style | Bardcore)",
+  "queue_index": 4,
+  "created_at": 1782831238.4176807,
+  "guild_id": 1402051030828449823
+}

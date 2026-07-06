@@ -78,6 +78,27 @@ class DRMProtectedError(Exception):
     pass
 
 
+# ── Platform URL detection ────────────────────────────────────────────────
+# yt-dlp supports SoundCloud and Bandcamp natively, but the default_search
+# option ("ytsearch") only routes *non-URL* queries to YouTube search.
+# These helpers let the play command detect SoundCloud/Bandcamp URLs and
+# adjust yt-dlp options accordingly (e.g. allow playlists for SoundCloud sets).
+
+
+def is_soundcloud_url(url: str) -> bool:
+    """Return True if the URL is a SoundCloud page URL."""
+    if not url:
+        return False
+    return "soundcloud.com" in url.lower()
+
+
+def is_bandcamp_url(url: str) -> bool:
+    """Return True if the URL is a Bandcamp page URL."""
+    if not url:
+        return False
+    return "bandcamp.com" in url.lower()
+
+
 def _make_base_opts():
     """Base yt-dlp options without format string (shared across all attempts)."""
     return {
@@ -96,6 +117,13 @@ def _make_base_opts():
         },
         "extractor_args": {"youtube": {"player_client": ["android", "web"]}},
         "extract_flat": "discard_in_playlist",
+        # ── JavaScript runtime for signature solving ──
+        # yt-dlp 2026+ requires a JS runtime (deno by default) to solve
+        # YouTube's signature/n challenges. Without it, all audio/video
+        # formats are stripped and only storyboard images remain, causing
+        # "Requested format is not available" on every video.
+        # deno is the default but not installed here; node is available.
+        "js_runtimes": {"node": {}},
     }
 
 

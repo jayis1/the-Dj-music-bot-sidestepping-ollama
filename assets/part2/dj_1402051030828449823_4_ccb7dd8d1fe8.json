@@ -1,0 +1,24 @@
+{
+  "dj_text": "That was Suno (5c1aac6b\u2026). But Suno (87062947\u2026) is something special. Just one more to go after this.",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_ccb7dd8d1fe8.wav",
+  "dj_sound_ids": [
+    "uyuuui.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "New from the makers of nothing \u2014 the SmartFridge X. It texts you when you're out of milk. It also texts your ex.",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_ccb7dd8d1fe8.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "am_adam",
+  "hijack_text": "This is DJ Ziggy from Dimension K-7 spinning on the turntabl",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_ccb7dd8d1fe8.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "am_adam",
+  "recovery_text": "What the\u2014 who gave them our frequency?! That's the THIRD kosmos this week!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_ccb7dd8d1fe8.wav",
+  "title": "Suno (87062947\u2026)",
+  "prev_title": "Suno (5c1aac6b\u2026)",
+  "queue_index": 4,
+  "created_at": 1776783823.6075647,
+  "guild_id": 1402051030828449823
+}

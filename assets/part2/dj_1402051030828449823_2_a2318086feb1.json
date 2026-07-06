@@ -1,0 +1,15 @@
+{
+  "dj_text": "This is That Pirate DJ Radio Bot Radio! Let's keep it going. Selvmord - R\u00e5be Under Vand is over. But Troo.l.s & Orgi-E - Inden Det For Sent is just getting started!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_2_a2318086feb1.wav",
+  "dj_sound_ids": [
+    "mustard_drop.mp3",
+    "dj_turn_it_up.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "title": "Troo.l.s & Orgi-E - Inden Det For Sent",
+  "prev_title": "Selvmord - R\u00e5be Under Vand",
+  "queue_index": 2,
+  "created_at": 1776633030.4500093,
+  "guild_id": 1402051030828449823
+}

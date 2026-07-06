@@ -1,0 +1,24 @@
+{
+  "dj_text": "Evangelion \"A Cruel Angel's Thesis\" - Medieval Style [BardCore] out. The Sound of Silence - Medieval Style [BardCore] in. Let's go!",
+  "dj_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/dj_1402051030828449823_4_27a6c6b3f047.wav",
+  "dj_sound_ids": [
+    "mega_airhorn.mp3"
+  ],
+  "ai_text": "",
+  "ai_tts_path": "",
+  "commercial_text": "[Breaking news alert sound effect ] \"We interrupt your bards and brave quests to bring you something straight from Babel",
+  "commercial_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/com_1402051030828449823_4_27a6c6b3f047.wav",
+  "commercial_sound_ids": [],
+  "commercial_voice": "bf_emma",
+  "hijack_text": "Calling all wanderers of worlds unseen, this is {channel nam",
+  "hijack_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/hj_1402051030828449823_4_27a6c6b3f047.wav",
+  "hijack_sound_ids": [],
+  "hijack_voice": "bf_emma",
+  "recovery_text": "HOW are they on our frequency?! That dimension doesn't even HAVE frequencies!",
+  "recovery_tts_path": "/root/the-Dj-music-bot-sidestepping-ollama/assets/part2/rec_1402051030828449823_4_27a6c6b3f047.wav",
+  "title": "The Sound of Silence - Medieval Style [BardCore]",
+  "prev_title": "Evangelion \"A Cruel Angel's Thesis\" - Medieval Style [BardCore]",
+  "queue_index": 4,
+  "created_at": 1782748682.8060982,
+  "guild_id": 1402051030828449823
+}

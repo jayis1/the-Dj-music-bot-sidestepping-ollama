@@ -1,12 +1,11 @@
 {
     "obs_x264": {
         "rate_control": "CBR",
-        "bitrate": 3000,
-        "buffer_size": 3000,
+        "bitrate": 6000,
+        "buffer_size": 6000,
         "keyint_sec": 2,
-        "preset": "veryfast",
+        "preset": "fast",
         "profile": "high",
-        "tune": "zerolatency",
         "x264opts": "keyint=60:min-keyint=60:bframes=0"
     }
 }
